@@ -43,7 +43,7 @@ require Exporter;
 %EXPORT_TAGS = (
     all     => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
     lock    => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
-    'flock' => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
+    flock => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
 );
 Exporter::export_ok_tags('all', 'lock', 'flock');
 
@@ -91,87 +91,25 @@ my %default_options = (
     size      => SHM_BUFSIZ,
 );
 
-# XXX Perl seems to garbage collect nested referents before we're done with them
-# XXX This cache holds a reference to things until END() is called
-
 my %global_register;
 my %process_register;
 
 sub _trace;
 sub _debug;
 
-###############################################################################
-# Debug mark
-
-# --- Public methods
-sub shlock {
-    _trace @_                                                    if DEBUGGING;
-    my ($self, $typelock) = @_;
-    ($typelock = LOCK_EX) unless defined $typelock;
-
-    return $self->shunlock if ($typelock & LOCK_UN);
-
-    return 1 if ($self->{_lock} & $typelock);
-
-    # If they have a different lock than they want, release it first
-    $self->shunlock if ($self->{_lock});
-
-    my $sem = $self->{_sem};
-    _debug "Attempting type=", $typelock, " lock on", $self->{_shm},
-        "via", $sem->id                                         if DEBUGGING;
-    my $return_val = $sem->op(@{ $semop_args{$typelock} });
-    if ($return_val) {
-        $self->{_lock} = $typelock;
-        _debug "Got lock on", $self->{_shm}, "via", $sem->id    if DEBUGGING;
-
-        $self->{_data} = _thaw($self->{_shm}),
-
-    } else {
-        _debug "Failed lock on", $self->{_shm}, "via", $sem->id if DEBUGGING;
-    }
-    return $return_val;
-}
-
-sub shunlock {
-    _trace @_                                                    if DEBUGGING;
-    my $self = shift;
-
-    return 1 unless $self->{_lock};
-    if ($self->{_was_changed}) {
-        defined _freeze($self->{_shm} => $self->{_data}) or do {
-            require Carp;
-            Carp::croak "Could not write to shared memory: $!\n";
-        };
-        $self->{_was_changed} = 0;
-    }
-    my $sem = $self->{_sem};
-    _debug "Freeing lock on", $self->{_shm}, "via", $sem->id     if DEBUGGING;
-    my $typelock = $self->{_lock} | LOCK_UN;
-    $typelock ^= LOCK_NB if ($typelock & LOCK_NB);
-    $sem->op(@{ $semop_args{$typelock} });
-
-    $self->{_lock} = 0;
-    _debug "Lock on", $self->{_shm}, "via", $sem->id, "freed"    if DEBUGGING;
-
-    1;
-}
-
 # --- "Magic" methods
 sub TIESCALAR {
     _trace @_                                                    if DEBUGGING;
     return _tie(SCALAR => @_);
 }
-
 sub TIEARRAY {
     _trace @_                                                    if DEBUGGING;
     return _tie(ARRAY => @_);
 }
-
 sub TIEHASH {
     _trace @_                                                    if DEBUGGING;
     return _tie(HASH => @_);
 }
-
 sub STORE {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -216,7 +154,6 @@ sub STORE {
     }
     return 1;
 }
-
 sub FETCH {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -271,7 +208,6 @@ sub FETCH {
     return $val;
 
 }
-
 sub CLEAR {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -294,7 +230,6 @@ sub CLEAR {
         };
     }
 }
-
 sub DELETE {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -313,7 +248,6 @@ sub DELETE {
 
     return $val;
 }
-
 sub EXISTS {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -322,7 +256,6 @@ sub EXISTS {
     $self->{_data} = _thaw($self->{_shm}) unless $self->{_lock};
     return exists $self->{_data}->{$key};
 }
-
 sub FIRSTKEY {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -335,7 +268,6 @@ sub FIRSTKEY {
     my $first = each %{$self->{_data}};
     return $first;
 }
-
 sub NEXTKEY {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -351,12 +283,10 @@ sub NEXTKEY {
         return $next;
     }
 }
-
 sub EXTEND {
     _trace @_                                                    if DEBUGGING;
     #XXX Noop
 }
-
 sub PUSH {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -374,7 +304,6 @@ sub PUSH {
         };
     }
 }
-
 sub POP {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -392,7 +321,6 @@ sub POP {
     }
     return $val;
 }
-
 sub SHIFT {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -409,7 +337,6 @@ sub SHIFT {
     }
     return $val;
 }
-
 sub UNSHIFT {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -426,7 +353,6 @@ sub UNSHIFT {
     }
     return $val;
 }
-
 sub SPLICE {
     _trace @_                                                    if DEBUGGING;
     my($self, $off, $n, @av) = @_;
@@ -443,7 +369,6 @@ sub SPLICE {
     }
     return @val;
 }
-
 sub FETCHSIZE {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -451,7 +376,6 @@ sub FETCHSIZE {
     $self->{_data} = _thaw($self->{_shm}) unless $self->{_lock};
     return scalar(@{$self->{_data}});
 }
-
 sub STORESIZE {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -470,6 +394,58 @@ sub STORESIZE {
     return $n;
 }
 
+# --- Public methods
+
+sub shlock {
+    _trace @_                                                    if DEBUGGING;
+    my ($self, $typelock) = @_;
+    ($typelock = LOCK_EX) unless defined $typelock;
+
+    return $self->shunlock if ($typelock & LOCK_UN);
+
+    return 1 if ($self->{_lock} & $typelock);
+
+    # If they have a different lock than they want, release it first
+    $self->shunlock if ($self->{_lock});
+
+    my $sem = $self->{_sem};
+    _debug "Attempting type=", $typelock, " lock on", $self->{_shm},
+        "via", $sem->id                                         if DEBUGGING;
+    my $return_val = $sem->op(@{ $semop_args{$typelock} });
+    if ($return_val) {
+        $self->{_lock} = $typelock;
+        _debug "Got lock on", $self->{_shm}, "via", $sem->id    if DEBUGGING;
+
+        $self->{_data} = _thaw($self->{_shm}),
+
+    } else {
+        _debug "Failed lock on", $self->{_shm}, "via", $sem->id if DEBUGGING;
+    }
+    return $return_val;
+}
+sub shunlock {
+    _trace @_                                                    if DEBUGGING;
+    my $self = shift;
+
+    return 1 unless $self->{_lock};
+    if ($self->{_was_changed}) {
+        defined _freeze($self->{_shm} => $self->{_data}) or do {
+            require Carp;
+            Carp::croak "Could not write to shared memory: $!\n";
+        };
+        $self->{_was_changed} = 0;
+    }
+    my $sem = $self->{_sem};
+    _debug "Freeing lock on", $self->{_shm}, "via", $sem->id     if DEBUGGING;
+    my $typelock = $self->{_lock} | LOCK_UN;
+    $typelock ^= LOCK_NB if ($typelock & LOCK_NB);
+    $sem->op(@{ $semop_args{$typelock} });
+
+    $self->{_lock} = 0;
+    _debug "Lock on", $self->{_shm}, "via", $sem->id, "freed"    if DEBUGGING;
+
+    1;
+}
 sub clean_up {
     _trace @_                                                    if DEBUGGING;
     my $class = shift;
@@ -479,7 +455,6 @@ sub clean_up {
         remove($s);
     }
 }
-
 sub clean_up_all {
     _trace @_                                                    if DEBUGGING;
     my $class = shift;
@@ -488,7 +463,6 @@ sub clean_up_all {
         remove($s);
     }
 }
-
 sub remove {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
@@ -537,7 +511,6 @@ sub _freeze {
     };
     $s->shmwrite($ice);
 }
-
 sub _thaw {
     _trace @_                                                    if DEBUGGING;
     my $s = shift;
@@ -560,7 +533,6 @@ sub _thaw {
         return;
     }
 }
-
 sub _tie {
     _trace @_                                                    if DEBUGGING;
     my $type  = shift;
@@ -619,7 +591,6 @@ sub _tie {
 
     return bless $sh => $class;
 }
-
 sub _parse_args {
     _trace @_                                                    if DEBUGGING;
     my($proto, $opts) = @_;
@@ -648,7 +619,6 @@ sub _parse_args {
     _debug "options are", $opts                                  if DEBUGGING;
     return $opts;
 }
-
 sub _shm_key {
     _trace @_                                                    if DEBUGGING;
     my $hv = shift;
@@ -665,7 +635,6 @@ sub _shm_key {
         return $val;
     }
 }
-
 sub _shm_flags {
     # --- Parses the anonymous hash passed to constructors; returns a list
     # --- of args suitable for passing to shmget
@@ -679,7 +648,6 @@ sub _shm_flags {
 
     return $flags;
 }
-
 sub _mg_tie {
     _trace @_                                                    if DEBUGGING;
     my $dad = shift;
@@ -732,7 +700,6 @@ sub _mg_tie {
 
     return $kid;
 }
-
 sub _is_kid {
     my $data = shift or return;
 
@@ -754,7 +721,6 @@ sub _is_kid {
         return;
     }
 }
-
 sub _need_tie {
     my $val = shift;
 
@@ -788,7 +754,6 @@ sub _trace {
     }  @_;
     Carp::carp "IPC::Shareable ($$) debug:\n", $caller, @msg;
 }
-
 sub _debug {
     require Carp;
     require Data::Dumper;
