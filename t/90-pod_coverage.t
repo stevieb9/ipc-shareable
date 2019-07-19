@@ -1,0 +1,29 @@
+use warnings;
+use strict;
+
+use Test::More;
+
+unless ( $ENV{RELEASE_TESTING} ) {
+    plan( skip_all => "Author test: RELEASE_TESTING not set" );
+}
+
+# Ensure a recent version of Test::Pod::Coverage
+my $min_tpc = 1.08;
+eval "use Test::Pod::Coverage $min_tpc";
+plan skip_all => "Test::Pod::Coverage $min_tpc required for testing POD coverage"
+    if $@;
+
+my $pc = Pod::Coverage->new(
+    package => 'IPC::SharedHash',
+    pod_from => 'lib/IPC/SharedHash.pm',
+#    private => [qr/^ssd1306/, qr/^bootstrap$/],
+);
+
+is $pc->coverage, 1, "pod coverage ok";
+
+if ($pc->uncovered){
+    print "Uncovered:\n\t", join( ", ", $pc->uncovered ), "\n";
+}
+
+done_testing;
+

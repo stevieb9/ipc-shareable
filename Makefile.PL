@@ -1,0 +1,42 @@
+use strict;
+use warnings;
+use ExtUtils::MakeMaker;
+
+WriteMakefile(
+    NAME              => 'IPC::Shareable',
+    VERSION_FROM      => 'lib/IPC/Shareable.pm',
+    ($] >= 5.005 ?
+      (ABSTRACT_FROM  => 'lib/IPC/Shareable.pm',
+       AUTHOR         => 'Steve Bertrand <steveb@cpan.org>') : ()),
+    LIBS              => [],
+    DEFINE            => '',
+    INC               => '',
+    META_MERGE => {
+        'meta-spec' => { version => 2 },
+        resources   => {
+            bugtracker => {
+                web => 'https://github.com/stevieb9/ipc-variable/issues',
+            },
+            repository => {
+                type => 'git',
+                url => 'https://github.com/stevieb9/ipc-variable.git',
+                web => 'https://github.com/stevieb9/ipc-variable',
+            },
+        },
+    },
+    MIN_PERL_VERSION   => 5.010,
+    LICENSE => 'perl_5',
+    CONFIGURE_REQUIRES => {
+        'ExtUtils::MakeMaker' => 6.72,
+    },
+    BUILD_REQUIRES => {
+        'Test::More' => 0,
+    },
+    PREREQ_PM    => { 
+                     "Storable" => 0.607,
+                     "Scalar::Util" => 0,
+                     "IPC::Semaphore" => 0,
+    },
+
+);
+
