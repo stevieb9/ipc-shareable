@@ -545,6 +545,8 @@ sub _thaw {
     my $ice = $s->shmread;
     _debug "read from shm segment ", $s->id, ": ", $ice          if DEBUGGING;
 
+    return if ! $ice;
+
     my $tag = substr $ice, 0, 14, '';
 
     if ($tag eq 'IPC::Shareable') {
