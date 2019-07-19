@@ -84,9 +84,9 @@ my %semop_args = (
 
 my %default_options = (
     key       => IPC_PRIVATE,
-    create    => '',
-    exclusive => '',
-    destroy   => '',
+    create    => 0,
+    exclusive => 0,
+    destroy   => 0,
     mode      => 0666,
     size      => SHM_BUFSIZ,
 );
@@ -162,7 +162,7 @@ sub FETCH {
 
     my $data;
     if ($self->{_lock} || $self->{_iterating}) {
-        $self->{_iterating} = ''; # In case we break out
+        $self->{_iterating} = 0; # In case we break out
         $data = $self->{_data};
     } else {
         $data = _thaw($self->{_shm});
@@ -276,7 +276,7 @@ sub NEXTKEY {
     my $next = each %{$self->{_data}};
     if (not defined $next) {
         _debug "resetting hash iterator on", $self->{_shm}->id   if DEBUGGING;
-        $self->{_iterating} = '';
+        $self->{_iterating} = 0;
         return;
     } else {
         $self->{_iterating} = 1;
@@ -562,7 +562,7 @@ sub _tie {
         Carp::croak "Could not obtain semaphore set lock: $!\n";
     }
     my $sh = {
-        _iterating => '',
+        _iterating => 0,
         _key       => $key,
         _lock      => 0,
         attributes => $opts,
@@ -611,11 +611,11 @@ sub _parse_args {
                 Carp::carp("Use of `no' in IPC::Shareable args is obsolete");
             }
 
-            $opts->{$k} = '';
+            $opts->{$k} = 0;
         }
     }
     $opts->{owner} = ($opts->{owner} or $$);
-    $opts->{magic} = ($opts->{magic} or '');
+    $opts->{magic} = ($opts->{magic} or 0);
     _debug "options are", $opts                                  if DEBUGGING;
     return $opts;
 }

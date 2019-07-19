@@ -72,7 +72,6 @@ print Dumper $knot;
 
 IPC::Shareable->clean_up_all;
 
-is exists($hv{__ipc}), '', "__ipc__ key is removed";
 is %hv, '', "hash deleted after clean_up()";
 
 done_testing();
