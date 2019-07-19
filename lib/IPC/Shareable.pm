@@ -40,7 +40,7 @@ our @EXPORT_OK = qw(LOCK_EX LOCK_SH LOCK_NB LOCK_UN);
 our %EXPORT_TAGS = (
     all     => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
     lock    => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
-    flock => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
+    flock   => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
 );
 Exporter::export_ok_tags('all', 'lock', 'flock');
 
@@ -97,15 +97,15 @@ sub _debug;
 # --- "Magic" methods
 sub TIESCALAR {
     _trace @_                                                    if DEBUGGING;
-    return _tie(SCALAR => @_);
+    return _tie('SCALAR', @_);
 }
 sub TIEARRAY {
     _trace @_                                                    if DEBUGGING;
-    return _tie(ARRAY => @_);
+    return _tie('ARRAY', @_);
 }
 sub TIEHASH {
     _trace @_                                                    if DEBUGGING;
-    return _tie(HASH => @_);
+    return _tie('HASH', @_);
 }
 sub STORE {
     _trace @_                                                    if DEBUGGING;
@@ -120,18 +120,18 @@ sub STORE {
     if ($knot->{_type} eq 'HASH') {
         my $key = shift;
         my $val = shift;
-        _mg_tie($knot => $val) if _need_tie($val);
+        _mg_tie($knot, $val) if _need_tie($val);
         $knot->{_data}->{$key} = $val;
     }
     elsif ($knot->{_type} eq 'ARRAY') {
         my $i   = shift;
         my $val = shift;
-        _mg_tie($knot => $val) if _need_tie($val);
+        _mg_tie($knot, $val) if _need_tie($val);
         $knot->{_data}->[$i] = $val;
     }
     elsif ($knot->{_type} eq 'SCALAR') {
         my $val = shift;
-        _mg_tie($knot => $val) if _need_tie($val);
+        _mg_tie($knot, $val) if _need_tie($val);
         $knot->{_data} = \$val;
     }
     else {
@@ -142,7 +142,7 @@ sub STORE {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
+        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!\n";
         };
@@ -222,7 +222,7 @@ sub CLEAR {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
+        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -238,7 +238,7 @@ sub DELETE {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
+        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -292,11 +292,11 @@ sub PUSH {
     $global_register{$knot->{_shm}->id} ||= $knot;
     $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
 
-    push @{$knot->{_data}} => @_;
+    push @{$knot->{_data}}, @_;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
+        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -312,7 +312,7 @@ sub POP {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
+        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -328,7 +328,7 @@ sub SHIFT {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
+        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -340,11 +340,11 @@ sub UNSHIFT {
     my $knot = shift;
 
     $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
-    my $val = unshift @{$knot->{_data}} => @_;
+    my $val = unshift @{$knot->{_data}}, @_;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
+        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -356,11 +356,11 @@ sub SPLICE {
     my($knot, $off, $n, @av) = @_;
 
     $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
-    my @val = splice @{$knot->{_data}}, $off, $n => @av;
+    my @val = splice @{$knot->{_data}}, $off, $n, @av;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
+        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -384,7 +384,7 @@ sub STORESIZE {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
+        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -427,7 +427,7 @@ sub shunlock {
 
     return 1 unless $knot->{_lock};
     if ($knot->{_was_changed}) {
-        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
+        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!\n";
         };
@@ -560,13 +560,13 @@ sub _tie {
         Carp::croak "Could not obtain semaphore set lock: $!\n";
     }
     my $knot = {
-        _iterating => 0,
-        _key       => $key,
-        _lock      => 0,
-        attributes => $opts,
-        _shm       => $seg,
-        _sem       => $sem,
-        _type      => $type,
+        attributes   => $opts,
+        _iterating   => 0,
+        _key         => $key,
+        _lock        => 0,
+        _shm         => $seg,
+        _sem         => $sem,
+        _type        => $type,
         _was_changed => 0,
     };
     $knot->{_data} = _thaw($seg),
@@ -588,7 +588,7 @@ sub _tie {
 
     _debug "IPC::Shareable instance created:", $knot               if DEBUGGING;
 
-    return bless $knot => $class;
+    return bless $knot, $class;
 }
 sub _parse_args {
     _trace @_                                                    if DEBUGGING;
@@ -634,8 +634,8 @@ sub _shm_key {
     }
     else {
         # XXX This only uses the first four characters
-        $val = pack   A4 => $val;
-        $val = unpack i  => $val;
+        $val = pack   'A4', $val;
+        $val = unpack 'i', $val;
         return $val;
     }
 }
@@ -669,7 +669,7 @@ sub _mg_tie {
         key       => $key,
         exclusive => 1,
         create    => 1,
-        magic    => 1,
+        magic     => 1,
     );
 
     # XXX I wish I didn't have to take a copy of data here and copy it back in
@@ -679,7 +679,7 @@ sub _mg_tie {
 
     if ($type eq "HASH") {
         my %copy = %$val;
-        $child = tie %$val => 'IPC::Shareable', $key, { %opts } or do {
+        $child = tie %$val, 'IPC::Shareable', $key, { %opts } or do {
             require Carp;
             Carp::croak "Could not create inner tie";
         };
@@ -687,7 +687,7 @@ sub _mg_tie {
     }
     elsif ($type eq "ARRAY") {
         my @copy = @$val;
-        $child = tie @$val => 'IPC::Shareable', $key, { %opts } or do {
+        $child = tie @$val, 'IPC::Shareable', $key, { %opts } or do {
             require Carp;
             Carp::croak "Could not create inner tie";
         };
@@ -695,7 +695,7 @@ sub _mg_tie {
     }
     elsif ($type eq "SCALAR") {
         my $copy = $$val;
-        $child = tie $$val => 'IPC::Shareable', $key, { %opts } or do {
+        $child = tie $$val, 'IPC::Shareable', $key, { %opts } or do {
             require Carp;
             Carp::croak "Could not create inner tie";
         };
