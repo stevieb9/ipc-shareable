@@ -109,40 +109,40 @@ sub TIEHASH {
 }
 sub STORE {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
 
-    my $sid = $self->{_shm}->{_id};
+    my $sid = $knot->{_shm}->{_id};
 
-    $global_register{$self->{_shm}->id} ||= $self;
+    $global_register{$sid} ||= $knot;
 
-    $self->{_data} = _thaw($self->{_shm}) unless ($self->{_lock});
+    $knot->{_data} = _thaw($knot->{_shm}) unless ($knot->{_lock});
 
-    if ($self->{_type} eq 'HASH') {
+    if ($knot->{_type} eq 'HASH') {
         my $key = shift;
         my $val = shift;
-        _mg_tie($self => $val) if _need_tie($val);
-        $self->{_data}->{$key} = $val;
+        _mg_tie($knot => $val) if _need_tie($val);
+        $knot->{_data}->{$key} = $val;
     }
-    elsif ($self->{_type} eq 'ARRAY') {
+    elsif ($knot->{_type} eq 'ARRAY') {
         my $i   = shift;
         my $val = shift;
-        _mg_tie($self => $val) if _need_tie($val);
-        $self->{_data}->[$i] = $val;
+        _mg_tie($knot => $val) if _need_tie($val);
+        $knot->{_data}->[$i] = $val;
     }
-    elsif ($self->{_type} eq 'SCALAR') {
+    elsif ($knot->{_type} eq 'SCALAR') {
         my $val = shift;
-        _mg_tie($self => $val) if _need_tie($val);
-        $self->{_data} = \$val;
+        _mg_tie($knot => $val) if _need_tie($val);
+        $knot->{_data} = \$val;
     }
     else {
         require Carp;
-        Carp::croak "Variables of type $self->{_type} not supported";
+        Carp::croak "Variables of type $knot->{_type} not supported";
     }
 
-    if ($self->{_lock} & LOCK_EX) {
-        $self->{_was_changed} = 1;
+    if ($knot->{_lock} & LOCK_EX) {
+        $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($self->{_shm} => $self->{_data}) or do {
+        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!\n";
         };
@@ -151,22 +151,24 @@ sub STORE {
 }
 sub FETCH {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
 
-    $global_register{$self->{_shm}->id} ||= $self;
+    my $sid = $knot->{_shm}->{_id};
+
+    $global_register{$sid} ||= $knot;
 
     my $data;
-    if ($self->{_lock} || $self->{_iterating}) {
-        $self->{_iterating} = 0; # In case we break out
-        $data = $self->{_data};
+    if ($knot->{_lock} || $knot->{_iterating}) {
+        $knot->{_iterating} = 0; # In case we break out
+        $data = $knot->{_data};
     } else {
-        $data = _thaw($self->{_shm});
-        $self->{_data} = $data;
+        $data = _thaw($knot->{_shm});
+        $knot->{_data} = $data;
     }
 
     my $val;
 
-    if ($self->{_type} eq 'HASH') {
+    if ($knot->{_type} eq 'HASH') {
         if (defined $data) {
             my $key = shift;
             $val = $data->{$key};
@@ -174,7 +176,7 @@ sub FETCH {
             return;
         }
     }
-    elsif ($self->{_type} eq 'ARRAY') {
+    elsif ($knot->{_type} eq 'ARRAY') {
         if (defined $data) {
             my $i = shift;
             $val = $data->[$i];
@@ -182,7 +184,7 @@ sub FETCH {
             return;
         }
     }
-    elsif ($self->{_type} eq 'SCALAR') {
+    elsif ($knot->{_type} eq 'SCALAR') {
         if (defined $data) {
             $val = $$data;
         } else {
@@ -191,7 +193,7 @@ sub FETCH {
     }
     else {
         require Carp;
-        Carp::croak "Variables of type $self->{_type} not supported";
+        Carp::croak "Variables of type $knot->{_type} not supported";
     }
 
     if (my $inner = _is_kid($val)) {
@@ -203,13 +205,13 @@ sub FETCH {
 }
 sub CLEAR {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
 
-    if ($self->{_type} eq 'HASH') {
-        $self->{_data} = { };
+    if ($knot->{_type} eq 'HASH') {
+        $knot->{_data} = { };
     }
-    elsif ($self->{_type} eq 'ARRAY') {
-        $self->{_data} = [ ];
+    elsif ($knot->{_type} eq 'ARRAY') {
+        $knot->{_data} = [ ];
     }
 
     else {
@@ -217,10 +219,10 @@ sub CLEAR {
         Carp::croak "Attempt to clear non-aggegrate";
     }
 
-    if ($self->{_lock} & LOCK_EX) {
-        $self->{_was_changed} = 1;
+    if ($knot->{_lock} & LOCK_EX) {
+        $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($self->{_shm} => $self->{_data}) or do {
+        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -228,15 +230,15 @@ sub CLEAR {
 }
 sub DELETE {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
     my $key  = shift;
 
-    $self->{_data} = _thaw($self->{_shm}) unless $self->{_lock};
-    my $val = delete $self->{_data}->{$key};
-    if ($self->{_lock} & LOCK_EX) {
-        $self->{_was_changed} = 1;
+    $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
+    my $val = delete $knot->{_data}->{$key};
+    if ($knot->{_lock} & LOCK_EX) {
+        $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($self->{_shm} => $self->{_data}) or do {
+        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -246,36 +248,36 @@ sub DELETE {
 }
 sub EXISTS {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
     my $key  = shift;
 
-    $self->{_data} = _thaw($self->{_shm}) unless $self->{_lock};
-    return exists $self->{_data}->{$key};
+    $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
+    return exists $knot->{_data}->{$key};
 }
 sub FIRSTKEY {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
     my $key  = shift;
 
-    _debug "setting hash iterator on", $self->{_shm}->id         if DEBUGGING;
-    $self->{_iterating} = 1;
-    $self->{_data} = _thaw($self->{_shm}) unless $self->{_lock};
-    my $reset = keys %{$self->{_data}};
-    my $first = each %{$self->{_data}};
+    _debug "setting hash iterator on", $knot->{_shm}->id         if DEBUGGING;
+    $knot->{_iterating} = 1;
+    $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
+    my $reset = keys %{$knot->{_data}};
+    my $first = each %{$knot->{_data}};
     return $first;
 }
 sub NEXTKEY {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
 
     # caveat emptor if hash was changed by another process
-    my $next = each %{$self->{_data}};
+    my $next = each %{$knot->{_data}};
     if (not defined $next) {
-        _debug "resetting hash iterator on", $self->{_shm}->id   if DEBUGGING;
-        $self->{_iterating} = 0;
+        _debug "resetting hash iterator on", $knot->{_shm}->id   if DEBUGGING;
+        $knot->{_iterating} = 0;
         return;
     } else {
-        $self->{_iterating} = 1;
+        $knot->{_iterating} = 1;
         return $next;
     }
 }
@@ -285,16 +287,16 @@ sub EXTEND {
 }
 sub PUSH {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
 
-    $global_register{$self->{_shm}->id} ||= $self;
-    $self->{_data} = _thaw($self->{_shm}, $self->{_data}) unless $self->{_lock};
+    $global_register{$knot->{_shm}->id} ||= $knot;
+    $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
 
-    push @{$self->{_data}} => @_;
-    if ($self->{_lock} & LOCK_EX) {
-        $self->{_was_changed} = 1;
+    push @{$knot->{_data}} => @_;
+    if ($knot->{_lock} & LOCK_EX) {
+        $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($self->{_shm} => $self->{_data}) or do {
+        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -302,15 +304,15 @@ sub PUSH {
 }
 sub POP {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
 
-    $self->{_data} = _thaw($self->{_shm}, $self->{_data}) unless $self->{_lock};
+    $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
 
-    my $val = pop @{$self->{_data}};
-    if ($self->{_lock} & LOCK_EX) {
-        $self->{_was_changed} = 1;
+    my $val = pop @{$knot->{_data}};
+    if ($knot->{_lock} & LOCK_EX) {
+        $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($self->{_shm} => $self->{_data}) or do {
+        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -319,14 +321,14 @@ sub POP {
 }
 sub SHIFT {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
 
-    $self->{_data} = _thaw($self->{_shm}, $self->{_data}) unless $self->{_lock};
-    my $val = shift @{$self->{_data}};
-    if ($self->{_lock} & LOCK_EX) {
-        $self->{_was_changed} = 1;
+    $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
+    my $val = shift @{$knot->{_data}};
+    if ($knot->{_lock} & LOCK_EX) {
+        $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($self->{_shm} => $self->{_data}) or do {
+        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -335,14 +337,14 @@ sub SHIFT {
 }
 sub UNSHIFT {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
 
-    $self->{_data} = _thaw($self->{_shm}, $self->{_data}) unless $self->{_lock};
-    my $val = unshift @{$self->{_data}} => @_;
-    if ($self->{_lock} & LOCK_EX) {
-        $self->{_was_changed} = 1;
+    $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
+    my $val = unshift @{$knot->{_data}} => @_;
+    if ($knot->{_lock} & LOCK_EX) {
+        $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($self->{_shm} => $self->{_data}) or do {
+        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -351,14 +353,14 @@ sub UNSHIFT {
 }
 sub SPLICE {
     _trace @_                                                    if DEBUGGING;
-    my($self, $off, $n, @av) = @_;
+    my($knot, $off, $n, @av) = @_;
 
-    $self->{_data} = _thaw($self->{_shm}, $self->{_data}) unless $self->{_lock};
-    my @val = splice @{$self->{_data}}, $off, $n => @av;
-    if ($self->{_lock} & LOCK_EX) {
-        $self->{_was_changed} = 1;
+    $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
+    my @val = splice @{$knot->{_data}}, $off, $n => @av;
+    if ($knot->{_lock} & LOCK_EX) {
+        $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($self->{_shm} => $self->{_data}) or do {
+        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -367,22 +369,22 @@ sub SPLICE {
 }
 sub FETCHSIZE {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
 
-    $self->{_data} = _thaw($self->{_shm}) unless $self->{_lock};
-    return scalar(@{$self->{_data}});
+    $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
+    return scalar(@{$knot->{_data}});
 }
 sub STORESIZE {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
     my $n    = shift;
 
-    $self->{_data} = _thaw($self->{_shm}) unless $self->{_lock};
-    $#{$self->{_data}} = $n - 1;
-    if ($self->{_lock} & LOCK_EX) {
-        $self->{_was_changed} = 1;
+    $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
+    $#{$knot->{_data}} = $n - 1;
+    if ($knot->{_lock} & LOCK_EX) {
+        $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($self->{_shm} => $self->{_data}) or do {
+        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!";
         };
@@ -394,51 +396,51 @@ sub STORESIZE {
 
 sub shlock {
     _trace @_                                                    if DEBUGGING;
-    my ($self, $typelock) = @_;
+    my ($knot, $typelock) = @_;
     ($typelock = LOCK_EX) unless defined $typelock;
 
-    return $self->shunlock if ($typelock & LOCK_UN);
+    return $knot->shunlock if ($typelock & LOCK_UN);
 
-    return 1 if ($self->{_lock} & $typelock);
+    return 1 if ($knot->{_lock} & $typelock);
 
     # If they have a different lock than they want, release it first
-    $self->shunlock if ($self->{_lock});
+    $knot->shunlock if ($knot->{_lock});
 
-    my $sem = $self->{_sem};
-    _debug "Attempting type=", $typelock, " lock on", $self->{_shm},
+    my $sem = $knot->{_sem};
+    _debug "Attempting type=", $typelock, " lock on", $knot->{_shm},
         "via", $sem->id                                         if DEBUGGING;
     my $return_val = $sem->op(@{ $semop_args{$typelock} });
     if ($return_val) {
-        $self->{_lock} = $typelock;
-        _debug "Got lock on", $self->{_shm}, "via", $sem->id    if DEBUGGING;
+        $knot->{_lock} = $typelock;
+        _debug "Got lock on", $knot->{_shm}, "via", $sem->id    if DEBUGGING;
 
-        $self->{_data} = _thaw($self->{_shm}),
+        $knot->{_data} = _thaw($knot->{_shm}),
 
     } else {
-        _debug "Failed lock on", $self->{_shm}, "via", $sem->id if DEBUGGING;
+        _debug "Failed lock on", $knot->{_shm}, "via", $sem->id if DEBUGGING;
     }
     return $return_val;
 }
 sub shunlock {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
 
-    return 1 unless $self->{_lock};
-    if ($self->{_was_changed}) {
-        defined _freeze($self->{_shm} => $self->{_data}) or do {
+    return 1 unless $knot->{_lock};
+    if ($knot->{_was_changed}) {
+        defined _freeze($knot->{_shm} => $knot->{_data}) or do {
             require Carp;
             Carp::croak "Could not write to shared memory: $!\n";
         };
-        $self->{_was_changed} = 0;
+        $knot->{_was_changed} = 0;
     }
-    my $sem = $self->{_sem};
-    _debug "Freeing lock on", $self->{_shm}, "via", $sem->id     if DEBUGGING;
-    my $typelock = $self->{_lock} | LOCK_UN;
+    my $sem = $knot->{_sem};
+    _debug "Freeing lock on", $knot->{_shm}, "via", $sem->id     if DEBUGGING;
+    my $typelock = $knot->{_lock} | LOCK_UN;
     $typelock ^= LOCK_NB if ($typelock & LOCK_NB);
     $sem->op(@{ $semop_args{$typelock} });
 
-    $self->{_lock} = 0;
-    _debug "Lock on", $self->{_shm}, "via", $sem->id, "freed"    if DEBUGGING;
+    $knot->{_lock} = 0;
+    _debug "Lock on", $knot->{_shm}, "via", $sem->id, "freed"    if DEBUGGING;
 
     1;
 }
@@ -461,9 +463,9 @@ sub clean_up_all {
 }
 sub remove {
     _trace @_                                                    if DEBUGGING;
-    my $self = shift;
+    my $knot = shift;
 
-    my $s = $self->{_shm};
+    my $s = $knot->{_shm};
     my $id = $s->id;
 
     $s->remove or do {
@@ -471,7 +473,7 @@ sub remove {
         Carp::carp "Couldn't remove shared memory segment $id: $!";
     };
 
-    $s = $self->{_sem};
+    $s = $knot->{_sem};
     $s->remove or do {
         require Carp;
         Carp::carp "Couldn't remove semaphore set $id: $!";
@@ -493,26 +495,26 @@ END {
 # --- Private methods below
 sub _freeze {
     _trace @_                                                    if DEBUGGING;
-    my $s  = shift;
+    my $seg  = shift;
     my $water = shift;
 
     my $ice = freeze $water;
     # Could be a large string.  No need to copy it.  substr more efficient
     substr $ice, 0, 0, 'IPC::Shareable';
 
-    _debug "writing to shm segment ", $s->id, ": ", $ice         if DEBUGGING;
-    if (length($ice) > $s->size) {
+    _debug "writing to shm segment ", $seg->id, ": ", $ice         if DEBUGGING;
+    if (length($ice) > $seg->size) {
         require Carp;
         Carp::croak "Length of shared data exceeds shared segment size";
     };
-    $s->shmwrite($ice);
+    $seg->shmwrite($ice);
 }
 sub _thaw {
     _trace @_                                                    if DEBUGGING;
-    my $s = shift;
+    my $seg = shift;
 
-    my $ice = $s->shmread;
-    _debug "read from shm segment ", $s->id, ": ", $ice          if DEBUGGING;
+    my $ice = $seg->shmread;
+    _debug "read from shm segment ", $seg->id, ": ", $ice          if DEBUGGING;
 
     return if ! $ice;
 
@@ -539,12 +541,12 @@ sub _tie {
     my $flags    = _shm_flags($opts);
     my $shm_size = $opts->{size};
 
-    my $s = IPC::Shareable::SharedMem->new($key, $shm_size, $flags);
-    defined $s or do {
+    my $seg = IPC::Shareable::SharedMem->new($key, $shm_size, $flags);
+    defined $seg or do {
         require Carp;
         Carp::croak "Could not create shared memory segment: $!\n";
     };
-    _debug "shared memory id is", $s->id                         if DEBUGGING;
+    _debug "shared memory id is", $seg->id                         if DEBUGGING;
 
     my $sem = IPC::Semaphore->new($key, 3, $flags);
     defined $sem or do {
@@ -557,24 +559,25 @@ sub _tie {
         require Carp;
         Carp::croak "Could not obtain semaphore set lock: $!\n";
     }
-    my $sh = {
+    my $knot = {
         _iterating => 0,
         _key       => $key,
         _lock      => 0,
         attributes => $opts,
-        _shm       => $s,
+        _shm       => $seg,
         _sem       => $sem,
         _type      => $type,
         _was_changed => 0,
     };
-        $sh->{_data} = _thaw($s),
+    $knot->{_data} = _thaw($seg),
 
-        my $there = $sem->getval(SEM_MARKER);
+    my $there = $sem->getval(SEM_MARKER);
+
     if ($there == SHM_EXISTS) {
-        _debug "binding to existing segment on ", $s->id         if DEBUGGING;
+        _debug "binding to existing segment on ", $seg->id         if DEBUGGING;
     } else {
-        _debug "brand new segment on ", $s->id                   if DEBUGGING;
-        $process_register{$sh->{_shm}->id} ||= $sh;
+        _debug "brand new segment on ", $seg->id                   if DEBUGGING;
+        $process_register{$knot->{_shm}->id} ||= $knot;
         $sem->setval(SEM_MARKER, SHM_EXISTS) or do {
             require Carp;
             Carp::croak "Couldn't set semaphore during object creation: $!";
@@ -583,9 +586,9 @@ sub _tie {
 
     $sem->op(@{ $semop_args{(LOCK_SH|LOCK_UN)} });
 
-    _debug "IPC::Shareable instance created:", $sh               if DEBUGGING;
+    _debug "IPC::Shareable instance created:", $knot               if DEBUGGING;
 
-    return bless $sh => $class;
+    return bless $knot => $class;
 }
 sub _parse_args {
     _trace @_                                                    if DEBUGGING;
@@ -593,6 +596,7 @@ sub _parse_args {
 
     $proto = defined $proto ? $proto :  0;
     $opts  = defined $opts  ? $opts  : { %default_options };
+
     if (ref $proto eq 'HASH') {
         $opts = $proto;
     }
@@ -650,18 +654,18 @@ sub _shm_flags {
 }
 sub _mg_tie {
     _trace @_                                                    if DEBUGGING;
-    my $dad = shift;
+    my $parent = shift;
     my $val = shift;
 
     # XXX How to generate a unique id ?
     my $key;
-    if ($dad->{_key} == IPC_PRIVATE) {
+    if ($parent->{_key} == IPC_PRIVATE) {
         $key = IPC_PRIVATE;
     } else {
         $key = int(rand(1_000_000));
     }
     my %opts = (
-        %{$dad->{attributes}},
+        %{$parent->{attributes}},
         key       => $key,
         exclusive => 1,
         create    => 1,
@@ -670,12 +674,12 @@ sub _mg_tie {
 
     # XXX I wish I didn't have to take a copy of data here and copy it back in
     # XXX Also, have to peek inside potential objects to see their implementation
-    my $kid;
+    my $child;
     my $type = Scalar::Util::reftype( $val ) || '';
 
     if ($type eq "HASH") {
         my %copy = %$val;
-        $kid = tie %$val => 'IPC::Shareable', $key, { %opts } or do {
+        $child = tie %$val => 'IPC::Shareable', $key, { %opts } or do {
             require Carp;
             Carp::croak "Could not create inner tie";
         };
@@ -683,7 +687,7 @@ sub _mg_tie {
     }
     elsif ($type eq "ARRAY") {
         my @copy = @$val;
-        $kid = tie @$val => 'IPC::Shareable', $key, { %opts } or do {
+        $child = tie @$val => 'IPC::Shareable', $key, { %opts } or do {
             require Carp;
             Carp::croak "Could not create inner tie";
         };
@@ -691,7 +695,7 @@ sub _mg_tie {
     }
     elsif ($type eq "SCALAR") {
         my $copy = $$val;
-        $kid = tie $$val => 'IPC::Shareable', $key, { %opts } or do {
+        $child = tie $$val => 'IPC::Shareable', $key, { %opts } or do {
             require Carp;
             Carp::croak "Could not create inner tie";
         };
@@ -702,7 +706,7 @@ sub _mg_tie {
         Carp::croak "Variables of type $type not implemented";
     }
 
-    return $kid;
+    return $child;
 }
 sub _is_kid {
     my $data = shift or return;
@@ -711,6 +715,7 @@ sub _is_kid {
     return unless $type;
 
     my $obj;
+
     if ($type eq "HASH") {
         $obj = tied %$data;
     }
@@ -724,9 +729,8 @@ sub _is_kid {
     if (ref $obj eq 'IPC::Shareable') {
         return $obj;
     }
-    else {
-        return;
-    }
+
+    return;
 }
 sub _need_tie {
     my $val = shift;
@@ -743,9 +747,8 @@ sub _need_tie {
     elsif ($type eq "SCALAR") {
         return !(tied $$val);
     }
-    else {
-        return;
-    }
+
+    return;
 }
 
 sub _trace {
