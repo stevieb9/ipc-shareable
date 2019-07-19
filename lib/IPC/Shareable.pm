@@ -98,7 +98,8 @@ my %process_register;
 sub _trace;
 sub _debug;
 
-# --- "Magic" methods
+# magic methods
+
 sub TIESCALAR {
     _trace @_                                                    if DEBUGGING;
     return _tie('SCALAR', @_);
@@ -380,8 +381,16 @@ sub STORESIZE {
     return $n;
 }
 
-# --- Public methods
+# public methods
 
+sub lock {
+    my ($self, $flags) = @_;
+    $self->{_shm}->lock($flags);
+}
+sub unlock {
+    my ($self, $flags) = @_;
+    $self->{_shm}->unlock($flags);
+}
 sub clean_up {
     _trace @_                                                    if DEBUGGING;
     my $class = shift;
@@ -412,16 +421,8 @@ sub remove {
     delete $global_register{$id};
 }
 
-END {
-    _trace @_                                                    if DEBUGGING;
-    for my $seg (values %process_register) {
-        next unless $seg->{attributes}->{destroy};
-        next unless $seg->{attributes}->{owner} == $$;
-        remove($seg);
-    }
-}
+# private methods
 
-# --- Private methods below
 sub _freeze {
     _trace @_                                                    if DEBUGGING;
     my $seg  = shift;
@@ -703,6 +704,15 @@ sub _debug {
     }  @_;
     Carp::carp "IPC::Shareable ($$) debug:\n", $caller, @msg;
 };
+
+END {
+    _trace @_                                                    if DEBUGGING;
+    for my $seg (values %process_register) {
+        next unless $seg->{attributes}->{destroy};
+        next unless $seg->{attributes}->{owner} == $$;
+        remove($seg);
+    }
+}
 
 1;
 

@@ -21,12 +21,12 @@ if ($pid == 0) {
     sleep unless $awake;
     tie($sv, 'IPC::Shareable', { key => 'data', destroy => 0 });
 
+    (tied $sv)->lock;
     for (0 .. 99) {
-        (tied $sv)->shlock;
         ++$sv;
-        (tied $sv)->shunlock;
     }
-#    is $sv, 200, "in child: locked and set SV to 200";
+    (tied $sv)->unlock;
+    
     exit;
 
 } else {
@@ -36,11 +36,14 @@ if ($pid == 0) {
         or die "parent process can't tie \$sv";
     $sv = 0;
     kill ALRM => $pid;
+
+    (tied $sv)->lock;
+
     for (0 .. 99) {
-        (tied $sv)->shlock;
-        ++$sv;
-        (tied $sv)->shunlock;
+           ++$sv;
     }
+    (tied $sv)->unlock;
+    is $sv, 100, "in parent: locked and updated SV to 100";
     waitpid($pid, 0);
     is $sv, 200, "in parent: locked and updated SV to 200";
 }
