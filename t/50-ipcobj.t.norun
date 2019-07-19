@@ -5,9 +5,6 @@ use Carp;
 use IPC::Shareable;
 use Test::More;
 
-my $t  = 1;
-my $ok = 1;
-
 {
     package Dummy;
     
@@ -43,14 +40,9 @@ if ($pid == 0) {
 
     sleep unless $awake;
 
-    tie my $d, 'IPC::Shareable', 'obj', { destroy => 0 };
-#    is ref($d), 'Dummy', "child: shared var has object ok";
-
-#    is $d->first(), 'foobar', "child: shared obj first() returns ok";
-#    is $d->second(), 'barfoo', "child: shared obj second() returns ok";
-#    is $d->first('foo'), 'foo', "shared obj first() returns ok, again";
-#    is $d->second('bar'), 'bar', "shared obj second() returns ok, again";
-
+    my $d = Dummy->new;
+    tie $d, 'IPC::Shareable', 'obj', { destroy => 0 };
+    print "kid\n";
     $d->first('kid did');
     $d->second('this');
 
@@ -61,15 +53,12 @@ if ($pid == 0) {
 
     my $s = tie my $d, 'IPC::Shareable', 'obj', { create => 'yes', destroy => 'yes' };
 
-#    my $id = $s->{_shm}->{_id};
+#    $d->{_first} = 'foobar';
+#    $d->{_second} = 'barfoo';
 
-    $d = { };
-    $d->{_first} = 'foobar';
-    $d->{_second} = 'barfoo';
 
-    $d = Dummy->new;
-    $d->first('foobar');
-    $d->second('barfoo');
+#    $d->first('foobar');
+#    $d->second('barfoo');
 
     kill ALRM => $pid;
     waitpid($pid, 0);

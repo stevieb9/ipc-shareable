@@ -47,8 +47,8 @@ $hv{there} = undef;
 is exists($hv{there}), 1, "exists() works ok";
 is defined($hv{there}), '', "defined with undef val ok";
 
-# --- DELETE
 $hv{there}->{here} = 'yes';
+
 is $hv{there}->{here}, 'yes', "hv there is ok";
 $hv{there}->{here} = 'no';
 is $hv{there}->{here}, 'no', "hv there is ok again";
@@ -75,5 +75,4 @@ IPC::Shareable->clean_up_all;
 is %hv, '', "hash deleted after clean_up()";
 
 done_testing();
-
 

@@ -28,7 +28,7 @@ if ($pid == 0) {
     tie my %h, 'IPC::Shareable', {
         key     => 'data',
         create  => 1,
-        destroy => 1,
+        destroy => 0,
     };
 
     $h{a} = 'bar';

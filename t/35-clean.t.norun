@@ -6,14 +6,6 @@ use IPC::Shareable;
 use IPC::Shareable::SharedMem;
 use Test::More;
 
-sub check_fail {
-    # --- shmread should barf if the segment has really been cleaned
-    my $id = shift;
-    my $data = '';
-    eval { shmread($id, $data, 0, 6) or die "$!" };
-    return scalar($@ =~ /Invalid/ or $@ =~ /removed/);
-}
-
 # remove()
 
 my $s = tie my $sv, 'IPC::Shareable', { destroy => 0 };
@@ -24,7 +16,7 @@ is $sv, 'foobar', "SV set and value is 'foobar'";
 
 # XXX Don't do the following: it's not part of the interface!
 
-my $id = $s->{_shm}->id;
+my $id = $s->{_shm}->shmid;
 $s->remove;
 is check_fail($id), 1, "seg id $id removed after remove() ok";
 

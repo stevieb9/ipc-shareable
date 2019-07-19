@@ -6,8 +6,11 @@ use strict;
 require 5.00503;
 
 use Carp qw(croak confess carp);
-use IPC::Semaphore;
-use IPC::Shareable::SharedMem;
+use Data::Dumper;
+#use IPC::Semaphore;
+#use IPC::Shareable::SharedMem;
+use IPC::ShareLite;
+
 use IPC::SysV qw(
     IPC_PRIVATE
     IPC_CREAT
@@ -112,31 +115,27 @@ sub STORE {
     _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
-    my $sid = $knot->{_shm}->{_id};
-
-    $global_register{$sid} ||= $knot;
-
     $knot->{_data} = _thaw($knot->{_shm}) unless ($knot->{_lock});
 
-    if ($knot->{_type} eq 'HASH') {
+    if ($knot->{_data_type} eq 'HASH') {
         my $key = shift;
         my $val = shift;
         _mg_tie($knot, $val) if _need_tie($val);
         $knot->{_data}->{$key} = $val;
     }
-    elsif ($knot->{_type} eq 'ARRAY') {
+    elsif ($knot->{_data_type} eq 'ARRAY') {
         my $i   = shift;
         my $val = shift;
         _mg_tie($knot, $val) if _need_tie($val);
         $knot->{_data}->[$i] = $val;
     }
-    elsif ($knot->{_type} eq 'SCALAR') {
+    elsif ($knot->{_data_type} eq 'SCALAR') {
         my $val = shift;
         _mg_tie($knot, $val) if _need_tie($val);
         $knot->{_data} = \$val;
     }
     else {
-        croak "Variables of type $knot->{_type} not supported";
+        croak "Variables of type $knot->{type} not supported";
     }
 
     if ($knot->{_lock} & LOCK_EX) {
@@ -152,7 +151,7 @@ sub FETCH {
     _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
-    my $sid = $knot->{_shm}->{_id};
+    my $sid = $knot->{_shm}->shmid;
 
     $global_register{$sid} ||= $knot;
 
@@ -167,7 +166,7 @@ sub FETCH {
 
     my $val;
 
-    if ($knot->{_type} eq 'HASH') {
+    if ($knot->{_data_type} eq 'HASH') {
         if (defined $data) {
             my $key = shift;
             $val = $data->{$key};
@@ -175,7 +174,7 @@ sub FETCH {
             return;
         }
     }
-    elsif ($knot->{_type} eq 'ARRAY') {
+    elsif ($knot->{_data_type} eq 'ARRAY') {
         if (defined $data) {
             my $i = shift;
             $val = $data->[$i];
@@ -183,7 +182,7 @@ sub FETCH {
             return;
         }
     }
-    elsif ($knot->{_type} eq 'SCALAR') {
+    elsif ($knot->{_data_type} eq 'SCALAR') {
         if (defined $data) {
             $val = $$data;
         } else {
@@ -191,7 +190,7 @@ sub FETCH {
         }
     }
     else {
-        croak "Variables of type $knot->{_type} not supported";
+        croak "Variables of type $knot->{type} not supported";
     }
 
     if (my $inner = _is_kid($val)) {
@@ -205,10 +204,10 @@ sub CLEAR {
     _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
-    if ($knot->{_type} eq 'HASH') {
+    if ($knot->{_data_type} eq 'HASH') {
         $knot->{_data} = { };
     }
-    elsif ($knot->{_type} eq 'ARRAY') {
+    elsif ($knot->{_data_type} eq 'ARRAY') {
         $knot->{_data} = [ ];
     }
 
@@ -284,7 +283,7 @@ sub PUSH {
     _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
-    $global_register{$knot->{_shm}->id} ||= $knot;
+    $global_register{$knot->{_shm}->shmid} ||= $knot;
     $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
 
     push @{$knot->{_data}}, @_;
@@ -383,83 +382,31 @@ sub STORESIZE {
 
 # --- Public methods
 
-sub shlock {
-    _trace @_                                                    if DEBUGGING;
-    my ($knot, $typelock) = @_;
-    ($typelock = LOCK_EX) unless defined $typelock;
-
-    return $knot->shunlock if ($typelock & LOCK_UN);
-
-    return 1 if ($knot->{_lock} & $typelock);
-
-    # If they have a different lock than they want, release it first
-    $knot->shunlock if ($knot->{_lock});
-
-    my $sem = $knot->{_sem};
-    _debug "Attempting type=", $typelock, " lock on", $knot->{_shm},
-        "via", $sem->id                                         if DEBUGGING;
-    my $return_val = $sem->op(@{ $semop_args{$typelock} });
-    if ($return_val) {
-        $knot->{_lock} = $typelock;
-        _debug "Got lock on", $knot->{_shm}, "via", $sem->id    if DEBUGGING;
-
-        $knot->{_data} = _thaw($knot->{_shm}),
-
-    } else {
-        _debug "Failed lock on", $knot->{_shm}, "via", $sem->id if DEBUGGING;
-    }
-    return $return_val;
-}
-sub shunlock {
-    _trace @_                                                    if DEBUGGING;
-    my $knot = shift;
-
-    return 1 unless $knot->{_lock};
-    if ($knot->{_was_changed}) {
-        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
-            croak "Could not write to shared memory: $!\n";
-        }
-        $knot->{_was_changed} = 0;
-    }
-    my $sem = $knot->{_sem};
-    _debug "Freeing lock on", $knot->{_shm}, "via", $sem->id     if DEBUGGING;
-    my $typelock = $knot->{_lock} | LOCK_UN;
-    $typelock ^= LOCK_NB if ($typelock & LOCK_NB);
-    $sem->op(@{ $semop_args{$typelock} });
-
-    $knot->{_lock} = 0;
-    _debug "Lock on", $knot->{_shm}, "via", $sem->id, "freed"    if DEBUGGING;
-
-    1;
-}
 sub clean_up {
     _trace @_                                                    if DEBUGGING;
     my $class = shift;
 
-    for my $s (values %process_register) {
-        next unless $s->{attributes}->{owner} == $$;
-        remove($s);
+    for my $seg (values %process_register) {
+        next unless $seg->{attributes}->{owner} == $$;
+        remove($seg);
     }
 }
 sub clean_up_all {
     _trace @_                                                    if DEBUGGING;
     my $class = shift;
 
-    for my $s (values %global_register) {
-        remove($s);
+    for my $seg (values %global_register) {
+        remove($seg);
     }
 }
 sub remove {
     _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
-    my $s = $knot->{_shm};
-    my $id = $s->id;
+    my $seg = $knot->{_shm};
+    my $id = $seg->shmid;
 
-    $s->remove or carp "Couldn't remove shared memory segment $id: $!";
-
-    $s = $knot->{_sem};
-    $s->remove or carp "Couldn't remove semaphore set $id: $!";
+    IPC::ShareLite::destroy_share($seg->{share}, 1);
 
     delete $process_register{$id};
     delete $global_register{$id};
@@ -467,11 +414,10 @@ sub remove {
 
 END {
     _trace @_                                                    if DEBUGGING;
-    for my $s (values %process_register) {
-        shunlock($s);
-        next unless $s->{attributes}->{destroy};
-        next unless $s->{attributes}->{owner} == $$;
-        remove($s);
+    for my $seg (values %process_register) {
+        next unless $seg->{attributes}->{destroy};
+        next unless $seg->{attributes}->{owner} == $$;
+        remove($seg);
     }
 }
 
@@ -489,13 +435,21 @@ sub _freeze {
     if (length($ice) > $seg->size) {
         croak "Length of shared data exceeds shared segment size";
     }
-    $seg->shmwrite($ice);
+    $seg->store($ice);
 }
 sub _thaw {
     _trace @_                                                    if DEBUGGING;
+
     my $seg = shift;
 
-    my $ice = $seg->shmread;
+    my $ice;
+    my $fetch_ok = eval {
+        $ice = $seg->fetch;
+        1;
+    };
+
+    return undef if ! defined $ice || ! $fetch_ok;
+
     _debug "read from shm segment ", $seg->id, ": ", $ice          if DEBUGGING;
 
     return if ! $ice;
@@ -520,52 +474,45 @@ sub _tie {
 
     my $key      = _shm_key($opts);
     my $flags    = _shm_flags($opts);
-    my $shm_size = $opts->{size};
 
-    my $seg = IPC::Shareable::SharedMem->new($key, $shm_size, $flags);
-    if (! defined $seg){
-        croak "Could not create shared memory segment: $!\n";
-    }
-    _debug "shared memory id is", $seg->id                         if DEBUGGING;
-
-    my $sem = IPC::Semaphore->new($key, 3, $flags);
-    if (! defined $sem){
-        croak "Could not create semaphore set: $!\n";
-    }
-    _debug "semaphore id is", $sem->id                           if DEBUGGING;
-
-    if (! $sem->op(@{ $semop_args{(LOCK_SH)} }) ) {
-        croak "Could not obtain semaphore set lock: $!\n";
-    }
-    my $knot = {
-        attributes   => $opts,
+    my $knot = bless {
+        key          => $key,
         _iterating   => 0,
-        _key         => $key,
         _lock        => 0,
-        _shm         => $seg,
-        _sem         => $sem,
-        _type        => $type,
         _was_changed => 0,
+        _data_type   => $type,
+        attributes   => {%$opts},
+    }, $class;
+
+    my %seg_opts = (
+        -key       => $key,
+        -create    => $opts->{create},
+        -destroy   => $opts->{destroy},
+        -persist   => 1,
+        -exclusive => $opts->{exclusive},
+        -mode      => $opts->{mode},
+        -flags     => $flags,
+        -size      => $opts->{size},
+        -data_type => $type,
+    );
+
+    my $seg = IPC::ShareLite->new(%seg_opts);
+
+    if (! defined $seg){
+        croak "ERROR: Could not create shared memory segment: $!\n";
     };
-    $knot->{_data} = _thaw($seg),
 
-    my $there = $sem->getval(SEM_MARKER);
-
-    if ($there == SHM_EXISTS) {
-        _debug "binding to existing segment on ", $seg->id         if DEBUGGING;
-    } else {
-        _debug "brand new segment on ", $seg->id                   if DEBUGGING;
-        $process_register{$knot->{_shm}->id} ||= $knot;
-        if (! $sem->setval(SEM_MARKER, SHM_EXISTS)){
-            croak "Couldn't set semaphore during object creation: $!";
-        }
-    }
-
-    $sem->op(@{ $semop_args{(LOCK_SH|LOCK_UN)} });
+    $knot->{_shm} = $seg;
+    $knot->{_data} = _thaw($seg);
 
     _debug "IPC::Shareable instance created:", $knot               if DEBUGGING;
 
-    return bless $knot, $class;
+    my $sid = $knot->{_shm}->shmid;
+
+    $global_register{$sid} ||= $knot;
+    $process_register{$sid} ||= $knot;
+
+    return bless $knot;
 }
 sub _parse_args {
     _trace @_                                                    if DEBUGGING;
@@ -623,9 +570,9 @@ sub _shm_flags {
     my $hv = shift;
     my $flags = 0;
 
-    $flags |= IPC_CREAT if $hv->{create};
-    $flags |= IPC_EXCL  if $hv->{exclusive};
-    $flags |= ($hv->{mode} or 0666);
+#    $flags |= IPC_CREAT if $hv->{create};
+#    $flags |= IPC_EXCL  if $hv->{exclusive};
+#    $flags |= ($hv->{mode} or 0666);
 
     return $flags;
 }
@@ -636,11 +583,12 @@ sub _mg_tie {
 
     # XXX How to generate a unique id ?
     my $key;
-    if ($parent->{_key} == IPC_PRIVATE) {
+    if ($parent->{key} == IPC_PRIVATE) {
         $key = IPC_PRIVATE;
     } else {
         $key = int(rand(1_000_000));
     }
+
     my %opts = (
         %{$parent->{attributes}},
         key       => $key,

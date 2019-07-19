@@ -31,7 +31,7 @@ use IPC::Shareable;
         undef,
         "trying to re-create an existing memory segment fails";
 
-    like $@, qr/ERROR:.*File exists/, "...and error message is sane";
+    like $@, qr/ERROR:.*Failed to create/, "...and error message is sane";
 
 }
 

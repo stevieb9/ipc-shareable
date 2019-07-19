@@ -31,9 +31,7 @@ if ($pid == 0) {
     @av = ();
 
     for (my $i = 1; $i <= 10; $i++) {
-        $ipch->shlock;
         push(@av, $i);
-        $ipch->shunlock;
     }
 
     sleep unless $awake;
@@ -56,10 +54,8 @@ if ($pid == 0) {
     sleep 1 until @av;
 
     while (@av) {
-        $ipch->shlock;
         my $line = shift @av;
         ++$seen{$line};
-        $ipch->shunlock;
     }
     kill ALRM => $pid;
     waitpid($pid, 0);

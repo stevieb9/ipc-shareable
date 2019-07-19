@@ -32,9 +32,7 @@ if ($pid == 0) {
     };
 
     for (qw(fee fie foe fum)) {
-        $ipch->shlock();
         $hv{$_} = $$;
-        $ipch->shunlock();
     }
 
     sleep unless $awake;
@@ -66,9 +64,7 @@ if ($pid == 0) {
     sleep 1;           # Allow time for child to process the signal before next ALRM comes in
     
     for (qw(eenie meenie minie moe)) {
-        $ipch->shlock();
         $hv{$_} = $$;
-        $ipch->shunlock();
     }
 
     kill ALRM => $pid;
