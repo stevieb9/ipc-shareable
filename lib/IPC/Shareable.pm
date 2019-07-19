@@ -119,27 +119,25 @@ sub STORE {
     $global_register{$self->{_shm}->id} ||= $self;
 
     $self->{_data} = _thaw($self->{_shm}) unless ($self->{_lock});
-    TYPE: {
-        if ($self->{_type} eq 'SCALAR') {
-            my $val = shift;
-            _mg_tie($self => $val) if _need_tie($val);
-            $self->{_data} = \$val;
-            last TYPE;
-        }
-        if ($self->{_type} eq 'ARRAY') {
-            my $i   = shift;
-            my $val = shift;
-            _mg_tie($self => $val) if _need_tie($val);
-            $self->{_data}->[$i] = $val;
-            last TYPE;
-        }
-        if ($self->{_type} eq 'HASH') {
-            my $key = shift;
-            my $val = shift;
-            _mg_tie($self => $val) if _need_tie($val);
-            $self->{_data}->{$key} = $val;
-            last TYPE;
-        }
+
+    if ($self->{_type} eq 'HASH') {
+        my $key = shift;
+        my $val = shift;
+        _mg_tie($self => $val) if _need_tie($val);
+        $self->{_data}->{$key} = $val;
+    }
+    elsif ($self->{_type} eq 'ARRAY') {
+        my $i   = shift;
+        my $val = shift;
+        _mg_tie($self => $val) if _need_tie($val);
+        $self->{_data}->[$i] = $val;
+    }
+    elsif ($self->{_type} eq 'SCALAR') {
+        my $val = shift;
+        _mg_tie($self => $val) if _need_tie($val);
+        $self->{_data} = \$val;
+    }
+    else {
         require Carp;
         Carp::croak "Variables of type $self->{_type} not supported";
     }
@@ -170,33 +168,31 @@ sub FETCH {
     }
 
     my $val;
-    TYPE: {
-        if ($self->{_type} eq 'SCALAR') {
-            if (defined $data) {
-                $val = $$data;
-                last TYPE;
-            } else {
-                return;
-            }
+
+    if ($self->{_type} eq 'HASH') {
+        if (defined $data) {
+            my $key = shift;
+            $val = $data->{$key};
+        } else {
+            return;
         }
-        if ($self->{_type} eq 'ARRAY') {
-            if (defined $data) {
-                my $i = shift;
-                $val = $data->[$i];
-                last TYPE;
-            } else {
-                return;
-            }
+    }
+    elsif ($self->{_type} eq 'ARRAY') {
+        if (defined $data) {
+            my $i = shift;
+            $val = $data->[$i];
+        } else {
+            return;
         }
-        if ($self->{_type} eq 'HASH') {
-            if (defined $data) {
-                my $key = shift;
-                $val = $data->{$key};
-                last TYPE;
-            } else {
-                return;
-            }
+    }
+    elsif ($self->{_type} eq 'SCALAR') {
+        if (defined $data) {
+            $val = $$data;
+        } else {
+            return;
         }
+    }
+    else {
         require Carp;
         Carp::croak "Variables of type $self->{_type} not supported";
     }
@@ -212,11 +208,14 @@ sub CLEAR {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
 
-    if ($self->{_type} eq 'ARRAY') {
-        $self->{_data} = [ ];
-    } elsif ($self->{_type} eq 'HASH') {
+    if ($self->{_type} eq 'HASH') {
         $self->{_data} = { };
-    } else {
+    }
+    elsif ($self->{_type} eq 'ARRAY') {
+        $self->{_data} = [ ];
+    }
+
+    else {
         require Carp;
         Carp::croak "Attempt to clear non-aggegrate";
     }
@@ -599,13 +598,15 @@ sub _parse_args {
     $opts  = defined $opts  ? $opts  : { %default_options };
     if (ref $proto eq 'HASH') {
         $opts = $proto;
-    } else {
+    }
+    else {
         $opts->{key} = $proto;
     }
     for my $k (keys %default_options) {
         if (not defined $opts->{$k}) {
             $opts->{$k} = $default_options{$k};
-        } elsif ($opts->{$k} eq 'no') {
+        }
+        elsif ($opts->{$k} eq 'no') {
             if ($^W) {
                 require Carp;
                 Carp::carp("Use of `no' in IPC::Shareable args is obsolete");
@@ -626,9 +627,11 @@ sub _shm_key {
 
     if ($val eq '') {
         return IPC_PRIVATE;
-    } elsif ($val =~ /^\d+$/) {
+    }
+    elsif ($val =~ /^\d+$/) {
         return $val;
-    } else {
+    }
+    else {
         # XXX This only uses the first four characters
         $val = pack   A4 => $val;
         $val = unpack i  => $val;
@@ -672,28 +675,32 @@ sub _mg_tie {
     # XXX Also, have to peek inside potential objects to see their implementation
     my $kid;
     my $type = Scalar::Util::reftype( $val ) || '';
-    if ($type eq "SCALAR") {
-        my $copy = $$val;
-        $kid = tie $$val => 'IPC::Shareable', $key, { %opts } or do {
-            require Carp;
-            Carp::croak "Could not create inner tie";
-        };
-        $$val = $copy;
-    } elsif ($type eq "ARRAY") {
-        my @copy = @$val;
-        $kid = tie @$val => 'IPC::Shareable', $key, { %opts } or do {
-            require Carp;
-            Carp::croak "Could not create inner tie";
-        };
-        @$val = @copy;
-    } elsif ($type eq "HASH") {
+
+    if ($type eq "HASH") {
         my %copy = %$val;
         $kid = tie %$val => 'IPC::Shareable', $key, { %opts } or do {
             require Carp;
             Carp::croak "Could not create inner tie";
         };
         %$val = %copy;
-    } else {
+    }
+    elsif ($type eq "ARRAY") {
+        my @copy = @$val;
+        $kid = tie @$val => 'IPC::Shareable', $key, { %opts } or do {
+            require Carp;
+            Carp::croak "Could not create inner tie";
+        };
+        @$val = @copy;
+    }
+    elsif ($type eq "SCALAR") {
+        my $copy = $$val;
+        $kid = tie $$val => 'IPC::Shareable', $key, { %opts } or do {
+            require Carp;
+            Carp::croak "Could not create inner tie";
+        };
+        $$val = $copy;
+    }
+    else {
         require Carp;
         Carp::croak "Variables of type $type not implemented";
     }
@@ -709,15 +716,18 @@ sub _is_kid {
     my $obj;
     if ($type eq "HASH") {
         $obj = tied %$data;
-    } elsif ($type eq "ARRAY") {
+    }
+    elsif ($type eq "ARRAY") {
         $obj = tied @$data;
-    } elsif ($type eq "SCALAR") {
+    }
+    elsif ($type eq "SCALAR") {
         $obj = tied $$data;
     }
 
     if (ref $obj eq 'IPC::Shareable') {
         return $obj;
-    } else {
+    }
+    else {
         return;
     }
 }
@@ -726,13 +736,17 @@ sub _need_tie {
 
     my $type = Scalar::Util::reftype( $val );
     return unless $type;
-    if ($type eq "SCALAR") {
-        return !(tied $$val);
-    } elsif ($type eq "ARRAY") {
-        return !(tied @$val);
-    } elsif ($type eq "HASH") {
+
+    if ($type eq "HASH") {
         return !(tied %$val);
-    } else {
+    }
+    elsif ($type eq "ARRAY") {
+        return !(tied @$val);
+    }
+    elsif ($type eq "SCALAR") {
+        return !(tied $$val);
+    }
+    else {
         return;
     }
 }
@@ -764,7 +778,8 @@ sub _debug {
         if (ref eq 'IPC::Shareable') {
             '        ' . "$_: shmid: $_->{_shm}->{_id}; " .
                 Data::Dumper->Dump([ $_->{attributes} ], [ 'opts' ]);
-        } else {
+        }
+        else {
             '        ' . Data::Dumper::Dumper($_);
         }
     }  @_;

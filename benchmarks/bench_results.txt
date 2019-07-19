@@ -1,0 +1,7 @@
+# 651d14bd
+
+steve@dev-vps:~/repos/ipc-shareable$ perl benchmarks/bench_changes.pl 30000
+timethis 30000: 115 wallclock secs (65.40 usr + 48.62 sys = 114.02 CPU) @ 263.11/s (n=30000)
+
+steve@dev-vps:~/repos/ipc-shareable$ perl benchmarks/bench_changes.pl 30000
+timethis 30000: 117 wallclock secs (70.56 usr + 45.25 sys = 115.81 CPU) @ 259.04/s (n=30000)
