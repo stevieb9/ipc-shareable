@@ -1,7 +1,10 @@
 package IPC::Shareable;
 
-require 5.00503;
+use warnings;
 use strict;
+
+require 5.00503;
+
 use IPC::Semaphore;
 use IPC::Shareable::SharedMem;
 use IPC::SysV qw(
@@ -21,10 +24,17 @@ use vars qw( $VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS );
 
 $VERSION = 0.61;
 
-use constant LOCK_SH => 1;
-use constant LOCK_EX => 2;
-use constant LOCK_NB => 4;
-use constant LOCK_UN => 8;
+use constant {
+    LOCK_SH     => 1,
+    LOCK_EX     => 2,
+    LOCK_NB     => 4,
+    LOCK_UN     => 8,
+
+    DEBUGGING   => ($ENV{SHAREABLE_DEBUG} or 0),
+    SHM_BUFSIZ  =>  65536,
+    SEM_MARKER  =>  0,
+    SHM_EXISTS  =>  1,
+};
 
 require Exporter;
 @ISA = 'Exporter';
@@ -36,11 +46,6 @@ require Exporter;
     'flock' => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
 );
 Exporter::export_ok_tags('all', 'lock', 'flock');
-
-use constant DEBUGGING     => ($ENV{SHAREABLE_DEBUG} or 0);
-use constant SHM_BUFSIZ    =>  65536;
-use constant SEM_MARKER    =>  0;
-use constant SHM_EXISTS    =>  1;
 
 # Locking scheme copied from IPC::ShareLite -- ltl
 my %semop_args = (
