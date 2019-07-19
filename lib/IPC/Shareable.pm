@@ -451,7 +451,7 @@ sub clean_up {
     my $class = shift;
 
     for my $s (values %process_register) {
-        next unless $s->{_opts}->{_owner} == $$;
+        next unless $s->{attributes}->{owner} == $$;
         remove($s);
     }
 }
@@ -488,8 +488,8 @@ END {
     _trace @_                                                    if DEBUGGING;
     for my $s (values %process_register) {
         shunlock($s);
-        next unless $s->{_opts}->{destroy};
-        next unless $s->{_opts}->{_owner} == $$;
+        next unless $s->{attributes}->{destroy};
+        next unless $s->{attributes}->{owner} == $$;
         remove($s);
     }
 }
@@ -565,7 +565,7 @@ sub _tie {
         _iterating => '',
         _key       => $key,
         _lock      => 0,
-        _opts      => $opts,
+        attributes => $opts,
         _shm       => $s,
         _sem       => $sem,
         _type      => $type,
@@ -614,8 +614,8 @@ sub _parse_args {
             $opts->{$k} = '';
         }
     }
-    $opts->{_owner} = ($opts->{_owner} or $$);
-    $opts->{_magic} = ($opts->{_magic} or '');
+    $opts->{owner} = ($opts->{owner} or $$);
+    $opts->{magic} = ($opts->{magic} or '');
     _debug "options are", $opts                                  if DEBUGGING;
     return $opts;
 }
@@ -661,11 +661,11 @@ sub _mg_tie {
         $key = int(rand(1_000_000));
     }
     my %opts = (
-        %{$dad->{_opts}},
+        %{$dad->{attributes}},
         key       => $key,
-        exclusive => 'yes',
-        create    => 'yes',
-        _magic    => 'yes'
+        exclusive => 1,
+        create    => 1,
+        magic    => 1,
     );
 
     # XXX I wish I didn't have to take a copy of data here and copy it back in
@@ -747,7 +747,7 @@ sub _trace {
         my $obj;
         if (ref eq 'IPC::Shareable') {
             '        ' . "\$_[$i] = $_: shmid: $_->{_shm}->{_id}; " .
-                Data::Dumper->Dump([ $_->{_opts} ], [ 'opts' ]);
+                Data::Dumper->Dump([ $_->{attributes} ], [ 'opts' ]);
         } else {
             '        ' . Data::Dumper->Dump( [ $_ ] => [ "\_[$i]" ]);
         }
@@ -763,7 +763,7 @@ sub _debug {
         my $obj;
         if (ref eq 'IPC::Shareable') {
             '        ' . "$_: shmid: $_->{_shm}->{_id}; " .
-                Data::Dumper->Dump([ $_->{_opts} ], [ 'opts' ]);
+                Data::Dumper->Dump([ $_->{attributes} ], [ 'opts' ]);
         } else {
             '        ' . Data::Dumper::Dumper($_);
         }
@@ -1080,10 +1080,10 @@ In a file called B<server>:
  use IPC::Shareable;
  my $glue = 'data';
  my %options = (
-     create    => 'yes',
+     create    => 1,
      exclusive => 0,
      mode      => 0644,
-     destroy   => 'yes',
+     destroy   => 1,
  );
  my %colours;
  tie %colours, 'IPC::Shareable', $glue, { %options } or
