@@ -20,9 +20,7 @@ use Storable 0.6 qw(
 );
 use Scalar::Util;
 
-use vars qw( $VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS );
-
-$VERSION = 0.61;
+our $VERSION = 0.61;
 
 use constant {
     LOCK_SH     => 1,
@@ -37,10 +35,9 @@ use constant {
 };
 
 require Exporter;
-@ISA = 'Exporter';
-@EXPORT = ();
-@EXPORT_OK = qw(LOCK_EX LOCK_SH LOCK_NB LOCK_UN);
-%EXPORT_TAGS = (
+our @ISA = 'Exporter';
+our @EXPORT_OK = qw(LOCK_EX LOCK_SH LOCK_NB LOCK_UN);
+our %EXPORT_TAGS = (
     all     => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
     lock    => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
     flock => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
