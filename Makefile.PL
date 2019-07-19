@@ -1,5 +1,6 @@
 use strict;
 use warnings;
+
 use ExtUtils::MakeMaker;
 
 WriteMakefile(
@@ -32,10 +33,10 @@ WriteMakefile(
     BUILD_REQUIRES => {
         'Test::More' => 0,
     },
-    PREREQ_PM    => { 
-                     "Storable" => 0.607,
-                     "Scalar::Util" => 0,
-                     "IPC::Semaphore" => 0,
+    PREREQ_PM    => {
+        'IPC::ShareLite'    => 0,
+        'Storable'          => 0.607,
+        'Scalar::Util'      => 0,
     },
 
 );
