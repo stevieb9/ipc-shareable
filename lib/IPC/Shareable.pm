@@ -5,6 +5,7 @@ use strict;
 
 require 5.00503;
 
+use Carp qw(croak confess carp);
 use IPC::Semaphore;
 use IPC::Shareable::SharedMem;
 use IPC::SysV qw(
@@ -135,17 +136,15 @@ sub STORE {
         $knot->{_data} = \$val;
     }
     else {
-        require Carp;
-        Carp::croak "Variables of type $knot->{_type} not supported";
+        croak "Variables of type $knot->{_type} not supported";
     }
 
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
-            require Carp;
-            Carp::croak "Could not write to shared memory: $!\n";
-        };
+        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+            croak "Could not write to shared memory: $!\n";
+        }
     }
     return 1;
 }
@@ -192,8 +191,7 @@ sub FETCH {
         }
     }
     else {
-        require Carp;
-        Carp::croak "Variables of type $knot->{_type} not supported";
+        croak "Variables of type $knot->{_type} not supported";
     }
 
     if (my $inner = _is_kid($val)) {
@@ -215,17 +213,15 @@ sub CLEAR {
     }
 
     else {
-        require Carp;
-        Carp::croak "Attempt to clear non-aggegrate";
+        croak "Attempt to clear non-aggegrate";
     }
 
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
-            require Carp;
-            Carp::croak "Could not write to shared memory: $!";
-        };
+        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+            croak "Could not write to shared memory: $!";
+        }
     }
 }
 sub DELETE {
@@ -238,10 +234,9 @@ sub DELETE {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
-            require Carp;
-            Carp::croak "Could not write to shared memory: $!";
-        };
+        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+            croak "Could not write to shared memory: $!";
+        }
     }
 
     return $val;
@@ -296,9 +291,8 @@ sub PUSH {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
-            require Carp;
-            Carp::croak "Could not write to shared memory: $!";
+        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+            croak "Could not write to shared memory: $!";
         };
     }
 }
@@ -312,10 +306,9 @@ sub POP {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
-            require Carp;
-            Carp::croak "Could not write to shared memory: $!";
-        };
+        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+            croak "Could not write to shared memory: $!";
+        }
     }
     return $val;
 }
@@ -328,10 +321,9 @@ sub SHIFT {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
-            require Carp;
-            Carp::croak "Could not write to shared memory: $!";
-        };
+        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+            croak "Could not write to shared memory: $!";
+        }
     }
     return $val;
 }
@@ -344,10 +336,9 @@ sub UNSHIFT {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
-            require Carp;
-            Carp::croak "Could not write to shared memory: $!";
-        };
+        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+            croak "Could not write to shared memory: $!";
+        }
     }
     return $val;
 }
@@ -360,10 +351,9 @@ sub SPLICE {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
-            require Carp;
-            Carp::croak "Could not write to shared memory: $!";
-        };
+        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+            croak "Could not write to shared memory: $!";
+        }
     }
     return @val;
 }
@@ -384,10 +374,9 @@ sub STORESIZE {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
-            require Carp;
-            Carp::croak "Could not write to shared memory: $!";
-        };
+        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+            croak "Could not write to shared memory: $!";
+        }
     }
     return $n;
 }
@@ -427,10 +416,9 @@ sub shunlock {
 
     return 1 unless $knot->{_lock};
     if ($knot->{_was_changed}) {
-        defined _freeze($knot->{_shm}, $knot->{_data}) or do {
-            require Carp;
-            Carp::croak "Could not write to shared memory: $!\n";
-        };
+        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+            croak "Could not write to shared memory: $!\n";
+        }
         $knot->{_was_changed} = 0;
     }
     my $sem = $knot->{_sem};
@@ -468,16 +456,11 @@ sub remove {
     my $s = $knot->{_shm};
     my $id = $s->id;
 
-    $s->remove or do {
-        require Carp;
-        Carp::carp "Couldn't remove shared memory segment $id: $!";
-    };
+    $s->remove or carp "Couldn't remove shared memory segment $id: $!";
 
     $s = $knot->{_sem};
-    $s->remove or do {
-        require Carp;
-        Carp::carp "Couldn't remove semaphore set $id: $!";
-    };
+    $s->remove or carp "Couldn't remove semaphore set $id: $!";
+
     delete $process_register{$id};
     delete $global_register{$id};
 }
@@ -504,9 +487,8 @@ sub _freeze {
 
     _debug "writing to shm segment ", $seg->id, ": ", $ice         if DEBUGGING;
     if (length($ice) > $seg->size) {
-        require Carp;
-        Carp::croak "Length of shared data exceeds shared segment size";
-    };
+        croak "Length of shared data exceeds shared segment size";
+    }
     $seg->shmwrite($ice);
 }
 sub _thaw {
@@ -522,10 +504,9 @@ sub _thaw {
 
     if ($tag eq 'IPC::Shareable') {
         my $water = thaw $ice;
-        defined($water) or do {
-            require Carp;
-            Carp::croak "Munged shared memory segment (size exceeded?)";
-        };
+        if (! defined($water)){
+            croak "Munged shared memory segment (size exceeded?)";
+        }
         return $water;
     } else {
         return;
@@ -542,22 +523,19 @@ sub _tie {
     my $shm_size = $opts->{size};
 
     my $seg = IPC::Shareable::SharedMem->new($key, $shm_size, $flags);
-    defined $seg or do {
-        require Carp;
-        Carp::croak "Could not create shared memory segment: $!\n";
-    };
+    if (! defined $seg){
+        croak "Could not create shared memory segment: $!\n";
+    }
     _debug "shared memory id is", $seg->id                         if DEBUGGING;
 
     my $sem = IPC::Semaphore->new($key, 3, $flags);
-    defined $sem or do {
-        require Carp;
-        Carp::croak "Could not create semaphore set: $!\n";
-    };
+    if (! defined $sem){
+        croak "Could not create semaphore set: $!\n";
+    }
     _debug "semaphore id is", $sem->id                           if DEBUGGING;
 
-    unless ( $sem->op(@{ $semop_args{(LOCK_SH)} }) ) {
-        require Carp;
-        Carp::croak "Could not obtain semaphore set lock: $!\n";
+    if (! $sem->op(@{ $semop_args{(LOCK_SH)} }) ) {
+        croak "Could not obtain semaphore set lock: $!\n";
     }
     my $knot = {
         attributes   => $opts,
@@ -578,10 +556,9 @@ sub _tie {
     } else {
         _debug "brand new segment on ", $seg->id                   if DEBUGGING;
         $process_register{$knot->{_shm}->id} ||= $knot;
-        $sem->setval(SEM_MARKER, SHM_EXISTS) or do {
-            require Carp;
-            Carp::croak "Couldn't set semaphore during object creation: $!";
-        };
+        if (! $sem->setval(SEM_MARKER, SHM_EXISTS)){
+            croak "Couldn't set semaphore during object creation: $!";
+        }
     }
 
     $sem->op(@{ $semop_args{(LOCK_SH|LOCK_UN)} });
@@ -679,31 +656,24 @@ sub _mg_tie {
 
     if ($type eq "HASH") {
         my %copy = %$val;
-        $child = tie %$val, 'IPC::Shareable', $key, { %opts } or do {
-            require Carp;
-            Carp::croak "Could not create inner tie";
-        };
+        $child = tie %$val, 'IPC::Shareable', $key, { %opts };
+        croak "Could not create inner tie" if ! $child;
         %$val = %copy;
     }
     elsif ($type eq "ARRAY") {
         my @copy = @$val;
-        $child = tie @$val, 'IPC::Shareable', $key, { %opts } or do {
-            require Carp;
-            Carp::croak "Could not create inner tie";
-        };
+        $child = tie @$val, 'IPC::Shareable', $key, { %opts };
+        croak "Could not create inner tie" if ! $child;
         @$val = @copy;
     }
     elsif ($type eq "SCALAR") {
         my $copy = $$val;
-        $child = tie $$val, 'IPC::Shareable', $key, { %opts } or do {
-            require Carp;
-            Carp::croak "Could not create inner tie";
-        };
+        $child = tie $$val, 'IPC::Shareable', $key, { %opts };
+        croak "Could not create inner tie" if ! $child;
         $$val = $copy;
     }
     else {
-        require Carp;
-        Carp::croak "Variables of type $type not implemented";
+        croak "Variables of type $type not implemented";
     }
 
     return $child;
