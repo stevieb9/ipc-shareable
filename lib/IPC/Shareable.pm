@@ -82,7 +82,7 @@ my %semop_args = (
     ],
 );
 
-my %Def_Opts = (
+my %default_options = (
     key       => IPC_PRIVATE,
     create    => '',
     exclusive => '',
@@ -94,8 +94,8 @@ my %Def_Opts = (
 # XXX Perl seems to garbage collect nested referents before we're done with them
 # XXX This cache holds a reference to things until END() is called
 
-my %Global_Reg;
-my %Proc_Reg;
+my %global_register;
+my %process_register;
 
 sub _trace;
 sub _debug;
@@ -178,7 +178,7 @@ sub STORE {
 
     my $sid = $self->{_shm}->{_id};
 
-    $Global_Reg{$self->{_shm}->id} ||= $self;
+    $global_register{$self->{_shm}->id} ||= $self;
 
     $self->{_data} = _thaw($self->{_shm}) unless ($self->{_lock});
     TYPE: {
@@ -221,7 +221,7 @@ sub FETCH {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
 
-    $Global_Reg{$self->{_shm}->id} ||= $self;
+    $global_register{$self->{_shm}->id} ||= $self;
 
     my $data;
     if ($self->{_lock} || $self->{_iterating}) {
@@ -361,7 +361,7 @@ sub PUSH {
     _trace @_                                                    if DEBUGGING;
     my $self = shift;
 
-    $Global_Reg{$self->{_shm}->id} ||= $self;
+    $global_register{$self->{_shm}->id} ||= $self;
     $self->{_data} = _thaw($self->{_shm}, $self->{_data}) unless $self->{_lock};
 
     push @{$self->{_data}} => @_;
@@ -474,7 +474,7 @@ sub clean_up {
     _trace @_                                                    if DEBUGGING;
     my $class = shift;
 
-    for my $s (values %Proc_Reg) {
+    for my $s (values %process_register) {
         next unless $s->{_opts}->{_owner} == $$;
         remove($s);
     }
@@ -484,7 +484,7 @@ sub clean_up_all {
     _trace @_                                                    if DEBUGGING;
     my $class = shift;
 
-    for my $s (values %Global_Reg) {
+    for my $s (values %global_register) {
         remove($s);
     }
 }
@@ -506,13 +506,13 @@ sub remove {
         require Carp;
         Carp::carp "Couldn't remove semaphore set $id: $!";
     };
-    delete $Proc_Reg{$id};
-    delete $Global_Reg{$id};
+    delete $process_register{$id};
+    delete $global_register{$id};
 }
 
 END {
     _trace @_                                                    if DEBUGGING;
-    for my $s (values %Proc_Reg) {
+    for my $s (values %process_register) {
         shunlock($s);
         next unless $s->{_opts}->{destroy};
         next unless $s->{_opts}->{_owner} == $$;
@@ -606,7 +606,7 @@ sub _tie {
         _debug "binding to existing segment on ", $s->id         if DEBUGGING;
     } else {
         _debug "brand new segment on ", $s->id                   if DEBUGGING;
-        $Proc_Reg{$sh->{_shm}->id} ||= $sh;
+        $process_register{$sh->{_shm}->id} ||= $sh;
         $sem->setval(SEM_MARKER, SHM_EXISTS) or do {
             require Carp;
             Carp::croak "Couldn't set semaphore during object creation: $!";
@@ -625,15 +625,15 @@ sub _parse_args {
     my($proto, $opts) = @_;
 
     $proto = defined $proto ? $proto :  0;
-    $opts  = defined $opts  ? $opts  : { %Def_Opts };
+    $opts  = defined $opts  ? $opts  : { %default_options };
     if (ref $proto eq 'HASH') {
         $opts = $proto;
     } else {
         $opts->{key} = $proto;
     }
-    for my $k (keys %Def_Opts) {
+    for my $k (keys %default_options) {
         if (not defined $opts->{$k}) {
-            $opts->{$k} = $Def_Opts{$k};
+            $opts->{$k} = $default_options{$k};
         } elsif ($opts->{$k} eq 'no') {
             if ($^W) {
                 require Carp;
