@@ -14,15 +14,15 @@ plan skip_all => "Test::Pod::Coverage $min_tpc required for testing POD coverage
     if $@;
 
 my $pc = Pod::Coverage->new(
-    package => 'IPC::SharedHash',
-    pod_from => 'lib/IPC/SharedHash.pm',
-#    private => [qr/^ssd1306/, qr/^bootstrap$/],
+    package => 'IPC::Shareable',
+    pod_from => 'lib/IPC/Shareable.pm',
+    private => [qr/^shlock$/, qr/^shunlock$/, qr/[A-Z]/, qr/^_/],
 );
 
 is $pc->coverage, 1, "pod coverage ok";
 
 if ($pc->uncovered){
-    print "Uncovered:\n\t", join( ", ", $pc->uncovered ), "\n";
+    warn "Uncovered:\n\t", join( ", ", $pc->uncovered ), "\n";
 }
 
 done_testing;

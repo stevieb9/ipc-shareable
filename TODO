@@ -1,4 +1,0 @@
-- add ability to get all info about semaphores and shmem segments (id, etc)
-- add EXAMPLES pod file
-- add more elaborate locking tests we can actually test to ensure
-  locking works right
