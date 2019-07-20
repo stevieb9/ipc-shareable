@@ -15,10 +15,7 @@ use IPC::SysV qw(
     IPC_NOWAIT
     SEM_UNDO
 );
-use Storable 0.6 qw(
-    freeze
-    thaw
-);
+use Storable 0.6 qw(freeze thaw);
 use Scalar::Util;
 
 our $VERSION = 0.61;
