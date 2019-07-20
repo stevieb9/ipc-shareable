@@ -28,7 +28,6 @@ use constant {
     LOCK_NB     => 4,
     LOCK_UN     => 8,
 
-    DEBUGGING   => ($ENV{SHAREABLE_DEBUG} or 0),
     SHM_BUFSIZ  =>  65536,
     SEM_MARKER  =>  0,
     SHM_EXISTS  =>  1,
@@ -97,24 +96,16 @@ sub _debug;
 
 # --- "Magic" methods
 sub TIESCALAR {
-    _trace @_                                                    if DEBUGGING;
     return _tie('SCALAR', @_);
 }
 sub TIEARRAY {
-    _trace @_                                                    if DEBUGGING;
     return _tie('ARRAY', @_);
 }
 sub TIEHASH {
-    _trace @_                                                    if DEBUGGING;
     return _tie('HASH', @_);
 }
 sub STORE {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
-
-    my $sid = $knot->{_shm}->{_id};
-
-    $global_register{$sid} ||= $knot;
 
     $knot->{_data} = _thaw($knot->{_shm}) unless ($knot->{_lock});
 
@@ -149,7 +140,6 @@ sub STORE {
     return 1;
 }
 sub FETCH {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
     my $sid = $knot->{_shm}->{_id};
@@ -202,7 +192,6 @@ sub FETCH {
 
 }
 sub CLEAR {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
     if ($knot->{_type} eq 'HASH') {
@@ -225,7 +214,6 @@ sub CLEAR {
     }
 }
 sub DELETE {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
     my $key  = shift;
 
@@ -242,7 +230,6 @@ sub DELETE {
     return $val;
 }
 sub EXISTS {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
     my $key  = shift;
 
@@ -250,11 +237,9 @@ sub EXISTS {
     return exists $knot->{_data}->{$key};
 }
 sub FIRSTKEY {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
     my $key  = shift;
 
-    _debug "setting hash iterator on", $knot->{_shm}->id         if DEBUGGING;
     $knot->{_iterating} = 1;
     $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
     my $reset = keys %{$knot->{_data}};
@@ -262,13 +247,11 @@ sub FIRSTKEY {
     return $first;
 }
 sub NEXTKEY {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
     # caveat emptor if hash was changed by another process
     my $next = each %{$knot->{_data}};
     if (not defined $next) {
-        _debug "resetting hash iterator on", $knot->{_shm}->id   if DEBUGGING;
         $knot->{_iterating} = 0;
         return;
     } else {
@@ -277,11 +260,9 @@ sub NEXTKEY {
     }
 }
 sub EXTEND {
-    _trace @_                                                    if DEBUGGING;
     #XXX Noop
 }
 sub PUSH {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
     $global_register{$knot->{_shm}->id} ||= $knot;
@@ -297,7 +278,6 @@ sub PUSH {
     }
 }
 sub POP {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
     $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
@@ -313,7 +293,6 @@ sub POP {
     return $val;
 }
 sub SHIFT {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
     $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
@@ -328,7 +307,6 @@ sub SHIFT {
     return $val;
 }
 sub UNSHIFT {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
     $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
@@ -343,7 +321,6 @@ sub UNSHIFT {
     return $val;
 }
 sub SPLICE {
-    _trace @_                                                    if DEBUGGING;
     my($knot, $off, $n, @av) = @_;
 
     $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
@@ -358,14 +335,12 @@ sub SPLICE {
     return @val;
 }
 sub FETCHSIZE {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
     $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
     return scalar(@{$knot->{_data}});
 }
 sub STORESIZE {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
     my $n    = shift;
 
@@ -439,7 +414,6 @@ sub unspawn {
     IPC::Shareable->clean_up_all if $destroy;
 }
 sub lock {
-    _trace @_                                                    if DEBUGGING;
     my ($knot, $flags) = @_;
     $flags = LOCK_EX if ! defined $flags;
 
@@ -452,20 +426,16 @@ sub lock {
 
     my $sem = $knot->{_sem};
     _debug "Attempting type=", $flags, " lock on", $knot->{_shm},
-        "via", $sem->id                                         if DEBUGGING;
     my $return_val = $sem->op(@{ $semop_args{$flags} });
     if ($return_val) {
         $knot->{_lock} = $flags;
-        _debug "Got lock on", $knot->{_shm}, "via", $sem->id    if DEBUGGING;
         $knot->{_data} = _thaw($knot->{_shm}),
     }
     else {
-        _debug "Failed lock on", $knot->{_shm}, "via", $sem->id if DEBUGGING;
     }
     return $return_val;
 }
 sub unlock {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
     return 1 unless $knot->{_lock};
@@ -476,13 +446,11 @@ sub unlock {
         $knot->{_was_changed} = 0;
     }
     my $sem = $knot->{_sem};
-    _debug "Freeing lock on", $knot->{_shm}, "via", $sem->id     if DEBUGGING;
     my $flags = $knot->{_lock} | LOCK_UN;
     $flags ^= LOCK_NB if ($flags & LOCK_NB);
     $sem->op(@{ $semop_args{$flags} });
 
     $knot->{_lock} = 0;
-    _debug "Lock on", $knot->{_shm}, "via", $sem->id, "freed"    if DEBUGGING;
 
     1;
 }
@@ -490,7 +458,6 @@ sub unlock {
 *shunlock = \&unlock;
 
 sub clean_up {
-    _trace @_                                                    if DEBUGGING;
     my $class = shift;
 
     for my $s (values %process_register) {
@@ -499,7 +466,6 @@ sub clean_up {
     }
 }
 sub clean_up_all {
-    _trace @_                                                    if DEBUGGING;
     my $class = shift;
 
     for my $s (values %global_register) {
@@ -507,7 +473,6 @@ sub clean_up_all {
     }
 }
 sub remove {
-    _trace @_                                                    if DEBUGGING;
     my $knot = shift;
 
     my $s = $knot->{_shm};
@@ -523,7 +488,6 @@ sub remove {
 }
 
 END {
-    _trace @_                                                    if DEBUGGING;
     for my $s (values %process_register) {
         unlock($s);
         next unless $s->{attributes}->{destroy};
@@ -534,7 +498,6 @@ END {
 
 # --- Private methods below
 sub _freeze {
-    _trace @_                                                    if DEBUGGING;
     my $seg  = shift;
     my $water = shift;
 
@@ -542,19 +505,15 @@ sub _freeze {
     # Could be a large string.  No need to copy it.  substr more efficient
     substr $ice, 0, 0, 'IPC::Shareable';
 
-    _debug "writing to shm segment ", $seg->id, ": ", $ice         if DEBUGGING;
     if (length($ice) > $seg->size) {
         croak "Length of shared data exceeds shared segment size";
     }
     $seg->shmwrite($ice);
 }
 sub _thaw {
-    _trace @_                                                    if DEBUGGING;
     my $seg = shift;
 
     my $ice = $seg->shmread;
-    _debug "read from shm segment ", $seg->id, ": ", $ice          if DEBUGGING;
-
     return if ! $ice;
 
     my $tag = substr $ice, 0, 14, '';
@@ -570,7 +529,6 @@ sub _thaw {
     }
 }
 sub _tie {
-    _trace @_                                                    if DEBUGGING;
     my $type  = shift;
     my $class = shift;
     my $opts  = _parse_args(@_);
@@ -595,13 +553,11 @@ sub _tie {
             croak "ERROR: Could not create shared memory segment.\n\n$!n";
         }
     }
-    _debug "shared memory id is", $seg->id                         if DEBUGGING;
 
     my $sem = IPC::Semaphore->new($key, 3, $flags);
     if (! defined $sem){
         croak "Could not create semaphore set: $!\n";
     }
-    _debug "semaphore id is", $sem->id                           if DEBUGGING;
 
     if (! $sem->op(@{ $semop_args{(LOCK_SH)} }) ) {
         croak "Could not obtain semaphore set lock: $!\n";
@@ -616,15 +572,12 @@ sub _tie {
         _type        => $type,
         _was_changed => 0,
     };
-    $knot->{_data} = _thaw($seg),
+    $knot->{_data} = _thaw($seg);
 
-    my $there = $sem->getval(SEM_MARKER);
-
-    if ($there == SHM_EXISTS) {
-        _debug "binding to existing segment on ", $seg->id         if DEBUGGING;
-    } else {
-        _debug "brand new segment on ", $seg->id                   if DEBUGGING;
-        $process_register{$knot->{_shm}->id} ||= $knot;
+    if ($sem->getval(SEM_MARKER) == SHM_EXISTS){
+        my $sid = $knot->{_shm}->{_id};
+        $global_register{$sid} ||= $knot;
+        $process_register{$sid} ||= $knot;
         if (! $sem->setval(SEM_MARKER, SHM_EXISTS)){
             croak "Couldn't set semaphore during object creation: $!";
         }
@@ -632,12 +585,9 @@ sub _tie {
 
     $sem->op(@{ $semop_args{(LOCK_SH|LOCK_UN)} });
 
-    _debug "IPC::Shareable instance created:", $knot               if DEBUGGING;
-
     return bless $knot, $class;
 }
 sub _parse_args {
-    _trace @_                                                    if DEBUGGING;
     my($proto, $opts) = @_;
 
     $proto = defined $proto ? $proto :  0;
@@ -664,11 +614,9 @@ sub _parse_args {
     }
     $opts->{owner} = ($opts->{owner} or $$);
     $opts->{magic} = ($opts->{magic} or 0);
-    _debug "options are", $opts                                  if DEBUGGING;
     return $opts;
 }
 sub _shm_key {
-    _trace @_                                                    if DEBUGGING;
     my $hv = shift;
     my $val = ($hv->{key} or '');
 
@@ -688,7 +636,6 @@ sub _shm_key {
 sub _shm_flags {
     # --- Parses the anonymous hash passed to constructors; returns a list
     # --- of args suitable for passing to shmget
-    _trace @_                                                    if DEBUGGING;
     my $hv = shift;
     my $flags = 0;
 
@@ -699,7 +646,6 @@ sub _shm_flags {
     return $flags;
 }
 sub _mg_tie {
-    _trace @_                                                    if DEBUGGING;
     my $parent = shift;
     my $val = shift;
 
