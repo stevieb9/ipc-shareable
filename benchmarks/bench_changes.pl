@@ -65,13 +65,15 @@ sub work {
 
     %hash = %$base_data;
 
-    $hash{struct} = {a => [qw(b c d)]};
-    $hash{array} = [qw(1 2 3)];
-    $hash{b} = 3;
+    for (1..100) {
+        $hash{struct} = { a => [ qw(b c d) ] };
+        $hash{array} = [ qw(1 2 3) ];
+        $hash{b} = 3;
 
-    delete $hash{b};
+        delete $hash{b};
 
-    $hash{b} = 4;
+        $hash{b} = 4;
+    }
     tied(%hash)->clean_up_all;
 
 }

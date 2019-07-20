@@ -90,6 +90,7 @@ my %default_options = (
 
 my %global_register;
 my %process_register;
+my %used_ids;
 
 sub _trace;
 sub _debug;
@@ -707,7 +708,10 @@ sub _mg_tie {
     if ($parent->{_key} == IPC_PRIVATE) {
         $key = IPC_PRIVATE;
     } else {
-        $key = int(rand(1_000_000));
+        do {
+            $key = int(rand(1_000_000));
+        } while ($used_ids{$key});
+        $used_ids{$key}++;
     }
     my %opts = (
         %{$parent->{attributes}},
