@@ -91,6 +91,7 @@ my %default_options = (
 my %global_register;
 my %process_register;
 my %used_ids;
+my $spawn_href;
 
 sub _trace;
 sub _debug;
@@ -789,13 +790,13 @@ IPC::Shareable - Use shared memory backed variables across processes
 IPC::Shareable allows you to tie a variable to shared memory making it
 easy to share the contents of that variable with other Perl processes.
 
-Scalars, arrays, and hashes can be tied.  The variable being tied may
-contain arbitrarily complex data structures - including references to
+Scalars, arrays, and hashes and even objects can be tied. The variable being
+tied may contain arbitrarily complex data structures - including references to
 arrays, hashes of hashes, etc.
 
 The association between variables in distinct processes is provided by
-GLUE.  This is an integer number or 4 character string[1] that serves
-as a common identifier for data across process space.  Hence the
+GLUE (aka "key").  This is an integer number or 4 character string[1] that
+serves as a common identifier for data across process space.  Hence the
 statement
 
  tie my $scalar, 'IPC::Shareable', 'data';
