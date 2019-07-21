@@ -69,6 +69,7 @@ if ($pid == 0) {
         is $seen{$_}, 1, "child set elem $count to $_ ok";
         $count++;
     }
+    IPC::Shareable->clean_up_all;
 }
 
 done_testing();

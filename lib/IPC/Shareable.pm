@@ -28,6 +28,7 @@ use constant {
     LOCK_NB     => 4,
     LOCK_UN     => 8,
 
+    DEBUGGING   => ($ENV{SHAREABLE_DEBUG} or 0),
     SHM_BUFSIZ  =>  65536,
     SEM_MARKER  =>  0,
     SHM_EXISTS  =>  1,
@@ -106,6 +107,10 @@ sub TIEHASH {
 }
 sub STORE {
     my $knot = shift;
+
+    my $sid = $knot->{_shm}->{_id};
+
+    $global_register{$sid} ||= $knot;
 
     $knot->{_data} = _thaw($knot->{_shm}) unless ($knot->{_lock});
 
@@ -238,7 +243,6 @@ sub EXISTS {
 }
 sub FIRSTKEY {
     my $knot = shift;
-    my $key  = shift;
 
     $knot->{_iterating} = 1;
     $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
@@ -425,13 +429,10 @@ sub lock {
     $knot->unlock if ($knot->{_lock});
 
     my $sem = $knot->{_sem};
-    _debug "Attempting type=", $flags, " lock on", $knot->{_shm},
     my $return_val = $sem->op(@{ $semop_args{$flags} });
     if ($return_val) {
         $knot->{_lock} = $flags;
         $knot->{_data} = _thaw($knot->{_shm}),
-    }
-    else {
     }
     return $return_val;
 }
@@ -514,6 +515,7 @@ sub _thaw {
     my $seg = shift;
 
     my $ice = $seg->shmread;
+
     return if ! $ice;
 
     my $tag = substr $ice, 0, 14, '';
@@ -574,10 +576,8 @@ sub _tie {
     };
     $knot->{_data} = _thaw($seg);
 
-    if ($sem->getval(SEM_MARKER) == SHM_EXISTS){
-        my $sid = $knot->{_shm}->{_id};
-        $global_register{$sid} ||= $knot;
-        $process_register{$sid} ||= $knot;
+    if ($sem->getval(SEM_MARKER) != SHM_EXISTS) {
+        $process_register{$knot->{_shm}->id} ||= $knot;
         if (! $sem->setval(SEM_MARKER, SHM_EXISTS)){
             croak "Couldn't set semaphore during object creation: $!";
         }
