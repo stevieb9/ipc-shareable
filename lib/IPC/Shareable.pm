@@ -109,11 +109,11 @@ sub TIEHASH {
 sub STORE {
     my $knot = shift;
 
-    my $sid = $knot->{_shm}->{_id};
+    my $sid = $knot->seg->{_id};
 
     $global_register{$sid} ||= $knot;
 
-    $knot->{_data} = _thaw($knot->{_shm}) unless ($knot->{_lock});
+    $knot->{_data} = _thaw($knot->seg) unless ($knot->{_lock});
 
     if ($knot->{_type} eq 'HASH') {
         my $key = shift;
@@ -139,7 +139,7 @@ sub STORE {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+        if (! defined _freeze($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!\n";
         }
     }
@@ -148,7 +148,7 @@ sub STORE {
 sub FETCH {
     my $knot = shift;
 
-    my $sid = $knot->{_shm}->{_id};
+    my $sid = $knot->seg->{_id};
 
     $global_register{$sid} ||= $knot;
 
@@ -157,7 +157,7 @@ sub FETCH {
         $knot->{_iterating} = 0; # In case we break out
         $data = $knot->{_data};
     } else {
-        $data = _thaw($knot->{_shm});
+        $data = _thaw($knot->seg);
         $knot->{_data} = $data;
     }
 
@@ -191,7 +191,7 @@ sub FETCH {
     }
 
     if (my $inner = _is_kid($val)) {
-        my $s = $inner->{_shm};
+        my $s = $inner->seg;
         $inner->{_data} = _thaw($s);
     }
     return $val;
@@ -214,7 +214,7 @@ sub CLEAR {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+        if (! defined _freeze($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -223,12 +223,12 @@ sub DELETE {
     my $knot = shift;
     my $key  = shift;
 
-    $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
+    $knot->{_data} = _thaw($knot->seg) unless $knot->{_lock};
     my $val = delete $knot->{_data}->{$key};
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+        if (! defined _freeze($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -239,14 +239,14 @@ sub EXISTS {
     my $knot = shift;
     my $key  = shift;
 
-    $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
+    $knot->{_data} = _thaw($knot->seg) unless $knot->{_lock};
     return exists $knot->{_data}->{$key};
 }
 sub FIRSTKEY {
     my $knot = shift;
 
     $knot->{_iterating} = 1;
-    $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
+    $knot->{_data} = _thaw($knot->seg) unless $knot->{_lock};
     my $reset = keys %{$knot->{_data}};
     my $first = each %{$knot->{_data}};
     return $first;
@@ -270,14 +270,14 @@ sub EXTEND {
 sub PUSH {
     my $knot = shift;
 
-    $global_register{$knot->{_shm}->id} ||= $knot;
-    $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
+    $global_register{$knot->seg->id} ||= $knot;
+    $knot->{_data} = _thaw($knot->seg, $knot->{_data}) unless $knot->{_lock};
 
     push @{$knot->{_data}}, @_;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+        if (! defined _freeze($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         };
     }
@@ -285,13 +285,13 @@ sub PUSH {
 sub POP {
     my $knot = shift;
 
-    $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
+    $knot->{_data} = _thaw($knot->seg, $knot->{_data}) unless $knot->{_lock};
 
     my $val = pop @{$knot->{_data}};
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+        if (! defined _freeze($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -300,12 +300,12 @@ sub POP {
 sub SHIFT {
     my $knot = shift;
 
-    $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
+    $knot->{_data} = _thaw($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my $val = shift @{$knot->{_data}};
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+        if (! defined _freeze($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -314,12 +314,12 @@ sub SHIFT {
 sub UNSHIFT {
     my $knot = shift;
 
-    $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
+    $knot->{_data} = _thaw($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my $val = unshift @{$knot->{_data}}, @_;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+        if (! defined _freeze($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -328,12 +328,12 @@ sub UNSHIFT {
 sub SPLICE {
     my($knot, $off, $n, @av) = @_;
 
-    $knot->{_data} = _thaw($knot->{_shm}, $knot->{_data}) unless $knot->{_lock};
+    $knot->{_data} = _thaw($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my @val = splice @{$knot->{_data}}, $off, $n, @av;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+        if (! defined _freeze($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -342,19 +342,19 @@ sub SPLICE {
 sub FETCHSIZE {
     my $knot = shift;
 
-    $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
+    $knot->{_data} = _thaw($knot->seg) unless $knot->{_lock};
     return scalar(@{$knot->{_data}});
 }
 sub STORESIZE {
     my $knot = shift;
     my $n    = shift;
 
-    $knot->{_data} = _thaw($knot->{_shm}) unless $knot->{_lock};
+    $knot->{_data} = _thaw($knot->seg) unless $knot->{_lock};
     $#{$knot->{_data}} = $n - 1;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+        if (! defined _freeze($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -431,11 +431,11 @@ sub lock {
     # If they have a different lock than they want, release it first
     $knot->unlock if ($knot->{_lock});
 
-    my $sem = $knot->{_sem};
+    my $sem = $knot->sem;
     my $return_val = $sem->op(@{ $semop_args{$flags} });
     if ($return_val) {
         $knot->{_lock} = $flags;
-        $knot->{_data} = _thaw($knot->{_shm}),
+        $knot->{_data} = _thaw($knot->seg),
     }
     return $return_val;
 }
@@ -444,12 +444,12 @@ sub unlock {
 
     return 1 unless $knot->{_lock};
     if ($knot->{_was_changed}) {
-        if (! defined _freeze($knot->{_shm}, $knot->{_data})){
+        if (! defined _freeze($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!\n";
         }
         $knot->{_was_changed} = 0;
     }
-    my $sem = $knot->{_sem};
+    my $sem = $knot->sem;
     my $flags = $knot->{_lock} | LOCK_UN;
     $flags ^= LOCK_NB if ($flags & LOCK_NB);
     $sem->op(@{ $semop_args{$flags} });
@@ -479,16 +479,24 @@ sub clean_up_all {
 sub remove {
     my $knot = shift;
 
-    my $s = $knot->{_shm};
+    my $s = $knot->seg;
     my $id = $s->id;
 
     $s->remove or carp "Couldn't remove shared memory segment $id: $!";
 
-    $s = $knot->{_sem};
+    $s = $knot->sem;
     $s->remove or carp "Couldn't remove semaphore set $id: $!";
 
     delete $process_register{$id};
     delete $global_register{$id};
+}
+sub seg {
+    my ($knot) = @_;
+    return $knot->{_shm} if defined $knot->{_shm};
+}
+sub sem {
+    my ($knot) = @_;
+    return $knot->{_sem} if defined $knot->{_sem};
 }
 
 END {
@@ -543,6 +551,7 @@ sub _tie {
     my $shm_size = $opts->{size};
 
     my $seg = IPC::Shareable::SharedMem->new($key, $shm_size, $flags);
+
     if (! defined $seg) {
         if (! $opts->{create}) {
             croak "ERROR: Could not acquire shared memory segment... 'create' ".
@@ -577,6 +586,7 @@ sub _tie {
         _type        => $type,
         _was_changed => 0,
     };
+
     $knot->{_data} = _thaw($seg);
 
     if ($sem->getval(SEM_MARKER) != SHM_EXISTS) {
@@ -1021,6 +1031,16 @@ Removes a lock. Takes no parameters, returns C<true> on success.
 This is equivalent of calling C<shlock(LOCK_UN)>.
 
 See L</LOCKING> for further details.
+
+=head2 seg
+
+Called on either the tied variable or the tie object, returns the shared
+memory segment object currently in use.
+
+=head2 sem
+
+Called on either the tied variable or the tie object, returns the semaphore
+object related to the memory segment currently in use.
 
 =head1 LOCKING
 
