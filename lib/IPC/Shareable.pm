@@ -385,7 +385,7 @@ sub _spawn {
         tie my %h, 'IPC::Shareable', {
             key       => $opts{key},
             create    => 1,
-            #exclusive => 1,
+            exclusive => 1,
             destroy   => $opts{destroy},
             mode      => $opts{mode},
         };
@@ -471,6 +471,8 @@ sub clean_up {
 }
 sub clean_up_all {
     my $class = shift;
+
+    print Dumper \%global_register;
 
     for my $s (values %global_register) {
         remove($s);
@@ -597,6 +599,9 @@ sub _tie {
     }
 
     $sem->op(@{ $semop_args{(LOCK_SH|LOCK_UN)} });
+
+    print "SEG: " . $sem->shmid . "\n";
+    print "SEM: " . $sem->semid . "\n";
 
     return bless $knot, $class;
 }
