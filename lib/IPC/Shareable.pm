@@ -431,7 +431,9 @@ sub lock {
     # If they have a different lock than they want, release it first
     $knot->unlock if ($knot->{_lock});
 
-    if ($knot->sem->op(@{ $semop_args{$flags} }){
+    my $sem = $knot->sem;
+    my $return_val = $sem->op(@{ $semop_args{$flags} });
+    if ($return_val) {
         $knot->{_lock} = $flags;
         $knot->{_data} = _thaw($knot->seg),
     }
@@ -447,17 +449,15 @@ sub unlock {
         }
         $knot->{_was_changed} = 0;
     }
+    my $sem = $knot->sem;
     my $flags = $knot->{_lock} | LOCK_UN;
     $flags ^= LOCK_NB if ($flags & LOCK_NB);
-    $knot->sem->op(@{ $semop_args{$flags} });
+    $sem->op(@{ $semop_args{$flags} });
 
     $knot->{_lock} = 0;
 
     1;
 }
-
-# legacy methods
-
 *shlock = \&lock;
 *shunlock = \&unlock;
 
