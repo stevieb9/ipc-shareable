@@ -486,10 +486,10 @@ sub remove {
     my $s = $knot->seg;
     my $id = $s->id;
 
-    $s->remove or carp "Couldn't remove shared memory segment $id: $!";
+    $s->remove or warn "Couldn't remove shared memory segment $id: $!";
 
     $s = $knot->sem;
-    $s->remove or carp "Couldn't remove semaphore set $id: $!";
+    $s->remove or warn "Couldn't remove semaphore set $id: $!";
 
     delete $process_register{$id};
     delete $global_register{$id};
