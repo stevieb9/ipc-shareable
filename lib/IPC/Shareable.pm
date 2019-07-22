@@ -416,7 +416,7 @@ sub unspawn {
 
     $h{__ipc}->{run} = 0;
 
-    sleep 2;
+    sleep 1;
 
     IPC::Shareable->clean_up_all if $destroy;
 }
