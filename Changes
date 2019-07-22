@@ -1,13 +1,6 @@
 Revision history for Perl extension IPC::Shareable.
 
-0.99_02 UNREL
-        -
-
-0.99_01 2019-07-12
-        - added initial "perist" hash variables. Separate processes (even
-          multiple files in multiple windows) can share a variable, and it'll
-          remain available even after all processes exit. The variable will be
-          re-attached if the same shared segment key is used in subsequent runs
+0.62_01 UNREL
         - reversed order of Changes file
         - removed trace() and debug() code for ease of reading
         - improved exception/error messages, added exception testing, reduced

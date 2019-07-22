@@ -18,7 +18,7 @@ use IPC::SysV qw(
 use Storable 0.6 qw(freeze thaw);
 use Scalar::Util;
 
-our $VERSION = 0.61;
+our $VERSION = '0.62_01';
 
 $SIG{CHLD} = 'IGNORE';
 
