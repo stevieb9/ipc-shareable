@@ -46,7 +46,7 @@ if ($pid == 0) {
     my $data = '';
     my $id = $s->{_shm}->id;
 
-    IPC::Shareable->clean_up();
+#    IPC::Shareable->clean_up();
 
     shmread($id, $data, 0, length('IPC::Shareable'));
 
