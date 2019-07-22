@@ -471,7 +471,7 @@ sub clean_up {
 }
 sub clean_up_all {
     my $class = shift;
-    for my $s (values %global_register) {
+    for my $s (values %process_register) {
         remove($s);
     }
 
