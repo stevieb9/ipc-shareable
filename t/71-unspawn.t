@@ -13,7 +13,6 @@ tie my %h, 'IPC::Shareable', {
     mode      => 0666,
 };
 
-print "here\n";
 is $h{t70}->[1], 5, "hash element ok";
 
 IPC::Shareable->unspawn('aaaa');

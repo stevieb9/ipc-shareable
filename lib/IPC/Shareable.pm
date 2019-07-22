@@ -471,10 +471,14 @@ sub clean_up {
 }
 sub clean_up_all {
     my $class = shift;
+    for my $s (values %global_register) {
+        remove($s);
+    }
 
     for my $s (values %global_register) {
         remove($s);
     }
+
 }
 sub remove {
     my $knot = shift;
@@ -590,6 +594,7 @@ sub _tie {
     $knot->{_data} = _thaw($seg);
 
     if ($sem->getval(SEM_MARKER) != SHM_EXISTS) {
+        $global_register{$knot->{_shm}->id} ||= $knot;
         $process_register{$knot->{_shm}->id} ||= $knot;
         if (! $sem->setval(SEM_MARKER, SHM_EXISTS)){
             croak "Couldn't set semaphore during object creation: $!";
