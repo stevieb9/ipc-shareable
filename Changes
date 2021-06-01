@@ -1,20 +1,23 @@
 Revision history for Perl extension IPC::Shareable.
 
-0.99_02 UNREL
-        -
-
-0.99_01 2019-07-12
-        - added initial "perist" hash variables. Separate processes (even
+1.00 UNREL
+        - Added global_register() and process_register() to return the
+          registries of active segments and semaphores
+        - Added seg() and sem() methods, returns the structure of a shared
+          memory segment and a sempahore respectively
+        - Added initial "persist" hash variables. Separate processes (even
           multiple files in multiple windows) can share a variable, and it'll
           remain available even after all processes exit. The variable will be
           re-attached if the same shared segment key is used in subsequent runs
-        - reversed order of Changes file
-        - removed trace() and debug() code for ease of reading
-        - improved exception/error messages, added exception testing, reduced
+        - Reversed order of Changes file
+        - Removed trace() and debug() code for ease of reading
+        - Improved exception/error messages, added exception testing, reduced
           and minimized the number of exceptions actually uncaught
-        - significant POD cleanup
+        - Significant POD cleanup
         - 100% rewrite of all test files, and added a slew of new ones, all
           using Test::More
+        - Add build requirement of Test::SharedFork to handle the out of
+          sequence fork() tests in t/35-clean.t
 
 0.61  Mon Oct  8 00:27:39 2012
         - Added patch from Frank Lichtenheld fixing IPC::Shareable's dependence

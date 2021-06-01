@@ -5,6 +5,7 @@ use IPC::Shareable;
 
 IPC::Shareable->spawn(
     key     => 'bbbb',
+
     create => 1
 );
 

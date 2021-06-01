@@ -30,7 +30,8 @@ WriteMakefile(
         'ExtUtils::MakeMaker' => 6.72,
     },
     BUILD_REQUIRES => {
-        'Test::More' => 0,
+        'Test::More'       => 0,
+        'Test::SharedFork' => 0,
     },
     PREREQ_PM    => { 
                      "Storable" => 0.607,

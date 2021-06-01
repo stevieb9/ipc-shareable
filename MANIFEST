@@ -11,7 +11,6 @@ lib/IPC/Shareable/SharedMem.pm
 Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
-nytprof.out
 profiling/hv.pl
 README
 README.md
@@ -21,7 +20,8 @@ t/10-av.t
 t/15-hv.t
 t/20-ref.t
 t/25-ipc.t
-t/30-lock.t
+t/30-lock_operation.t
+t/31-lock_semaphore.t
 t/35-clean.t
 t/36-ipcav.t
 t/38-ipchv.t
@@ -38,4 +38,22 @@ t/91-pod_linkcheck.t
 t/92-pod.t
 t/93-manifest.t
 t/_spawn
+t/_spawn_class
+t/spawn_data_in_object/75-spawn_object_contains_data.t
+t/spawn_data_in_object/76-unspawn_object_contains_data.t
+t/spawn_data_in_object/SpawnTest.pm
+t_orig/00base.t
+t_orig/05sv.t
+t_orig/10av.t
+t_orig/15hv.t
+t_orig/20ref.t
+t_orig/25ipc.t
+t_orig/30lock.t
+t_orig/35clean.t
+t_orig/36ipcav.t
+t_orig/38ipchv.t
+t_orig/40ipcref.t
+t_orig/45obj.t
+t_orig/50ipcobj.t
+t_orig/55lsync.t
 testing/sharelite_with_sereal.pl

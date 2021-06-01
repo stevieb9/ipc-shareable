@@ -18,7 +18,7 @@ use IPC::SysV qw(
 use Storable 0.6 qw(freeze thaw);
 use Scalar::Util;
 
-our $VERSION = '0.62_01';
+our $VERSION = '1.00';
 
 $SIG{CHLD} = 'IGNORE';
 
@@ -363,6 +363,13 @@ sub STORESIZE {
 
 # --- Public methods
 
+sub global_register {
+    return \%global_register;
+}
+sub process_register {
+    return \%process_register;
+}
+
 sub spawn {
     my ($knot, %opts) = @_;
 
@@ -465,7 +472,7 @@ sub clean_up {
     my $class = shift;
 
     for my $s (values %process_register) {
-        next unless $s->{attributes}->{owner} == $$;
+        next unless $s->{attributes}{owner} == $$;
         remove($s);
     }
 }
@@ -478,7 +485,6 @@ sub clean_up_all {
     for my $s (values %global_register) {
         remove($s);
     }
-
 }
 sub remove {
     my $knot = shift;
@@ -489,6 +495,7 @@ sub remove {
     $s->remove or warn "Couldn't remove shared memory segment $id: $!";
 
     $s = $knot->sem;
+
     $s->remove or warn "Couldn't remove semaphore set $id: $!";
 
     delete $process_register{$id};
@@ -558,7 +565,7 @@ sub _tie {
 
     if (! defined $seg) {
         if (! $opts->{create}) {
-            croak "ERROR: Could not acquire shared memory segment... 'create' ".
+            confess "ERROR: Could not acquire shared memory segment... 'create' ".
                   "option is not set, and the segment hasn't been created " .
                   "yet:\n\n $!";
         }
@@ -790,7 +797,8 @@ sub _debug {
         }
     }  @_;
     Carp::carp "IPC::Shareable ($$) debug:\n", $caller, @msg;
-};
+}
+sub _placeholder {}
 
 1;
 
@@ -1029,7 +1037,7 @@ Or, just use the flock constants available in the Fcntl module.
 
 See L</LOCKING> for further details.
 
-=head2 unlock()
+=head2 unlock
 
 Removes a lock. Takes no parameters, returns C<true> on success.
 
@@ -1046,6 +1054,18 @@ memory segment object currently in use.
 
 Called on either the tied variable or the tie object, returns the semaphore
 object related to the memory segment currently in use.
+
+=head2 global_register
+
+Returns a hash reference of hashes of all in-use shared memory segments across
+all processes. The key is the memory segment ID, and the value is the segment
+and semaphore objects.
+
+=head2 process_register
+
+Returns a hash reference of hashes of all in-use shared memory segments created
+by the calling process. The key is the memory segment ID, and the value is the
+segment and semaphore objects.
 
 =head1 LOCKING
 

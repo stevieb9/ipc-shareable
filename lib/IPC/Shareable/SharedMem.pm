@@ -6,7 +6,7 @@ use strict;
 use Carp qw(carp croak confess);
 use IPC::SysV qw(IPC_RMID);
 
-our $VERSION = '0.99_02';
+our $VERSION = '1.00';
 
 use constant DEBUGGING => ($ENV{SHM_DEBUG} or 0);
 
@@ -86,7 +86,6 @@ sub remove {
     my $arg = 0;
 
     my $ret = shmctl($id, IPC_RMID, $arg);
-
     return $ret;
 }
 
