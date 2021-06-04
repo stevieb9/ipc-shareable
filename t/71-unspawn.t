@@ -9,7 +9,7 @@ system "perl t/_spawn";
 
 tie my %h, 'IPC::Shareable', {
     key       => 'aaaa',
-    destroy   => 1,
+#    destroy   => 1,
     mode      => 0666,
 };
 
