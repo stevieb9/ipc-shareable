@@ -809,6 +809,11 @@ __END__
 
 IPC::Shareable - Use shared memory backed variables across processes
 
+=for html
+<a href="https://github.com/stevieb9/ipc-shareable/actions"><img src="https://github.com/stevieb9/ipc-shareable/workflows/CI/badge.svg"/></a>
+<a href='https://coveralls.io/github/stevieb9/ipc-shareable?branch=master'><img src='https://coveralls.io/repos/stevieb9/ipc-shareable/badge.svg?branch=master&service=github' alt='Coverage Status' /></a>
+
+
 =head1 SYNOPSIS
 
 =head1 DESCRIPTION

@@ -30,6 +30,7 @@ t/45-obj.t
 t/50-ipcobj.t
 t/55-lsync.t
 t/60-tied.t
+t/61-seg_sem.t
 t/71-unspawn.t
 t/72-unspawn_destroy.t
 t/80-exceptions.t
@@ -42,18 +43,4 @@ t/_spawn_class
 t/spawn_data_in_object/75-spawn_object_contains_data.t
 t/spawn_data_in_object/76-unspawn_object_contains_data.t
 t/spawn_data_in_object/SpawnTest.pm
-t_orig/00base.t
-t_orig/05sv.t
-t_orig/10av.t
-t_orig/15hv.t
-t_orig/20ref.t
-t_orig/25ipc.t
-t_orig/30lock.t
-t_orig/35clean.t
-t_orig/36ipcav.t
-t_orig/38ipchv.t
-t_orig/40ipcref.t
-t_orig/45obj.t
-t_orig/50ipcobj.t
-t_orig/55lsync.t
 testing/sharelite_with_sereal.pl

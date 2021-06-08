@@ -15,12 +15,12 @@ WriteMakefile(
         'meta-spec' => { version => 2 },
         resources   => {
             bugtracker => {
-                web => 'https://github.com/stevieb9/ipc-variable/issues',
+                web => 'https://github.com/stevieb9/ipc-shareable/issues',
             },
             repository => {
                 type => 'git',
-                url => 'https://github.com/stevieb9/ipc-variable.git',
-                web => 'https://github.com/stevieb9/ipc-variable',
+                url => 'https://github.com/stevieb9/ipc-shareable.git',
+                web => 'https://github.com/stevieb9/ipc-shareable',
             },
         },
     },
@@ -40,4 +40,3 @@ WriteMakefile(
     },
 
 );
-
