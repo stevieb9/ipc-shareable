@@ -4,6 +4,7 @@ use strict;
 use Carp;
 use IPC::Shareable;
 use Test::More;
+use Test::SharedFork;
 
 my $sv;
 
@@ -19,29 +20,29 @@ if ($pid == 0) {
     # child
 
     sleep unless $awake;
-    tie($sv, 'IPC::Shareable', { key => 'data', destroy => 0 });
+    tie($sv, 'IPC::Shareable', 'TEST', { destroy => 0 });
 
     for (0 .. 99) {
-        (tied $sv)->shlock;
+        (tied $sv)->lock;
         ++$sv;
-        (tied $sv)->shunlock;
+        (tied $sv)->unlock;
     }
-#    is $sv, 200, "in child: locked and set SV to 200";
+    is $sv, 100, "in child: locked and set SV to 100";
     exit;
 
 } else {
     # parent
 
-    tie($sv, 'IPC::Shareable', data => { create => 'yes', destroy => 'yes' })
+    tie($sv, 'IPC::Shareable', 'TEST', { create => 1, destroy => 1 })
         or die "parent process can't tie \$sv";
     $sv = 0;
     kill ALRM => $pid;
-    for (0 .. 99) {
-        (tied $sv)->shlock;
-        ++$sv;
-        (tied $sv)->shunlock;
-    }
     waitpid($pid, 0);
+    for (0 .. 99) {
+        (tied $sv)->lock;
+        ++$sv;
+        (tied $sv)->unlock;
+    }
     is $sv, 200, "in parent: locked and updated SV to 200";
 }
 

@@ -13,7 +13,6 @@ MANIFEST			This list of files
 MANIFEST.SKIP
 profiling/hv.pl
 README
-README.md
 t/00-base.t
 t/05-sv.t
 t/10-av.t

@@ -816,10 +816,31 @@ IPC::Shareable - Use shared memory backed variables across processes
 
 =head1 SYNOPSIS
 
+    use IPC::Shareable qw(:lock);
+    
+    tie SCALAR, 'IPC::Shareable', OPTIONS;
+    tie ARRAY,  'IPC::Shareable', OPTIONS;
+    tie HASH,   'IPC::Shareable', OPTIONS;
+ 
+    (tied VARIABLE)->lock;
+    (tied VARIABLE)->unlock;
+      
+    (tied VARIABLE)->lock(LOCK_SH|LOCK_NB) 
+        or print "Resource unavailable\n";
+
+    my $segment   = (tied VARIABLE)->seg;
+    my $semaphore = (tied VARIABLE)->sem;
+
+    (tied VARIABLE)->remove;
+               
+    IPC::Shareable->clean_up;
+    IPC::Shareable->clean_up_all;
+
 =head1 DESCRIPTION
 
 IPC::Shareable allows you to tie a variable to shared memory making it
-easy to share the contents of that variable with other Perl processes.
+easy to share the contents of that variable with other Perl processes and
+scripts.
 
 Scalars, arrays, and hashes and even objects can be tied. The variable being
 tied may contain arbitrarily complex data structures - including references to
@@ -830,14 +851,14 @@ GLUE (aka "key").  This is an integer number or 4 character string[1] that
 serves as a common identifier for data across process space.  Hence the
 statement
 
- tie my $scalar, 'IPC::Shareable', 'data';
+    tie my $scalar, 'IPC::Shareable', { key => 'GLUE', create => 1 };
 
-in program one and the statement
+...in program one and the statement
 
- tie my $variable, 'IPC::Shareable', 'data';
+    tie my $variable, 'IPC::Shareable', { key => 'GLUE' };
 
-in program two will bind C<$scalar> in program one and C<$variable> in
-program two.
+...in program two will create and bind C<$scalar> the shared memory in program
+one and bind it to C<$variable> in program two.
 
 There is no pre-set limit to the number of processes that can bind to
 data; nor is there a pre-set limit to the complexity of the underlying
@@ -854,27 +875,16 @@ Semaphore flags can be used for locking data between competing processes.
 
 Options are specified by passing a reference to a hash as the fourth
 argument to the C<tie()> function that enchants a variable.
-Alternatively you can pass a reference to a hash as the third
-argument; IPC::Shareable will then look at the field named B<key> in
-this hash for the value of GLUE.  So,
 
- tie my %variable, 'IPC::Shareable', 'data', \%options;
-
-is equivalent to
-
- tie my %variable, 'IPC::Shareable', { key => 'data', ... };
-
-The following fields are recognized in the options hash.
+The following fields are recognized in the options hash:
 
 =head2 key
 
-The B<key> field is used to determine the GLUE when using the
-three-argument form of the call to C<tie()>.  This argument is then, in
-turn, used as the KEY argument in subsequent calls to C<shmget()> and
-C<semget()>.
+B<key> is the GLUE that is a direct reference to the shared memory segment
+that's to be tied to the variable.
 
-The default value is C<IPC_PRIVATE>, meaning that your variables cannot
-be shared with other processes.
+If this option is missing, we'll default to using C<IPC_PRIVATE>. This
+default key will not allow sharing of the variable between processes.
 
 Default: B<IPC_PRIVATE>
 
@@ -967,10 +977,10 @@ Example:
 
     # following line sets things up and returns
 
-    IPC::Shareable->spawn(key => 'abcd');
+    IPC::Shareable->spawn(key => 'GLUE');
 
 Now, either within the same script, or any other script on the system, your
-data will be available at the key/glue C<abcd>. Call
+data will be available at the key/glue C<GLUE>. Call 
 L<unspawn()|/unspawn($key, $destroy)> to remove it.
 
 =head2 unspawn($key, $destroy)
@@ -1084,7 +1094,7 @@ function.
 
 To lock and subsequently unlock a variable, do this:
 
-    my $knot = tie my %hash, 'IPC::Shareable', $glue, { %options };
+    my $knot = tie my %hash, 'IPC::Shareable', { %options };
 
     $knot->lock;
     $hash{a} = 'foo';
@@ -1092,9 +1102,9 @@ To lock and subsequently unlock a variable, do this:
 
 or equivalently, if you've decided to throw away the return of C<tie()>:
 
-    tie my %hash, 'IPC::Shareable', $glue, { %options };
+    tie my %hash, 'IPC::Shareable', { %options };
 
-    tied(%hash)->shlock;
+    tied(%hash)->lock;
     $hash{a} = 'foo';
     tied(%hash)->unlock;
 
@@ -1113,8 +1123,7 @@ the standard C<flock> option arguments.
         print "Another process has an exlusive lock.\n";
     }
 
-If no argument is provided to C<lock>, it defaults to C<LOCK_EX>.  To
-unlock a variable do this:
+If no argument is provided to C<lock>, it defaults to C<LOCK_EX>.
 
 There are some pitfalls regarding locking and signals about which you
 should make yourself aware; these are discussed in L</NOTES>.
@@ -1149,20 +1158,20 @@ shared memory segment when the process calling C<tie()> exits gracefully.
 B<NOTE>: The destruction is handled in an C<END> block. Only those memory
 segments that are tied to the current process will be removed.
 
-=head2 remove()
+=head2 remove
 
-    $knot->remove;
+    tied($var)->remove;
 
     # or
 
-    tied($var)->remove;
+    $knot->remove;
 
 Calling C<remove()> on the object underlying a C<tie()>d variable removes
 the associated shared memory segments.  The segment is removed
 irrespective of whether it has the B<destroy> option set or not and
 irrespective of whether the calling process created the segment.
 
-=head2 clean_up()
+=head2 clean_up
 
     IPC::Shareable->clean_up;
 
@@ -1178,7 +1187,7 @@ This is a class method that provokes L<IPC::Shareable> to remove all
 shared memory segments created by the process.  Segments not created
 by the calling process are not removed.
 
-=head2 clean_up_all()
+=head2 clean_up_all
 
     IPC::Shareable->clean_up_all;
 
@@ -1233,7 +1242,7 @@ will remain in shared memory.  If you're cautious, you might try
      die;
  }
  ...
- tie $variable, IPC::Shareable, 'data', { 'destroy' => 1 };
+ tie $variable, IPC::Shareable, { key => 'GLUE', create => 1, 'destroy' => 1 };
 
 which will at least clean up after your user hits CTRL-C because
 IPC::Shareable's END method will be called.  Or, maybe you'd like to
@@ -1279,15 +1288,15 @@ by bugs in either IPC::Shareable or applications using it.
 
 Examples:
 
-    # list all semaphores and memory segments in use on the system
+    # List all semaphores and memory segments in use on the system
 
     ipcs -a
 
-    # list all memory segments along with each one's associated process ID
+    # List all memory segments along with each one's associated process ID
 
     ipcs -ap
 
-    # remove *all* semaphores and memory segments
+    # Remove *all* semaphores and memory segments
 
     ipcrm -a
 
@@ -1319,7 +1328,6 @@ documentation.  Caveat Emptor.
 
 Thanks to all those with comments or bug fixes, especially
 
-    Steve Bertrand      <steveb@cpan.org>
     Maurice Aubrey      <maurice@hevanet.com>
     Stephane Bortzmeyer <bortzmeyer@pasteur.fr>
     Doug MacEachern     <dougm@telebusiness.co.nz>
@@ -1332,6 +1340,7 @@ Thanks to all those with comments or bug fixes, especially
     Raphael Manfredi    <Raphael_Manfredi@pobox.com>
     Lee Lindley         <Lee.Lindley@bigfoot.com>
     Dave Rolsky         <autarch@urth.org>
+    Steve Bertrand      <steveb@cpan.org>
 
 =head1 SEE ALSO
 

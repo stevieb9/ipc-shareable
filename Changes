@@ -17,7 +17,8 @@ Revision history for Perl extension IPC::Shareable.
         - 100% rewrite of all test files, and added a slew of new ones, all
           using Test::More
         - Add build requirement of Test::SharedFork to handle the out of
-          sequence fork() tests in t/35-clean.t
+          sequence fork() tests in t/35-clean.t and t/30-lock_operations
+        - Major POD updates
 
 0.61  Mon Oct  8 00:27:39 2012
         - Added patch from Frank Lichtenheld fixing IPC::Shareable's dependence
