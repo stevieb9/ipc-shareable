@@ -68,7 +68,6 @@ is exists($hv{there}), '', "delete removes hash key and value";
 is keys(%hv), 0, "clearing a hash works ok";
 #is exists($hv{__ipc}), 1, "__ipc__ key still exists";
 
-print Dumper $knot;
 
 IPC::Shareable->clean_up_all;
 

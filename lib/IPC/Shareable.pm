@@ -6,6 +6,7 @@ use strict;
 require 5.00503;
 
 use Carp qw(croak confess carp);
+use Data::Dumper;
 use IPC::Semaphore;
 use IPC::Shareable::SharedMem;
 use IPC::SysV qw(
@@ -91,7 +92,6 @@ my %default_options = (
 my %global_register;
 my %process_register;
 my %used_ids;
-my $spawn_href;
 
 sub _trace;
 sub _debug;
@@ -119,7 +119,7 @@ sub STORE {
         my $key = shift;
         my $val = shift;
         _mg_tie($knot, $val) if _need_tie($val);
-        $knot->{_data}->{$key} = $val;
+        $knot->{_data}{$key} = $val;
     }
     elsif ($knot->{_type} eq 'ARRAY') {
         my $i   = shift;
@@ -587,6 +587,7 @@ sub _tie {
     if (! $sem->op(@{ $semop_args{(LOCK_SH)} }) ) {
         croak "Could not obtain semaphore set lock: $!\n";
     }
+
     my $knot = {
         attributes   => $opts,
         _iterating   => 0,

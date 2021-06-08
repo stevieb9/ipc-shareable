@@ -24,7 +24,7 @@ if ($pid == 0) {
     sleep unless $awake;
     $awake = 0;
 
-    my $ipch = tie my %hv, 'IPC::Shareable', "data", {
+    my $ipch = tie my %hv, 'IPC::Shareable', "test", {
         create    => 'yes',
         exclusive => 0,
         mode      => 0644,
@@ -52,7 +52,7 @@ if ($pid == 0) {
 } else {
     # parent
 
-    my $ipch = tie my %hv, 'IPC::Shareable', "data", {
+    my $ipch = tie my %hv, 'IPC::Shareable', "test", {
         create    => 1,
         exclusive => 0,
         mode      => 0666,

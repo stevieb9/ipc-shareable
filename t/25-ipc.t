@@ -5,8 +5,6 @@ use Carp;
 use IPC::Shareable;
 use Test::More;
 
-my %h;
-
 my $awake = 0;
 local $SIG{ALRM} = sub { $awake = 1 };
 
@@ -18,27 +16,25 @@ if ($pid == 0) {
 
     sleep unless $awake;
 
-    tie my %h, 'IPC::Shareable', { key => 'data', destroy => 0 };
+    tie my %h, 'IPC::Shareable', { key => 'test', destroy => 0 };
     $h{a} = 'foo';
-
     exit;
 } else {
     # parent
 
     tie my %h, 'IPC::Shareable', {
-        key     => 'data',
+        key     => 'test',
         create  => 1,
         destroy => 1,
     };
 
     $h{a} = 'bar';
-
-    is $h{a}, 'bar', "in parent: parent set SV to 'bar' ok";
+    is $h{a}, 'bar', "in parent: parent set HV to 'bar' ok";
 
     kill ALRM => $pid;
     waitpid($pid, 0);
 
-    is $h{a}, 'foo', "in parent: child set SV to 'foo' ok";
+    is $h{a}, 'foo', "in parent: child set HV to 'foo' ok";
 
     IPC::Shareable->clean_up_all;
 }
