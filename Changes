@@ -19,7 +19,8 @@ Revision history for Perl extension IPC::Shareable.
         - Add build requirement of Test::SharedFork to handle the out of
           sequence fork() tests in t/35-clean.t and t/30-lock_operations
         - Major POD updates
-        - Added tests to prove that RT 123057 isn't really an issue
+        - Added tests to prove that RT 123057 isn't really an issue (ie. segment
+          size parameter works correctly)
 
 0.61  Mon Oct  8 00:27:39 2012
         - Added patch from Frank Lichtenheld fixing IPC::Shareable's dependence
