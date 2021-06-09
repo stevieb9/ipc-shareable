@@ -1,6 +1,6 @@
 Revision history for Perl extension IPC::Shareable.
 
-1.00 UNREL
+1.00    2021-06-09
         - Added global_register() and process_register() to return the
           registries of active segments and semaphores
         - Added seg() and sem() methods, returns the structure of a shared
