@@ -25,8 +25,9 @@ sub new {
     };
     $size  ||= $default_size;
     $flags ||= 0;
-    
+
     my $id = shmget($key, $size, $flags);
+
     defined $id or do {
         if ($! =~ /File exists/){
             croak "\nERROR: IPC::Shareable::SharedMem: shmget $key: $!\n\n" .
@@ -42,7 +43,7 @@ sub new {
         _flags => $flags,
         _type  => $type,
     };
-    
+
     return bless $sh => $class;
 }
 sub id {

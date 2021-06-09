@@ -30,6 +30,7 @@ t/50-ipcobj.t
 t/55-lsync.t
 t/60-tied.t
 t/61-seg_sem.t
+t/65-seg_size.t
 t/71-unspawn.t
 t/72-unspawn_destroy.t
 t/80-exceptions.t
