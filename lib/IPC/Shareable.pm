@@ -6,7 +6,6 @@ use strict;
 require 5.00503;
 
 use Carp qw(croak confess carp);
-use Data::Dumper;
 use IPC::Semaphore;
 use IPC::Shareable::SharedMem;
 use IPC::SysV qw(
@@ -817,22 +816,22 @@ IPC::Shareable - Use shared memory backed variables across processes
 =head1 SYNOPSIS
 
     use IPC::Shareable qw(:lock);
-    
+
     tie SCALAR, 'IPC::Shareable', OPTIONS;
     tie ARRAY,  'IPC::Shareable', OPTIONS;
     tie HASH,   'IPC::Shareable', OPTIONS;
- 
+
     (tied VARIABLE)->lock;
     (tied VARIABLE)->unlock;
-      
-    (tied VARIABLE)->lock(LOCK_SH|LOCK_NB) 
+
+    (tied VARIABLE)->lock(LOCK_SH|LOCK_NB)
         or print "Resource unavailable\n";
 
     my $segment   = (tied VARIABLE)->seg;
     my $semaphore = (tied VARIABLE)->sem;
 
     (tied VARIABLE)->remove;
-               
+
     IPC::Shareable->clean_up;
     IPC::Shareable->clean_up_all;
 
@@ -980,7 +979,7 @@ Example:
     IPC::Shareable->spawn(key => 'GLUE');
 
 Now, either within the same script, or any other script on the system, your
-data will be available at the key/glue C<GLUE>. Call 
+data will be available at the key/glue C<GLUE>. Call
 L<unspawn()|/unspawn($key, $destroy)> to remove it.
 
 =head2 unspawn($key, $destroy)
