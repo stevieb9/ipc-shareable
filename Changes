@@ -2,6 +2,8 @@ Revision history for Perl extension IPC::Shareable.
 
 1.02 UNREL
     - Remove erroneous listing from MANIFEST
+    - Work around issue in t/65-seg_size.t where MacOS and FreeBSD don't have
+      the -i flag to ipcs (thanks for the PR, Roland Walker!)
 
 1.01    2021-06-24
     - Added 'graceful' flag option. With exclusive, if a second process
