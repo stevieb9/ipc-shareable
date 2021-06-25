@@ -10,6 +10,7 @@ Revision history for Perl extension IPC::Shareable.
       doesn't yet exist
     - Fix POD issue where we stated exclusive returns undef instead of croaking
       (fixes #10)
+    - Change 'perl' shell call to $^X in t/71-unspawn.t (fixes #6)
 
 1.01    2021-06-24
     - Added 'graceful' flag option. With exclusive, if a second process

@@ -13,7 +13,7 @@ use Data::Dumper;
 use IPC::Shareable;
 use Test::More;
 
-system "perl t/_spawn";
+system "$^X t/_spawn";
 
 tie my %h, 'IPC::Shareable', {
     key       => 'aaaa',
