@@ -1,6 +1,6 @@
 Revision history for Perl extension IPC::Shareable.
 
-1.02 UNREL
+1.02    2021-06-25
     - Remove erroneous listing from MANIFEST
     - Work around issue in t/65-seg_size.t where MacOS and FreeBSD don't have
       the -i flag to ipcs (thanks for the PR, Roland Walker!)
