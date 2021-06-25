@@ -84,6 +84,7 @@ my %default_options = (
     create    => 0,
     exclusive => 0,
     destroy   => 0,
+    graceful  => 0,
     mode      => 0666,
     size      => SHM_BUFSIZ,
 );
@@ -560,7 +561,17 @@ sub _tie {
     my $flags    = _shm_flags($opts);
     my $shm_size = $opts->{size};
 
-    my $seg = IPC::Shareable::SharedMem->new($key, $shm_size, $flags);
+    my $seg;
+
+    if ($opts->{graceful}) {
+        exit if ! eval {
+            $seg = IPC::Shareable::SharedMem->new($key, $shm_size, $flags);
+            1;
+        };
+    }
+    else {
+        $seg = IPC::Shareable::SharedMem->new($key, $shm_size, $flags);
+    }
 
     if (! defined $seg) {
         if (! $opts->{create}) {
@@ -905,6 +916,20 @@ If B<exclusive> field is set to a true value, calls to C<tie()> will fail
 (returning C<undef>) if a data binding associated with GLUE already
 exists.  If set to a false value, calls to C<tie()> will succeed even if
 a shared memory segment associated with GLUE already exists.
+
+See L</graceful> for a silent, non-exception exit if a second process
+attempts to obtain an in-use C<exclusive> segment.
+
+Default: B<false>
+
+=head2 graceful
+
+If B<exclusive> is set to a true value, we normally C<die()> if a second
+process attempts to obtain the same shared memory segment. Set B<graceful>
+to true and we'll C<exit> silently and gracefully. This option does nothing
+if C<exclusive> isn't set.
+
+Useful for ensuring only a single process is running at a time.
 
 Default: B<false>
 
