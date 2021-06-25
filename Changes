@@ -1,5 +1,8 @@
 Revision history for Perl extension IPC::Shareable.
 
+1.02 UNREL
+    -
+
 1.01    2021-06-24
     - Added 'graceful' flag option. With exclusive, if a second process
       attempts to tie an exclusive segment, we exit gracefully instead of
