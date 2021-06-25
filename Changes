@@ -1,7 +1,7 @@
 Revision history for Perl extension IPC::Shareable.
 
-1.03 UNREL
-    -
+1.03    2021-06-25
+    - Add newline to singleton() warn so that it doesn't print out trace info
 
 1.02    2021-06-25
     - Remove erroneous listing from MANIFEST

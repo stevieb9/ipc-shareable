@@ -592,7 +592,7 @@ sub _tie {
 
         if (! defined $exclusive) {
             if ($opts->{warn}) {
-                warn "Process ID $$ exited due to exclusive shared memory collision";
+                warn "Process ID $$ exited due to exclusive shared memory collision\n";
             }
             exit(0);
         }
