@@ -4,7 +4,7 @@ use strict;
 
 use Benchmark qw(:all) ;
 use IPC::Shareable;
-use Sereal qw(encode_sereal decode_sereal looks_like_sereal);
+use JSON qw(-convert_blessed_universally);
 use Storable qw(freeze thaw);
 
 if (@ARGV < 1){
@@ -14,15 +14,15 @@ if (@ARGV < 1){
 
 timethese($ARGV[0],
     {
-        'sereal' => \&sereal,
-        'store ' => \&storable,
+        json    => \&json,
+        store   => \&storable,
     },
 );
 
 cmpthese($ARGV[0],
     {
-        'sereal' => \&sereal,
-        'store ' => \&storable,
+        json    => \&json,
+        store   => \&storable,
     },
 );
 
@@ -34,13 +34,13 @@ sub default {
         d => {z => 26, y => 25},
     };
 }
-sub sereal {
+sub json {
     my $base_data = default();
 
-    tie my %hash, 'IPC::Shareable', 'sere', {
+    tie my %hash, 'IPC::Shareable', 'json', {
         create  => 1,
         destroy => 1,
-        serializer => 'sereal'
+        serializer => 'json'
     };
 
     %hash = %$base_data;
@@ -67,12 +67,3 @@ sub storable {
 }
 
 __END__
-
-Benchmark: timing 10000 iterations of sereal, store ...
-    sereal: 18 wallclock secs ( 9.58 usr +  8.60 sys = 18.18 CPU) @ 550.06/s (n=10000)
-    store : 18 wallclock secs (10.88 usr +  7.13 sys = 18.01 CPU) @ 555.25/s (n=10000)
-        Rate store  sereal
-store  545/s     --    -0%
-sereal 547/s     0%     --
-
-
