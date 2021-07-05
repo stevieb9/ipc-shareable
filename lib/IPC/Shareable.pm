@@ -90,8 +90,6 @@ my %default_options = (
     destroy    => 0,
     mode       => 0666,
     size       => SHM_BUFSIZ,
-    dynamic    => 0,
-    maxsize    => SHMMAX_BYTES,
     graceful   => 0,
     warn       => 0,
     serializer => 'storable',
@@ -125,17 +123,17 @@ sub STORE {
 
     if ($knot->{_type} eq 'HASH') {
         my ($key, $val) = @_;
-#        _mg_tie($knot, $val, $key) if $knot->_need_tie($val, $key);
+        _mg_tie($knot, $val, $key) if $knot->_need_tie($val, $key);
         $knot->{_data}{$key} = $val;
     }
     elsif ($knot->{_type} eq 'ARRAY') {
         my ($i, $val) = @_;
-#        _mg_tie($knot, $val, $i) if $knot->_need_tie($val, $i);
+        _mg_tie($knot, $val, $i) if $knot->_need_tie($val, $i);
         $knot->{_data}[$i] = $val;
     }
     elsif ($knot->{_type} eq 'SCALAR') {
         my ($val) = @_;
-#        _mg_tie($knot, $val) if $knot->_need_tie($val);
+        _mg_tie($knot, $val) if $knot->_need_tie($val);
         $knot->{_data} = \$val;
     }
     else {
@@ -1081,6 +1079,20 @@ to true and we'll C<exit> silently and gracefully. This option does nothing
 if C<exclusive> isn't set.
 
 Useful for ensuring only a single process is running at a time.
+
+Default: B<false>
+
+=head2 warn
+
+When set to a true value, B<graceful> will output a warning if there are
+process collisions. Has no effect outside of that scenario.
+
+Default: B<false>
+
+=head2 tidy
+
+For long running processes, set this to a true value to clean up unneeded
+segments from nested data structures. Comes with a slight performance hit.
 
 Default: B<false>
 

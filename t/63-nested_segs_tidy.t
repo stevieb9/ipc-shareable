@@ -23,23 +23,23 @@ use Test::More;
         ],
     );
 
-    tie my @a, 'IPC::Shareable', {create => 1, destroy => 1};
+    tie my @a, 'IPC::Shareable', {create => 1, destroy => 1, tidy => 1};
 
     my $initial_seg_count = seg_count();
 
     is seg_count(), $initial_seg_count, "Initial array seg count ok";
 
     $a[0] = [3];
-    is seg_count(), $initial_seg_count, "After initial aref add, seg count ok";
+    is seg_count(), $initial_seg_count+1, "After initial aref add, seg count ok";
 
     $a[0] = [1, 2];
-    is seg_count(), $initial_seg_count, "Adding a new aref to an existing element doesn't create a new seg ok";
+    is seg_count(), $initial_seg_count+1, "Adding a new aref to an existing element doesn't create a new seg ok";
 
     $a[0] = [1, 2, 3];
-    is seg_count(), $initial_seg_count, "Same with repurposing the aref again";
+    is seg_count(), $initial_seg_count+1, "Same with repurposing the aref again";
 
     $a[0] = [1, 2, 3, [26, [30, 31]]];
-    is seg_count(), $initial_seg_count, "Same with repurposing the aref again with nested";
+    is seg_count(), $initial_seg_count+3, "Same with repurposing the aref again with nested";
 
     is_deeply \@a, \@test_data, "Nested arrays compare ok";
 
@@ -69,22 +69,22 @@ use Test::More;
     is seg_count(), $initial_seg_count, "Initial href seg count ok";
 
     $h{a} = {a => 1};
-    is seg_count(), $initial_seg_count, "After initial href add, seg count ok";
+    is seg_count(), $initial_seg_count+1, "After initial href add, seg count ok";
 
     $h{a} = {a => 1, b => 2};
-    is seg_count(), $initial_seg_count, "Adding a new href to an existing key doesn't create a new seg ok";
+    is seg_count(), $initial_seg_count+1, "Adding a new href to an existing key doesn't create a new seg ok";
 
     $h{a} = {a => 1, b => 2, c => 3};
-    is seg_count(), $initial_seg_count, "Same with repurposing the href again";
+    is seg_count(), $initial_seg_count+1, "Same with repurposing the href again";
 
     $h{a} = {a => 1, b => 2, c => 3, d => {z => 26}};
-    is seg_count(), $initial_seg_count, "Adding a new hash inside of existing does bump seg count";
+    is seg_count(), $initial_seg_count+2, "Adding a new hash inside of existing does bump seg count";
 
     $h{a} = {a => 1, b => 2, c => 3, d => {z => 26, y => {yy => 25}}};
-    is seg_count(), $initial_seg_count, "Adding a new hash inside of two level existing does bump seg count";
+    is seg_count(), $initial_seg_count+4, "Adding a new hash inside of two level existing does bump seg count";
 
     $h{a} = {a => 1, b => 2, c => 3, d => {z => 26, y => {yy => 25}}};
-    is seg_count(), $initial_seg_count, "Adding a new hash inside of two level existing twice does bump seg count";
+    is seg_count(), $initial_seg_count+6, "Adding a new hash inside of two level existing twice does bump seg count";
 
     is_deeply \%h, \%test_data, "Shared memory hash matches test data ok";
 
