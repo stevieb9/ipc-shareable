@@ -6,6 +6,7 @@ use strict;
 require 5.00503;
 
 use Carp qw(croak confess carp);
+use Data::Dumper;
 use IPC::Semaphore;
 use IPC::Shareable::SharedMem;
 use IPC::SysV qw(
@@ -15,6 +16,7 @@ use IPC::SysV qw(
     IPC_NOWAIT
     SEM_UNDO
 );
+use JSON qw(-convert_blessed_universally);
 use Storable 0.6 qw(freeze thaw);
 use Scalar::Util;
 
@@ -80,14 +82,16 @@ my %semop_args = (
 );
 
 my %default_options = (
-    key       => IPC_PRIVATE,
-    create    => 0,
-    exclusive => 0,
-    destroy   => 0,
-    graceful  => 0,
-    warn      => 0,
-    mode      => 0666,
-    size      => SHM_BUFSIZ,
+    key        => IPC_PRIVATE,
+    create     => 0,
+    exclusive  => 0,
+    destroy    => 0,
+    mode       => 0666,
+    size       => SHM_BUFSIZ,
+    graceful   => 0,
+    warn       => 0,
+    tidy       => 0,
+    serializer => 'storable',
 );
 
 my %global_register;
@@ -114,23 +118,21 @@ sub STORE {
 
     $global_register{$sid} ||= $knot;
 
-    $knot->{_data} = _thaw($knot->seg) unless ($knot->{_lock});
+    $knot->{_data} = $knot->_decode($knot->seg) unless ($knot->{_lock});
 
     if ($knot->{_type} eq 'HASH') {
-        my $key = shift;
-        my $val = shift;
-        _mg_tie($knot, $val) if _need_tie($val);
+        my ($key, $val) = @_;
+        _mg_tie($knot, $val, $key) if $knot->_need_tie($val, $key);
         $knot->{_data}{$key} = $val;
     }
     elsif ($knot->{_type} eq 'ARRAY') {
-        my $i   = shift;
-        my $val = shift;
-        _mg_tie($knot, $val) if _need_tie($val);
-        $knot->{_data}->[$i] = $val;
+        my ($i, $val) = @_;
+        _mg_tie($knot, $val, $i) if $knot->_need_tie($val, $i);
+        $knot->{_data}[$i] = $val;
     }
     elsif ($knot->{_type} eq 'SCALAR') {
-        my $val = shift;
-        _mg_tie($knot, $val) if _need_tie($val);
+        my ($val) = @_;
+        _mg_tie($knot, $val) if $knot->_need_tie($val);
         $knot->{_data} = \$val;
     }
     else {
@@ -140,7 +142,7 @@ sub STORE {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->seg, $knot->{_data})){
+        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!\n";
         }
     }
@@ -158,7 +160,7 @@ sub FETCH {
         $knot->{_iterating} = 0; # In case we break out
         $data = $knot->{_data};
     } else {
-        $data = _thaw($knot->seg);
+        $data = $knot->_decode($knot->seg);
         $knot->{_data} = $data;
     }
 
@@ -193,7 +195,7 @@ sub FETCH {
 
     if (my $inner = _is_kid($val)) {
         my $s = $inner->seg;
-        $inner->{_data} = _thaw($s);
+        $inner->{_data} = $knot->_decode($s);
     }
     return $val;
 
@@ -215,7 +217,7 @@ sub CLEAR {
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->seg, $knot->{_data})){
+        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -224,12 +226,12 @@ sub DELETE {
     my $knot = shift;
     my $key  = shift;
 
-    $knot->{_data} = _thaw($knot->seg) unless $knot->{_lock};
+    $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     my $val = delete $knot->{_data}->{$key};
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->seg, $knot->{_data})){
+        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -240,14 +242,14 @@ sub EXISTS {
     my $knot = shift;
     my $key  = shift;
 
-    $knot->{_data} = _thaw($knot->seg) unless $knot->{_lock};
+    $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     return exists $knot->{_data}->{$key};
 }
 sub FIRSTKEY {
     my $knot = shift;
 
     $knot->{_iterating} = 1;
-    $knot->{_data} = _thaw($knot->seg) unless $knot->{_lock};
+    $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     my $reset = keys %{$knot->{_data}};
     my $first = each %{$knot->{_data}};
     return $first;
@@ -272,13 +274,13 @@ sub PUSH {
     my $knot = shift;
 
     $global_register{$knot->seg->id} ||= $knot;
-    $knot->{_data} = _thaw($knot->seg, $knot->{_data}) unless $knot->{_lock};
+    $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
 
     push @{$knot->{_data}}, @_;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->seg, $knot->{_data})){
+        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         };
     }
@@ -286,13 +288,13 @@ sub PUSH {
 sub POP {
     my $knot = shift;
 
-    $knot->{_data} = _thaw($knot->seg, $knot->{_data}) unless $knot->{_lock};
+    $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
 
     my $val = pop @{$knot->{_data}};
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->seg, $knot->{_data})){
+        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -301,12 +303,12 @@ sub POP {
 sub SHIFT {
     my $knot = shift;
 
-    $knot->{_data} = _thaw($knot->seg, $knot->{_data}) unless $knot->{_lock};
+    $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my $val = shift @{$knot->{_data}};
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->seg, $knot->{_data})){
+        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -315,12 +317,12 @@ sub SHIFT {
 sub UNSHIFT {
     my $knot = shift;
 
-    $knot->{_data} = _thaw($knot->seg, $knot->{_data}) unless $knot->{_lock};
+    $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my $val = unshift @{$knot->{_data}}, @_;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->seg, $knot->{_data})){
+        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -329,12 +331,12 @@ sub UNSHIFT {
 sub SPLICE {
     my($knot, $off, $n, @av) = @_;
 
-    $knot->{_data} = _thaw($knot->seg, $knot->{_data}) unless $knot->{_lock};
+    $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my @val = splice @{$knot->{_data}}, $off, $n, @av;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->seg, $knot->{_data})){
+        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -343,19 +345,19 @@ sub SPLICE {
 sub FETCHSIZE {
     my $knot = shift;
 
-    $knot->{_data} = _thaw($knot->seg) unless $knot->{_lock};
+    $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     return scalar(@{$knot->{_data}});
 }
 sub STORESIZE {
     my $knot = shift;
     my $n    = shift;
 
-    $knot->{_data} = _thaw($knot->seg) unless $knot->{_lock};
+    $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     $#{$knot->{_data}} = $n - 1;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     } else {
-        if (! defined _freeze($knot->seg, $knot->{_data})){
+        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
     }
@@ -371,6 +373,11 @@ sub process_register {
     return \%process_register;
 }
 
+sub ipcs {
+    my $count = `ipcs -m | wc -l`;
+    chomp $count;
+    return $count;
+}
 sub spawn {
     my ($knot, %opts) = @_;
 
@@ -443,7 +450,7 @@ sub lock {
     my $return_val = $sem->op(@{ $semop_args{$flags} });
     if ($return_val) {
         $knot->{_lock} = $flags;
-        $knot->{_data} = _thaw($knot->seg),
+        $knot->{_data} = $knot->_decode($knot->seg),
     }
     return $return_val;
 }
@@ -452,7 +459,7 @@ sub unlock {
 
     return 1 unless $knot->{_lock};
     if ($knot->{_was_changed}) {
-        if (! defined _freeze($knot->seg, $knot->{_data})){
+        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!\n";
         }
         $knot->{_was_changed} = 0;
@@ -541,6 +548,76 @@ END {
 }
 
 # --- Private methods below
+
+sub _encode {
+    my ($knot, $seg, $data) = @_;
+
+    my $serializer = $knot->{attributes}{serializer};
+
+    if ($serializer eq 'storable') {
+        return _freeze($seg, $data);
+    }
+    elsif ($serializer eq 'json'){
+        return _encode_json($seg, $data);
+    }
+
+    return undef;
+}
+sub _decode {
+    my ($knot, $seg) = @_;
+
+    my $serializer = $knot->{attributes}{serializer};
+
+    if ($serializer eq 'storable') {
+        return _thaw($seg);
+    }
+    elsif ($serializer eq 'json'){
+        return _decode_json($seg);
+    }
+
+    return undef;
+}
+sub _encode_json {
+    my $seg  = shift;
+    my $data = shift;
+
+#    my $store = {
+#        data    => $data,
+#        id      => 'IPC::Shareable',
+#    };
+
+    my $json = encode_json $data;
+#    # Could be a large string.  No need to copy it.  substr more efficient
+#    substr $json, 0, 0, 'IPC::Shareable';
+
+    if (length($json) > $seg->size) {
+        croak "Length of shared data exceeds shared segment size";
+    }
+    $seg->shmwrite($json);
+}
+sub _decode_json {
+    my $seg = shift;
+
+    my $json = $seg->shmread;
+
+    return if ! $json;
+
+    # Remove \x{0} after end of string (broke JSON)
+
+    $json =~ s/\x00+//;
+
+#    my $tag = substr $json, 0, 14, '';
+
+#    if ($tag eq 'IPC::Shareable') {
+        my $data = decode_json $json;
+        if (! defined($data)){
+            croak "Munged shared memory segment (size exceeded?)";
+        }
+        return $data;
+#    } else {
+#        return;
+#    }
+}
 sub _freeze {
     my $seg  = shift;
     my $water = shift;
@@ -710,19 +787,20 @@ sub _shm_flags {
     return $flags;
 }
 sub _mg_tie {
-    my $parent = shift;
-    my $val = shift;
+    my ($parent, $val, $identifier) = @_;
 
-    # XXX How to generate a unique id ?
     my $key;
+
     if ($parent->{_key} == IPC_PRIVATE) {
         $key = IPC_PRIVATE;
-    } else {
+    }
+    else {
         do {
             $key = int(rand(1_000_000));
         } while ($used_ids{$key});
         $used_ids{$key}++;
     }
+
     my %opts = (
         %{$parent->{attributes}},
         key       => $key,
@@ -734,24 +812,31 @@ sub _mg_tie {
     # XXX I wish I didn't have to take a copy of data here and copy it back in
     # XXX Also, have to peek inside potential objects to see their implementation
     my $child;
-    my $type = Scalar::Util::reftype( $val ) || '';
+    my $type = Scalar::Util::reftype($val) || '';
 
     if ($type eq "HASH") {
         my %copy = %$val;
         $child = tie %$val, 'IPC::Shareable', $key, { %opts };
         croak "Could not create inner tie" if ! $child;
+
+        _reset_segment($parent, $identifier) if $opts{tidy};
+
         %$val = %copy;
     }
     elsif ($type eq "ARRAY") {
         my @copy = @$val;
         $child = tie @$val, 'IPC::Shareable', $key, { %opts };
         croak "Could not create inner tie" if ! $child;
+
+        _reset_segment($parent, $identifier) if $opts{tidy};
+
         @$val = @copy;
     }
     elsif ($type eq "SCALAR") {
         my $copy = $$val;
         $child = tie $$val, 'IPC::Shareable', $key, { %opts };
         croak "Could not create inner tie" if ! $child;
+
         $$val = $copy;
     }
     else {
@@ -785,22 +870,42 @@ sub _is_kid {
     return;
 }
 sub _need_tie {
-    my $val = shift;
+    my ($knot, $val, $identifier) = @_;
 
-    my $type = Scalar::Util::reftype( $val );
-    return unless $type;
+    my $type = Scalar::Util::reftype($val);
+    return 0 if ! $type;
+
+    my $need_tie;
 
     if ($type eq "HASH") {
-        return !(tied %$val);
+        $need_tie = !(tied %$val);
     }
     elsif ($type eq "ARRAY") {
-        return !(tied @$val);
+        $need_tie = !(tied @$val);
     }
     elsif ($type eq "SCALAR") {
-        return !(tied $$val);
+        $need_tie = !(tied $$val);
     }
 
-    return;
+    return $need_tie ? 1 : 0;
+}
+sub _reset_segment {
+    my ($parent, $id) = @_;
+
+    my $parent_type = Scalar::Util::reftype($parent->{_data}) || '';
+
+    if ($parent_type eq 'HASH') {
+        my $data = $parent->{_data};
+        if (exists $data->{$id} && keys %{ $data->{$id} } && tied %{ $data->{$id} }) {
+            (tied %{ $parent->{_data}{$id} })->remove;
+        }
+    }
+    elsif ($parent_type eq 'ARRAY') {
+        my $data = $parent->{_data};
+        if (exists $data->[$id] && tied @{ $data->[$id] }) {
+            (tied @{ $parent->{_data}[$id] })->remove;
+        }
+    }
 }
 
 sub _trace {
@@ -974,6 +1079,20 @@ world readable, C<0600> is readable only by the effective UID of the
 process creating the shared variable, etc.
 
 Default: B<0666> (world read and writeable)
+
+=head2 tidy
+
+Each new sub level of a nested data structure uses its own automatically
+generated shared memory segment. By default, we don't clean these up until
+the tied object goes out of scope.
+
+In a very long running process, this may end up in a situation where you run
+out of segments available.
+
+Set this to a true value to have each segment removed after modification of
+a data structure. Note that this will have a slight (~5%) performance penalty.
+
+Default: B<false>
 
 =head2 destroy
 

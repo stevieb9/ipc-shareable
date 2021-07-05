@@ -3,6 +3,7 @@ use warnings;
 use strict;
 
 use Benchmark qw(:all) ;
+use Data::Dumper;
 use IPC::Shareable;
 use JSON qw(-convert_blessed_universally);
 use Storable qw(freeze thaw);
@@ -12,12 +13,15 @@ if (@ARGV < 1){
     exit;
 }
 
-timethese($ARGV[0],
-    {
-        json    => \&json,
-        store   => \&storable,
-    },
-);
+my %j_hash;
+my %s_hash;
+
+#timethese($ARGV[0],
+#    {
+#        json    => \&json,
+#        store   => \&storable,
+#    },
+#);
 
 cmpthese($ARGV[0],
     {
@@ -37,33 +41,55 @@ sub default {
 sub json {
     my $base_data = default();
 
-    tie my %hash, 'IPC::Shareable', 'json', {
-        create  => 1,
-        destroy => 1,
-        serializer => 'json'
-    };
+    print IPC::Shareable->ipcs . "\n";
+    if (! %j_hash) {
+        tie %j_hash, 'IPC::Shareable', {
+            create     => 1,
+            destroy    => 1,
+            serializer => 'json'
+        };
+    }
 
-    %hash = %$base_data;
+    %j_hash = %$base_data;
 
-    $hash{struct} = {a => [qw(b c d)]};
+    $j_hash{struct1} = {a => [qw(b c d)]};
+    $j_hash{struct1} = {a => [qw(b c d)]};
+    $j_hash{struct1} = {a => [qw(b c d)]};
+#    $j_hash{struct1} = {a => [qw(b c d)]};
+#    $j_hash{struct2} = {a => [qw(b c d)]};
+#    $j_hash{struct3} = {a => [qw(b c d)]};
+#    $j_hash{struct4} = {a => [qw(b c d)]};
+#    $j_hash{struct5} = {a => [qw(b c d)]};
+#    $j_hash{struct6} = {a => [qw(b c d)]};
+#    $j_hash{struct7} = {a => [qw(b c d)]};
+#    $j_hash{struct8} = {a => [qw(b c d)]};
 
-    tied(%hash)->clean_up_all;
-
+    print IPC::Shareable->ipcs . "\n";
+#    tied(%j_hash)->clean_up_all;
 }
 sub storable {
     my $base_data = default();
 
-    tie my %hash, 'IPC::Shareable', 'stor', {
-        create  => 1,
-        destroy => 1,
-        serializer => 'storable'
-    };
+    if (! %s_hash) {
+        tie %s_hash, 'IPC::Shareable', {
+            create     => 1,
+            destroy    => 1,
+            serializer => 'storable'
+        };
+    }
 
-    %hash = %$base_data;
+    %s_hash = %$base_data;
 
-    $hash{struct} = {a => [qw(b c d)]};
+    $s_hash{struct1} = {a => [qw(b c d)]};
+#    $s_hash{struct2} = {a => [qw(b c d)]};
+#    $s_hash{struct3} = {a => [qw(b c d)]};
+#    $s_hash{struct4} = {a => [qw(b c d)]};
+#    $s_hash{struct5} = {a => [qw(b c d)]};
+#    $s_hash{struct6} = {a => [qw(b c d)]};
+#    $s_hash{struct7} = {a => [qw(b c d)]};
+#    $s_hash{struct8} = {a => [qw(b c d)]};
 
-    tied(%hash)->clean_up_all;
+    tied(%s_hash)->clean_up_all;
 }
 
 __END__

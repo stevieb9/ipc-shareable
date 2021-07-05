@@ -1,7 +1,7 @@
 benchmarks/bench_changes.pl
 benchmarks/bench_results.txt
-benchmarks/sereal_vs_storable_without_ipc.pl
-benchmarks/storable_vs_serial.pl
+benchmarks/sereal_vs_storable_vs_json_without_ipc.pl
+benchmarks/storable_vs_json.pl
 Changes
 COPYING
 CREDITS
