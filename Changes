@@ -3,7 +3,6 @@ Revision history for Perl extension IPC::Shareable.
 1.05 UNREL
     - Bump prereq version of Test::SharedFork to 0.35
     - Added ability to use JSON as the serializer
-    - Added 'tidy' option, cleans up unused nested data structure segments
     - Added ipcs()
     - Added test to ensure we croak if data size is greater than segment size
 

@@ -94,7 +94,6 @@ my %default_options = (
     maxsize    => SHMMAX_BYTES,
     graceful   => 0,
     warn       => 0,
-    tidy       => 0,
     serializer => 'storable',
 );
 
@@ -1094,20 +1093,6 @@ world readable, C<0600> is readable only by the effective UID of the
 process creating the shared variable, etc.
 
 Default: B<0666> (world read and writeable)
-
-=head2 tidy
-
-Each new sub level of a nested data structure uses its own automatically
-generated shared memory segment. By default, we don't clean these up until
-the tied object goes out of scope.
-
-In a very long running process, this may end up in a situation where you run
-out of segments available.
-
-Set this to a true value to have each segment removed after modification of
-a data structure. Note that this will have a slight (~5%) performance penalty.
-
-Default: B<false>
 
 =head2 destroy
 
