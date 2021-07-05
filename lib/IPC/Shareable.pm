@@ -1059,6 +1059,17 @@ attempts to obtain an in-use C<exclusive> segment.
 
 Default: B<false>
 
+=head2 serializer
+
+By default, we use L<Storable> as the data serializer when writing to or
+reading from the shared memory segments we create. For cross-platform and
+cross-language purposes, you can optionally use L<JSON> for this task.
+
+Send in either C<json> or C<storable> as the value to use the respective
+serializer.
+
+Default: B<storable>
+
 =head2 graceful
 
 If B<exclusive> is set to a true value, we normally C<die()> if a second
@@ -1119,15 +1130,16 @@ Default: C<IPC::Shareable::SHM_BUFSIZ()> (ie. B<65536>)
 
 Default values for options are:
 
-     key       => IPC_PRIVATE,
-     create    => 0,
-     exclusive => 0,
-     destroy   => 0,
-     mode      => 0,
-     graceful  => 0,
-     warn      => 0,
-     tidy      => 0,
-     size      => IPC::Shareable::SHM_BUFSIZ(),
+    key         => IPC_PRIVATE,
+    create      => 0,
+    exclusive   => 0,
+    mode        => 0,
+    size        => IPC::Shareable::SHM_BUFSIZ(),
+    destroy     => 0,
+    graceful    => 0,
+    warn        => 0,
+    tidy        => 0,
+    serializer  => 'storable',
 
 =head1 METHODS
 
