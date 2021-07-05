@@ -1122,10 +1122,11 @@ Default values for options are:
      key       => IPC_PRIVATE,
      create    => 0,
      exclusive => 0,
-     graceful  => 0,
-     warn      => 0,
      destroy   => 0,
      mode      => 0,
+     graceful  => 0,
+     warn      => 0,
+     tidy      => 0,
      size      => IPC::Shareable::SHM_BUFSIZ(),
 
 =head1 METHODS
@@ -1143,10 +1144,17 @@ Mandatory, String: The key/glue that identifies the shared memory segment.
 
     $warn
 
-Bool, Optional: Send in a true value to have subsequent processes throw a
+Optional, Bool: Send in a true value to have subsequent processes throw a
 warning that there's been a shared memory violation and that it will exit.
 
 Default: B<false>
+
+=head2 ipcs
+
+Returns the number of existing shared memory segments that currently exist
+on the system.
+
+Return: Integer
 
 =head2 spawn(%opts)
 

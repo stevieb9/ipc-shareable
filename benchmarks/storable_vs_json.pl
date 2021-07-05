@@ -41,7 +41,6 @@ sub default {
 sub json {
     my $base_data = default();
 
-    print IPC::Shareable->ipcs . "\n";
     if (! %j_hash) {
         tie %j_hash, 'IPC::Shareable', {
             create     => 1,
@@ -53,19 +52,8 @@ sub json {
     %j_hash = %$base_data;
 
     $j_hash{struct1} = {a => [qw(b c d)]};
-    $j_hash{struct1} = {a => [qw(b c d)]};
-    $j_hash{struct1} = {a => [qw(b c d)]};
-#    $j_hash{struct1} = {a => [qw(b c d)]};
-#    $j_hash{struct2} = {a => [qw(b c d)]};
-#    $j_hash{struct3} = {a => [qw(b c d)]};
-#    $j_hash{struct4} = {a => [qw(b c d)]};
-#    $j_hash{struct5} = {a => [qw(b c d)]};
-#    $j_hash{struct6} = {a => [qw(b c d)]};
-#    $j_hash{struct7} = {a => [qw(b c d)]};
-#    $j_hash{struct8} = {a => [qw(b c d)]};
 
-    print IPC::Shareable->ipcs . "\n";
-#    tied(%j_hash)->clean_up_all;
+    tied(%j_hash)->clean_up_all;
 }
 sub storable {
     my $base_data = default();
