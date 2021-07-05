@@ -2,6 +2,7 @@ use warnings;
 use strict;
 
 use Carp;
+use Data::Dumper;
 use IPC::Shareable;
 use Test::More;
 
@@ -74,6 +75,7 @@ tie $sv, 'IPC::Shareable', { destroy => 1 };
 # deeply nested
 
 $sv->{this}->{is}->{nested}->{deeply}->[0]->[1]->[2] = 'found';
+
 is
     $sv->{this}->{is}->{nested}->{deeply}->[0]->[1]->[2],
     'found',

@@ -34,6 +34,8 @@ use constant {
     SHM_BUFSIZ  =>  65536,
     SEM_MARKER  =>  0,
     SHM_EXISTS  =>  1,
+
+    SHMMAX_BYTES    => 1073741824, # 1 GB
 };
 
 require Exporter;
@@ -88,6 +90,8 @@ my %default_options = (
     destroy    => 0,
     mode       => 0666,
     size       => SHM_BUFSIZ,
+    dynamic    => 0,
+    maxsize    => SHMMAX_BYTES,
     graceful   => 0,
     warn       => 0,
     tidy       => 0,
@@ -122,17 +126,17 @@ sub STORE {
 
     if ($knot->{_type} eq 'HASH') {
         my ($key, $val) = @_;
-        _mg_tie($knot, $val, $key) if $knot->_need_tie($val, $key);
+#        _mg_tie($knot, $val, $key) if $knot->_need_tie($val, $key);
         $knot->{_data}{$key} = $val;
     }
     elsif ($knot->{_type} eq 'ARRAY') {
         my ($i, $val) = @_;
-        _mg_tie($knot, $val, $i) if $knot->_need_tie($val, $i);
+#        _mg_tie($knot, $val, $i) if $knot->_need_tie($val, $i);
         $knot->{_data}[$i] = $val;
     }
     elsif ($knot->{_type} eq 'SCALAR') {
         my ($val) = @_;
-        _mg_tie($knot, $val) if $knot->_need_tie($val);
+#        _mg_tie($knot, $val) if $knot->_need_tie($val);
         $knot->{_data} = \$val;
     }
     else {

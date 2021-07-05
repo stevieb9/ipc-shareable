@@ -2,6 +2,7 @@ benchmarks/bench_changes.pl
 benchmarks/bench_results.txt
 benchmarks/sereal_vs_storable_vs_json_without_ipc.pl
 benchmarks/storable_vs_json.pl
+benchmarks/tidy_vs_untidy.pl
 Changes
 COPYING
 CREDITS
@@ -30,6 +31,8 @@ t/50-ipcobj.t
 t/55-lsync.t
 t/60-tied.t
 t/61-seg_sem.t
+t/63-nested_segs_tidy.t
+t/64-nested_segs_untidy.t
 t/65-seg_size.t
 t/71-unspawn.t
 t/72-unspawn_destroy.t
@@ -46,4 +49,6 @@ t/_spawn_class
 t/spawn_data_in_object/75-spawn_object_contains_data.t
 t/spawn_data_in_object/76-unspawn_object_contains_data.t
 t/spawn_data_in_object/SpawnTest.pm
+testing/one_deep_hash.pl
 testing/sharelite_with_sereal.pl
+testing/two_deep_hash.pl
