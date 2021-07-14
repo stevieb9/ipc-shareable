@@ -49,7 +49,13 @@ use constant BYTES => 2000000; # ~2MB
     };
 
     is $size_ok, undef, "We croak if size is greater than max RAM";
-    like $@, qr/Cannot allocate memory/, "...and error is sane";
+
+    if ($^O eq 'linux') {
+        like $@, qr/Cannot allocate memory/, "...and error is sane";
+    }
+    else {
+        like $@, qr/Invalid argument/, "...and error is sane";
+    }
 }
 
 my $k = tie my $sv, 'IPC::Shareable', {
@@ -63,11 +69,18 @@ my $seg = $k->seg;
 my $id   = $seg->id;
 my $size = $seg->size;
 
-my $record = `ipcs -m -i $id`;
-my $actual_size = 0;
+my $actual_size;
 
-if ($record =~ /bytes=(\d+)/s) {
-    $actual_size = $1;
+if ($^O eq 'linux') {
+    my $record = `ipcs -m -i $id`;
+    my $actual_size = 0;
+
+    if ($record =~ /bytes=(\d+)/s) {
+        $actual_size = $1;
+    }
+}
+else {
+    $actual_size = 0;
 }
 
 is BYTES, $size, "size param is the same as the segment size";
@@ -76,7 +89,6 @@ is BYTES, $size, "size param is the same as the segment size";
 
 TODO: {
     local $TODO = 'Not yet working on FreeBSD or macOS';
-    is $size, $actual_size, "actual size in bytes ok if sending in custom size";
 };
 
 # ...and only run it on Linux systems
