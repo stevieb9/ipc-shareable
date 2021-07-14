@@ -17,8 +17,9 @@ use IPC::SysV qw(
     SEM_UNDO
 );
 use JSON qw(-convert_blessed_universally);
-use Storable 0.6 qw(freeze thaw);
 use Scalar::Util;
+use String::CRC32;
+use Storable 0.6 qw(freeze thaw);
 
 our $VERSION = '1.05';
 
@@ -90,6 +91,7 @@ my %default_options = (
     destroy    => 0,
     mode       => 0666,
     size       => SHM_BUFSIZ,
+    limit      => 1,
     graceful   => 0,
     warn       => 0,
     serializer => 'storable',
@@ -374,6 +376,18 @@ sub process_register {
     return \%process_register;
 }
 
+sub attributes {
+    my ($knot, $attr) = @_;
+
+    my $attrs = $knot->{attributes};
+
+    if (defined $attr) {
+        return $knot->{attributes}{$attr};
+    }
+    else {
+        return $knot->{attributes};
+    }
+}
 sub ipcs {
     my $count = `ipcs -m | wc -l`;
     chomp $count;
@@ -481,7 +495,7 @@ sub clean_up {
     my $class = shift;
 
     for my $s (values %process_register) {
-        next unless $s->{attributes}{owner} == $$;
+        next unless $s->attributes('owner') == $$;
         remove($s);
     }
 }
@@ -542,8 +556,8 @@ sub singleton {
 END {
     for my $s (values %process_register) {
         unlock($s);
-        next unless $s->{attributes}->{destroy};
-        next unless $s->{attributes}->{owner} == $$;
+        next unless $s->attributes('destroy');
+        next unless $s->attributes('owner') == $$;
         remove($s);
     }
 }
@@ -553,7 +567,7 @@ END {
 sub _encode {
     my ($knot, $seg, $data) = @_;
 
-    my $serializer = $knot->{attributes}{serializer};
+    my $serializer = $knot->attributes('serializer');
 
     if ($serializer eq 'storable') {
         return _freeze($seg, $data);
@@ -567,7 +581,7 @@ sub _encode {
 sub _decode {
     my ($knot, $seg) = @_;
 
-    my $serializer = $knot->{attributes}{serializer};
+    my $serializer = $knot->attributes('serializer');
 
     if ($serializer eq 'storable') {
         return _thaw($seg);
@@ -582,14 +596,7 @@ sub _encode_json {
     my $seg  = shift;
     my $data = shift;
 
-#    my $store = {
-#        data    => $data,
-#        id      => 'IPC::Shareable',
-#    };
-
     my $json = encode_json $data;
-#    # Could be a large string.  No need to copy it.  substr more efficient
-#    substr $json, 0, 0, 'IPC::Shareable';
 
     if (length($json) > $seg->size) {
         croak "Length of shared data exceeds shared segment size";
@@ -652,24 +659,39 @@ sub _thaw {
     }
 }
 sub _tie {
-    my $type  = shift;
-    my $class = shift;
-    my $opts  = _parse_args(@_);
+    my ($type, $class, $key_str, $opts);
 
-    my $key      = _shm_key($opts);
-    my $flags    = _shm_flags($opts);
-    my $shm_size = $opts->{size};
+    if (scalar @_ == 4) {
+        ($type, $class, $key_str, $opts) = @_;
+        $opts->{key} = $key_str;
+    }
+    else {
+        ($type, $class, $opts) = @_;
+    }
+
+    $opts  = _parse_args($opts);
+
+    my $knot = bless { attributes => $opts }, $class;
+
+    my $key      = $knot->_shm_key;
+    my $flags    = $knot->_shm_flags;
+    my $shm_size = $knot->attributes('size');
+
+    if ($knot->attributes('limit') && $shm_size > SHMMAX_BYTES) {
+        croak
+            "Shared memory segment size '$shm_size' is larger than max size of " .              SHMMAX_BYTES;
+    }
 
     my $seg;
 
-    if ($opts->{graceful}) {
+    if ($knot->attributes('graceful')) {
         my $exclusive = eval {
             $seg = IPC::Shareable::SharedMem->new($key, $shm_size, $flags);
             1;
         };
 
         if (! defined $exclusive) {
-            if ($opts->{warn}) {
+            if ($knot->attributes('warn')) {
                 warn "Process ID $$ exited due to exclusive shared memory collision\n";
             }
             exit(0);
@@ -680,18 +702,23 @@ sub _tie {
     }
 
     if (! defined $seg) {
-        if (! $opts->{create}) {
+        if ($! =~ /Cannot allocate memory/) {
+            croak "ERROR: Could not create shared memory segment: $!\n\n" .
+                  "Are you using too large a size?";
+        }
+
+        if (! $knot->attributes('create')) {
             confess "ERROR: Could not acquire shared memory segment... 'create' ".
                   "option is not set, and the segment hasn't been created " .
                   "yet:\n\n $!";
         }
-        elsif ($opts->{create} && $opts->{exclusive}){
+        elsif ($knot->attributes('create') && $knot->attributes('exclusive')){
             croak "ERROR: Could not create shared memory segment. 'create' " .
                   "and 'exclusive' are set. Does the segment already exist? " .
                   "\n\n$!";
         }
         else {
-            croak "ERROR: Could not create shared memory segment.\n\n$!n";
+            croak "ERROR: Could not create shared memory segment.\n\n$!";
         }
     }
 
@@ -704,8 +731,8 @@ sub _tie {
         croak "Could not obtain semaphore set lock: $!\n";
     }
 
-    my $knot = {
-        attributes   => $opts,
+    %$knot = (
+        %$knot,
         _iterating   => 0,
         _key         => $key,
         _lock        => 0,
@@ -713,13 +740,13 @@ sub _tie {
         _sem         => $sem,
         _type        => $type,
         _was_changed => 0,
-    };
+    );
 
     $knot->{_data} = _thaw($seg);
 
     if ($sem->getval(SEM_MARKER) != SHM_EXISTS) {
-        $global_register{$knot->{_shm}->id} ||= $knot;
-        $process_register{$knot->{_shm}->id} ||= $knot;
+        $global_register{$knot->seg->id} ||= $knot;
+        $process_register{$knot->seg->id} ||= $knot;
         if (! $sem->setval(SEM_MARKER, SHM_EXISTS)){
             croak "Couldn't set semaphore during object creation: $!";
         }
@@ -727,20 +754,13 @@ sub _tie {
 
     $sem->op(@{ $semop_args{(LOCK_SH|LOCK_UN)} });
 
-    return bless $knot, $class;
+    return $knot;
 }
 sub _parse_args {
-    my($proto, $opts) = @_;
+    my ($opts) = @_;
 
-    $proto = defined $proto ? $proto :  0;
     $opts  = defined $opts  ? $opts  : { %default_options };
 
-    if (ref $proto eq 'HASH') {
-        $opts = $proto;
-    }
-    else {
-        $opts->{key} = $proto;
-    }
     for my $k (keys %default_options) {
         if (not defined $opts->{$k}) {
             $opts->{$k} = $default_options{$k};
@@ -759,31 +779,33 @@ sub _parse_args {
     return $opts;
 }
 sub _shm_key {
-    my $hv = shift;
-    my $val = ($hv->{key} or '');
+    my ($knot) = @_;
 
-    if ($val eq '') {
-        return IPC_PRIVATE;
+    my $key_str = ($knot->attributes('key') or '');
+    my $key;
+
+    if ($key_str eq '') {
+        $key = IPC_PRIVATE;
     }
-    elsif ($val =~ /^\d+$/) {
-        return $val;
+    elsif ($key_str =~ /^\d+$/) {
+        $key = $key_str;
     }
     else {
-        # XXX This only uses the first four characters
-        $val = pack   'A4', $val;
-        $val = unpack 'i', $val;
-        return $val;
+        $key = crc32($key_str);
     }
+
+    return $key;
 }
 sub _shm_flags {
     # --- Parses the anonymous hash passed to constructors; returns a list
     # --- of args suitable for passing to shmget
-    my $hv = shift;
+    my ($knot) = @_;
+
     my $flags = 0;
 
-    $flags |= IPC_CREAT if $hv->{create};
-    $flags |= IPC_EXCL  if $hv->{exclusive};
-    $flags |= ($hv->{mode} or 0666);
+    $flags |= IPC_CREAT if $knot->attributes('create');
+    $flags |= IPC_EXCL  if $knot->attributes('exclusive');;
+    $flags |= ($knot->attributes('mode') or 0666);
 
     return $flags;
 }
@@ -803,7 +825,7 @@ sub _mg_tie {
     }
 
     my %opts = (
-        %{$parent->{attributes}},
+        %{ $parent->attributes },
         key       => $key,
         exclusive => 1,
         create    => 1,
@@ -919,7 +941,7 @@ sub _trace {
         my $obj;
         if (ref eq 'IPC::Shareable') {
             '        ' . "\$_[$i] = $_: shmid: $_->{_shm}->{_id}; " .
-                Data::Dumper->Dump([ $_->{attributes} ], [ 'opts' ]);
+                Data::Dumper->Dump([ $_->attributes ], [ 'opts' ]);
         } else {
             '        ' . Data::Dumper->Dump( [ $_ ] => [ "\_[$i]" ]);
         }
@@ -935,7 +957,7 @@ sub _debug {
         my $obj;
         if (ref eq 'IPC::Shareable') {
             '        ' . "$_: shmid: $_->{_shm}->{_id}; " .
-                Data::Dumper->Dump([ $_->{attributes} ], [ 'opts' ]);
+                Data::Dumper->Dump([ $_->attributes ], [ 'opts' ]);
         }
         else {
             '        ' . Data::Dumper::Dumper($_);
@@ -1089,13 +1111,6 @@ process collisions. Has no effect outside of that scenario.
 
 Default: B<false>
 
-=head2 tidy
-
-For long running processes, set this to a true value to clean up unneeded
-segments from nested data structures. Comes with a slight performance hit.
-
-Default: B<false>
-
 =head2 mode
 
 The B<mode> argument is an octal number specifying the access
@@ -1105,6 +1120,23 @@ world readable, C<0600> is readable only by the effective UID of the
 process creating the shared variable, etc.
 
 Default: B<0666> (world read and writeable)
+
+=head2 size
+
+This field may be used to specify the size of the shared memory segment
+allocated.
+
+Default: C<IPC::Shareable::SHM_BUFSIZ()> (ie. B<65536>)
+
+=head2 limit
+
+This field will allow you to set a segment size larger than the default maximum
+which is 1,073,741,824 bytes (approximately 1 GB). If set, we will
+C<croak()> if a size specified is larger than the maximum. If it's set to a
+false value, we'll C<croak()> if you send in a size larger than the total
+system RAM.
+
+Default: B<true>
 
 =head2 destroy
 
@@ -1120,12 +1152,12 @@ is a finite resource and should be released if it is not needed.
 
 Default: B<false>
 
-=head2 size
+=head2 tidy
 
-This field may be used to specify the size of the shared memory segment
-allocated.
+For long running processes, set this to a true value to clean up unneeded
+segments from nested data structures. Comes with a slight performance hit.
 
-Default: C<IPC::Shareable::SHM_BUFSIZ()> (ie. B<65536>)
+Default: B<false>
 
 =head2 Default Option Values
 
@@ -1136,9 +1168,11 @@ Default values for options are:
     exclusive   => 0,
     mode        => 0,
     size        => IPC::Shareable::SHM_BUFSIZ(),
+    limit       => 1,
     destroy     => 0,
     graceful    => 0,
     warn        => 0,
+    singleton   => 0,
     tidy        => 0,
     serializer  => 'storable',
 
@@ -1286,6 +1320,20 @@ memory segment object currently in use.
 
 Called on either the tied variable or the tie object, returns the semaphore
 object related to the memory segment currently in use.
+
+=head2 attributes
+
+Retrieves the list of attributes that drive the L<IPC::Shareable> object.
+
+Parameters:
+
+    $attribute
+
+Optional, String: The name of the attribute. If sent in, we'll return the value
+of this specific attribute. Returns C<undef> if the attribute isn't found.
+
+Returns: A hash reference of all attributes if C<$attributes> isn't sent in, the
+value of the specific attribute if it is.
 
 =head2 global_register
 

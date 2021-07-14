@@ -12,6 +12,7 @@ my $k = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 1 };
 
 my @seg_keys = qw(
     _id
+    _key
     _flags
     _type
     _size

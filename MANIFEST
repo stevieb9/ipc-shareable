@@ -2,7 +2,6 @@ benchmarks/bench_changes.pl
 benchmarks/bench_results.txt
 benchmarks/sereal_vs_storable_vs_json_without_ipc.pl
 benchmarks/storable_vs_json.pl
-benchmarks/tidy_vs_untidy.pl
 Changes
 COPYING
 CREDITS
@@ -15,9 +14,11 @@ MANIFEST.SKIP
 README
 t/00-base.t
 t/02-create.t
+t/04-key.t
 t/05-sv.t
 t/10-av.t
 t/15-hv.t
+t/17-attributes.t
 t/20-ref.t
 t/25-ipc.t
 t/30-lock_operation.t
@@ -34,6 +35,7 @@ t/61-seg_sem.t
 t/63-nested_segs_tidy.t
 t/64-nested_segs_untidy.t
 t/65-seg_size.t
+t/66-size_exceeded.t
 t/71-unspawn.t
 t/72-unspawn_destroy.t
 t/75-graceful.t

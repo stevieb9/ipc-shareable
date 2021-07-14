@@ -36,8 +36,9 @@ WriteMakefile(
     },
     PREREQ_PM    => {
         'JSON'          => 0,
-        'Storable'      => 0.607,
         'Scalar::Util'  => 0,
+        'Storable'      => 0.607,
+        'String::CRC32' => 0,
     },
 
 );
