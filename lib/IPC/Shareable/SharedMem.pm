@@ -20,9 +20,11 @@ sub default_size {
 
 sub new {
     my($class, $key, $size, $flags, $type) = @_;
+
     defined $key or do {
-        croak "usage: IPC::SharedMem->new(KEY, [ SIZE,  [ FLAGS ] ])";
+        confess "usage: IPC::SharedMem->new(KEY, [ SIZE,  [ FLAGS ] ])";
     };
+
     $size  ||= $default_size;
     $flags ||= 0;
 
@@ -39,6 +41,7 @@ sub new {
 
     my $sh = {
         _id    => $id,
+        _key   => $key,
         _size  => $size,
         _flags => $flags,
         _type  => $type,
@@ -52,6 +55,12 @@ sub id {
     $self->{_id} = shift if @_;
     return $self->{_id};
 }
+sub key {
+    my $self = shift;
+
+    $self->{_key} = shift if @_;
+    return $self->{_key};
+}
 sub flags {
     my $self = shift;
 
@@ -63,6 +72,12 @@ sub size {
 
     $self->{_size} = shift if @_;
     return $self->{_size};
+}
+sub type {
+    my $self = shift;
+
+    $self->{_type} = shift if @_;
+    return $self->{_type};
 }
 sub shmwrite {
     my($self, $data) = @_;

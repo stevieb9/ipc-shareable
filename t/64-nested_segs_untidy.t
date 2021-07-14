@@ -33,7 +33,7 @@ use Test::More;
     is seg_count(), $initial_seg_count + 1, "After initial aref add, seg count ok";
 
     $a[0] = [1, 2];
-    is seg_count(), $initial_seg_count + 2, "Adding a new aref to an existing element creates a new seg ok";
+    is seg_count(), $initial_seg_count + 2, "Adding a new aref to an existing element doesn't create a new seg ok";
 
     $a[0] = [1, 2, 3];
     is seg_count(), $initial_seg_count + 3, "Same with repurposing the aref again";
@@ -72,7 +72,7 @@ use Test::More;
     is seg_count(), $initial_seg_count + 1, "After initial href add, seg count ok";
 
     $h{a} = {a => 1, b => 2};
-    is seg_count(), $initial_seg_count + 2, "Adding a new href to an existing key creates a new seg ok";
+    is seg_count(), $initial_seg_count + 2, "Adding a new href to an existing key doesn't create a new seg ok";
 
     $h{a} = {a => 1, b => 2, c => 3};
     is seg_count(), $initial_seg_count + 3, "Same with repurposing the href again";
