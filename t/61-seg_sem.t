@@ -44,6 +44,5 @@ is ref $tied_sem, 'IPC::Semaphore', "tied sem() is the proper object";
 
 is $knot_sem->id, $tied_sem->id, "knot and tied sem() hashes have the same id";
 
-print Dumper $k;
 done_testing();
 

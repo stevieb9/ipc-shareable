@@ -96,5 +96,6 @@ done_testing;
 sub seg_count {
     my $count = `ipcs -m | wc -l`;
     chomp $count;
+    $count =~ s/\s+//g;
     return $count;
 }
