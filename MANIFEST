@@ -36,6 +36,7 @@ t/63-nested_segs_tidy.t
 t/64-nested_segs_untidy.t
 t/65-seg_size.t
 t/66-size_exceeded.t
+t/67-out_of_memory.t
 t/71-unspawn.t
 t/72-unspawn_destroy.t
 t/75-graceful.t

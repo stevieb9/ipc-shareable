@@ -73,7 +73,7 @@ my $actual_size;
 
 if ($^O eq 'linux') {
     my $record = `ipcs -m -i $id`;
-    my $actual_size = 0;
+    $actual_size = 0;
 
     if ($record =~ /bytes=(\d+)/s) {
         $actual_size = $1;
