@@ -703,8 +703,13 @@ sub _tie {
 
     if (! defined $seg) {
         if ($! =~ /Cannot allocate memory/) {
-            croak "ERROR: Could not create shared memory segment: $!\n\n" .
+            croak "\nERROR: Could not create shared memory segment: $!\n\n" .
                   "Are you using too large a size?";
+        }
+
+        if ($! =~ /No space left on device/) {
+            croak "\nERROR: Could not create shared memory segment: $!\n\n" .
+                "Are you spawning too many segments in a loop?";
         }
 
         if (! $knot->attributes('create')) {
