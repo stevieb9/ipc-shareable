@@ -1019,7 +1019,7 @@ IPC::Shareable - Use shared memory backed variables across processes
 
     # Ensure only one instance of a script can be run at any time
 
-    IPC::Shareable->singleton('GLUE');
+    IPC::Shareable->singleton('UNIQUE SCRIPT LOCK STRING');
 
 =head1 DESCRIPTION
 
@@ -1027,39 +1027,38 @@ IPC::Shareable allows you to tie a variable to shared memory making it
 easy to share the contents of that variable with other Perl processes and
 scripts.
 
-Scalars, arrays, and hashes and even objects can be tied. The variable being
+Scalars, arrays, hashes and even objects can be tied. The variable being
 tied may contain arbitrarily complex data structures - including references to
 arrays, hashes of hashes, etc.
 
 The association between variables in distinct processes is provided by
-GLUE (aka "key").  This is an integer number or 4 character string[1] that
-serves as a common identifier for data across process space.  Hence the
-statement
+GLUE (aka "key").  This is any arbitrary string or integer that serves as a
+common identifier for data across process space.  Hence the statement:
 
-    tie my $scalar, 'IPC::Shareable', { key => 'GLUE', create => 1 };
+    tie my $scalar, 'IPC::Shareable', { key => 'GLUE STRING', create => 1 };
 
 ...in program one and the statement
 
-    tie my $variable, 'IPC::Shareable', { key => 'GLUE' };
+    tie my $variable, 'IPC::Shareable', { key => 'GLUE STRING' };
 
 ...in program two will create and bind C<$scalar> the shared memory in program
 one and bind it to C<$variable> in program two.
 
 There is no pre-set limit to the number of processes that can bind to
 data; nor is there a pre-set limit to the complexity of the underlying
-data of the tied variables[2].  The amount of data that can be shared
+data of the tied variables.  The amount of data that can be shared
 within a single bound variable is limited by the system's maximum size
 for a shared memory segment (the exact value is system-dependent).
 
 The bound data structures are all linearized (using Raphael Manfredi's
-L<Storable> module) before being slurped into shared memory.  Upon
-retrieval, the original format of the data structure is recovered.
+L<Storable> module or optionally L<JSON>) before being slurped into shared
+memory.  Upon retrieval, the original format of the data structure is recovered.
 Semaphore flags can be used for locking data between competing processes.
 
 =head1 OPTIONS
 
-Options are specified by passing a reference to a hash as the fourth
-argument to the C<tie()> function that enchants a variable.
+Options are specified by passing a reference to a hash as the third argument to
+the C<tie()> function that enchants a variable.
 
 The following fields are recognized in the options hash:
 
@@ -1075,10 +1074,10 @@ Default: B<IPC_PRIVATE>
 
 =head2 create
 
-B<create> is used to control whether calls to C<tie()> create new shared
-memory segments or not.  If B<create> is set to a true value,
+B<create> is used to control whether the process creates a new shared
+memory segment or not.  If B<create> is set to a true value,
 L<IPC::Shareable> will create a new binding associated with GLUE as
-needed.  If B<create> is false, C<IPC::Shareable> will not attempt to
+needed.  If B<create> is false, L<IPC::Shareable> will not attempt to
 create a new shared memory segment associated with GLUE.  In this
 case, a shared memory segment associated with GLUE must already exist
 or we'll C<croak()>.
@@ -1092,25 +1091,14 @@ binding associated with GLUE already exists.  If set to a false value, calls to
 C<tie()> will succeed even if a shared memory segment associated with GLUE
 already exists.
 
-See L</graceful> for a silent, non-exception exit if a second process
-attempts to obtain an in-use C<exclusive> segment.
+See L</graceful> for a silent, non-exception exit if a second process attempts
+to obtain an in-use C<exclusive> segment.
 
 Default: B<false>
 
-=head2 serializer
-
-By default, we use L<Storable> as the data serializer when writing to or
-reading from the shared memory segments we create. For cross-platform and
-cross-language purposes, you can optionally use L<JSON> for this task.
-
-Send in either C<json> or C<storable> as the value to use the respective
-serializer.
-
-Default: B<storable>
-
 =head2 graceful
 
-If B<exclusive> is set to a true value, we normally C<die()> if a second
+If B<exclusive> is set to a true value, we normally C<croak()> if a second
 process attempts to obtain the same shared memory segment. Set B<graceful>
 to true and we'll C<exit> silently and gracefully. This option does nothing
 if C<exclusive> isn't set.
@@ -1122,7 +1110,7 @@ Default: B<false>
 =head2 warn
 
 When set to a true value, B<graceful> will output a warning if there are
-process collisions. Has no effect outside of that scenario.
+process collisions.
 
 Default: B<false>
 
@@ -1141,6 +1129,9 @@ Default: B<0666> (world read and writeable)
 This field may be used to specify the size of the shared memory segment
 allocated.
 
+The maximum size we allow by default is ~1GB. See the L</limit> option to
+override this default.
+
 Default: C<IPC::Shareable::SHM_BUFSIZ()> (ie. B<65536>)
 
 =head2 limit
@@ -1156,7 +1147,8 @@ Default: B<true>
 =head2 destroy
 
 If set to a true value, the shared memory segment underlying the data
-binding will be removed when the process calling C<tie()> exits (gracefully)[3].
+binding will be removed when the process that initialized the shared memory
+segment exits (gracefully)[1].
 
 Only those memory segments that were created by the current process will be
 removed.
@@ -1174,6 +1166,17 @@ segments from nested data structures. Comes with a slight performance hit.
 
 Default: B<false>
 
+=head2 serializer
+
+By default, we use L<Storable> as the data serializer when writing to or
+reading from the shared memory segments we create. For cross-platform and
+cross-language purposes, you can optionally use L<JSON> for this task.
+
+Send in either C<json> or C<storable> as the value to use the respective
+serializer.
+
+Default: B<storable>
+
 =head2 Default Option Values
 
 Default values for options are:
@@ -1187,7 +1190,6 @@ Default values for options are:
     destroy     => 0,
     graceful    => 0,
     warn        => 0,
-    singleton   => 0,
     tidy        => 0,
     serializer  => 'storable',
 
@@ -1213,7 +1215,7 @@ Default: B<false>
 
 =head2 ipcs
 
-Returns the number of existing shared memory segments that currently exist
+Returns the number of instantiated shared memory segments that currently exist
 on the system.
 
 Return: Integer
@@ -1240,12 +1242,12 @@ Example:
 
     use IPC::Shareable;
 
-    # following line sets things up and returns
+    # The following line sets things up and returns
 
-    IPC::Shareable->spawn(key => 'GLUE');
+    IPC::Shareable->spawn(key => 'GLUE STRING');
 
 Now, either within the same script, or any other script on the system, your
-data will be available at the key/glue C<GLUE>. Call
+data will be available at the key/glue C<GLUE STRING>. Call
 L<unspawn()|/unspawn($key, $destroy)> to remove it.
 
 =head2 unspawn($key, $destroy)
@@ -1491,6 +1493,10 @@ instance of C<IPC::Shareable> on success, and C<undef> otherwise.
 
 Benjamin Sugars <bsugars@canoe.ca>
 
+=head1 MAINTAINED BY
+
+Steve Bertrand <steveb@cpan.org>
+
 =head1 NOTES
 
 =head2 Footnotes from the above sections
@@ -1498,20 +1504,6 @@ Benjamin Sugars <bsugars@canoe.ca>
 =over 4
 
 =item 1
-
-If GLUE is longer than 4 characters, only the 4 most significant
-characters are used.  These characters are turned into integers by
-unpack()ing them.  If GLUE is less than 4 characters, it is space
-padded.
-
-=item 2
-
-IPC::Shareable provides no pre-set limits, but the system does.
-Namely, there are limits on the number of shared memory segments that
-can be allocated and the total amount of memory usable by shared
-memory.
-
-=item 3
 
 If the process has been smoked by an untrapped signal, the binding
 will remain in shared memory.  If you're cautious, you might try
@@ -1549,9 +1541,8 @@ locking implemented with semaphores in C<IPC::Shareable> is that when a
 process dies, it automatically releases any locks.  This only happens
 with C<IPC::Shareable> if the process dies gracefully.
 
-The alternative
-is to attempt to account for every possible calamitous ending for your
-process (robust signal handling in Perl is a source of much debate,
+The alternative is to attempt to account for every possible calamitous ending
+for your process (robust signal handling in Perl is a source of much debate,
 though it usually works just fine) or to become familiar with your
 system's tools for removing shared memory and semaphores.  This
 concern should be balanced against the significant performance
@@ -1571,9 +1562,17 @@ Examples:
 
     ipcs -a
 
-    # List all memory segments along with each one's associated process ID
+    # List all memory segments and semaphores along with each one's associated process ID
 
     ipcs -ap
+
+    # List just the shared memory segments
+
+    ipcs -m
+
+    # List the details of an individual memory segment
+
+    ipcs -i 12345678
 
     # Remove *all* semaphores and memory segments
 
