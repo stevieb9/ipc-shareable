@@ -34,7 +34,7 @@ use constant BYTES => 2000000; # ~2MB
         is $size_ok_no_limit, 1, "size larger than MAX succeeeds with limit=>0 ok";
     }
     else {
-        warn "IPC_MEM env var not set, skipped the big memory test\n";
+        warn "IPC_MEM env var not set, skipping the exhaust memory test\n";
     }
 }
 

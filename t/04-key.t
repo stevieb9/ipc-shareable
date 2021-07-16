@@ -53,8 +53,28 @@ use Test::More;
 
     is $k->{attributes}{key}, 'tested', "six letter attr key is tested ok";
     is $k->seg->key, 142926612, "six letter attr key is ok";
+}
 
-    print Dumper $k;
+# filenames
+{
+    my %key_hash = (
+        'test/this.pl'          => 2780677640,
+        'test/this.plx'         => 2191663991,
+        'test/that.pl'          => 135968112,
+        'test/testing/this.pl'  => 1718888502,
+    );
+
+    for (keys %key_hash) {
+
+        my $k = tie my $sv, 'IPC::Shareable', {key => $_, create => 1, destroy => 1};
+
+        is $k->attributes('key'), $_, "$_ as key is the proper attribute ok";
+
+        my $key = $k->seg->key;
+        is $key, $key_hash{$_}, "...and key $_ converted to '$key' ok";
+
+        $k->clean_up_all;
+    }
 }
 
 done_testing();
