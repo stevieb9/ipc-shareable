@@ -799,6 +799,19 @@ sub _shm_key {
         $key = crc32($key_str);
     }
 
+    $used_ids{$key}++;
+
+    return $key;
+}
+sub _shm_key_rand {
+    my $key;
+
+    do {
+        $key = int(rand(1_000_000));
+    } while ($used_ids{$key});
+
+    $used_ids{$key}++;
+
     return $key;
 }
 sub _shm_flags {
@@ -823,10 +836,7 @@ sub _mg_tie {
         $key = IPC_PRIVATE;
     }
     else {
-        do {
-            $key = int(rand(1_000_000));
-        } while ($used_ids{$key});
-        $used_ids{$key}++;
+        $key = _shm_key_rand();
     }
 
     my %opts = (
