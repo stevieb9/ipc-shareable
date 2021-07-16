@@ -77,4 +77,27 @@ use Test::More;
     }
 }
 
+# strings
+{
+    my %key_hash = (
+        'thisisatest'       => 4221762593,
+        'Thisisntatest'     => 447918523,
+        'This is a test'    => 3229261618,
+        'This isnt a test'  => 4266902788,
+    );
+
+    for (keys %key_hash) {
+
+        my $k = tie my $sv, 'IPC::Shareable', {key => $_, create => 1, destroy => 1};
+
+        my $attr_key = $k->attributes('key');
+        is $attr_key, $_, "'$_' as key is the proper attribute ok";
+
+        my $key = $k->seg->key;
+        is $key, $key_hash{$_}, "...and key '$_' converted to '$key' ok";
+
+        $k->clean_up_all;
+    }
+}
+
 done_testing();
