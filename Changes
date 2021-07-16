@@ -1,5 +1,8 @@
 Revision history for Perl extension IPC::Shareable.
 
+1.06 UNREL
+    -
+
 1.05    2021-07-16
     - Bump prereq version of Test::SharedFork to 0.35
     - Added ability to use JSON as the serializer
