@@ -123,9 +123,7 @@ IPC::Shareable::SharedMem - Object oriented interface to shared memory
 =head1 WARNING
 
 This module is not intended for public consumption.  It is used
-internally by IPC::Shareable to access shared memory.  It will
-probably be replaced soon by IPC::ShareLite or IPC::SharedMem (when
-someone writes it).
+internally by IPC::Shareable to access shared memory.
 
 =head1 DESCRIPTION
 
