@@ -2,11 +2,20 @@ use warnings;
 use strict;
 
 use lib 't/';
+use Test::More;
+
+BEGIN {
+    if (!$ENV{IPC_SPAWN_TEST}) {
+        plan skip_all => "IPC_SPAWN_TEST env var not set";
+    }
+}
 
 use SpawnTest;
-use Data::Dumper;
 use IPC::Shareable;
-use Test::More;
+
+if (! $ENV{IPC_SPAWN_TEST}) {
+    plan skip_all => "IPC_SPAWN_TEST env var not set";
+}
 
 my $obj = SpawnTest->new;
 

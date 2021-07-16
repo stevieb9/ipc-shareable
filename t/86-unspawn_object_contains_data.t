@@ -3,10 +3,16 @@ use strict;
 
 use lib 't/';
 
-use SpawnTest;
-use Data::Dumper;
-use IPC::Shareable;
 use Test::More;
+
+BEGIN {
+    if (!$ENV{IPC_SPAWN_TEST}) {
+        plan skip_all => "IPC_SPAWN_TEST env var not set";
+    }
+}
+
+use SpawnTest;
+use IPC::Shareable;
 
 my $obj = SpawnTest->new;
 
