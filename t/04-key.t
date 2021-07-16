@@ -7,15 +7,18 @@ use Test::More;
 
 # deprecated string key param
 {
+    my $k;
+
     my $ok = eval {
-        tie my $sv, 'IPC::Shareable', 'TEST', {create => 1, destroy => 1};
+        $k = tie my $sv, 'IPC::Shareable', 'TEST', {create => 1, destroy => 1};
         1;
     };
 
     is $ok, 1, "IPC::Shareable accepts old string way of sending in key";
+    is $k->attributes('key'), 'TEST', "...and the key is ok";
+    is $k->seg->key, 4008350648, "...and the converted seg key is ok";
     is $@, '', "...and no error message was set";
 }
-
 
 # shm key matches object key
 {
