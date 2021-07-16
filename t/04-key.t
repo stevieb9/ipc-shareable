@@ -100,4 +100,28 @@ use Test::More;
     }
 }
 
+# integers
+{
+    my %key_hash = (
+        1       => 1,
+        11      => 11,
+        10      => 10,
+        1000    => 1000,
+        65535   => 65535,
+    );
+
+    for (keys %key_hash) {
+
+        my $k = tie my $sv, 'IPC::Shareable', {key => $_, create => 1, destroy => 1};
+
+        my $attr_key = $k->attributes('key');
+        is $attr_key, $_, "'$_' as key is the proper attribute ok";
+
+        my $key = $k->seg->key;
+        is $key, $key_hash{$_}, "...and key '$_' converted to '$key' ok";
+
+        $k->clean_up_all;
+    }
+}
+
 done_testing();
