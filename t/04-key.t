@@ -39,7 +39,7 @@ use Test::More;
     my $k = tie my $sv, 'IPC::Shareable', {key => 'TEST', create => 1, destroy => 1};
 
     is $k->{attributes}{key}, 'TEST', "attr key is TEST ok";
-    is $k->seg->key, 4008350648 - 0x8000000 0, "four letter attr key is ok";
+    is $k->seg->key, 4008350648 - 0x80000000, "four letter attr key is ok";
 }
 
 # three letter lower case

@@ -54,6 +54,7 @@ if ($pid == 0) {
     is $$ps, 'parent', 'parent set the scalar value ok';
 
     IPC::Shareable->clean_up_all;
+
+    done_testing();
 }
 
-done_testing();

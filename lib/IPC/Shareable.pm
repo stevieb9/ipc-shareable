@@ -1037,6 +1037,10 @@ IPC::Shareable - Use shared memory backed variables across processes
 
     use IPC::Shareable qw(:lock);
 
+    my $href = IPC::Shareable->new(%options);
+
+    # ...or
+
     tie SCALAR, 'IPC::Shareable', OPTIONS;
     tie ARRAY,  'IPC::Shareable', OPTIONS;
     tie HASH,   'IPC::Shareable', OPTIONS;
@@ -1232,6 +1236,21 @@ Default values for options are:
     serializer  => 'storable',
 
 =head1 METHODS
+
+=head2 new
+
+Instantiates and returns a reference to a hash backed by shared memory.
+
+Parameters:
+
+Hash, Optional: See the L</OPTIONS> section for a list of all available options.
+Most often, you'll want to send in the B<key>, B<create> and B<destroy> options.
+
+It is possible to get a reference to an array or scalar as well. Simply send in
+either C<< var = > 'ARRAY' >> or C<< var => 'SCALAR' >> to do so.
+
+Return: A reference to a hash (or array or scalar) which is backed by shared
+memory.
 
 =head2 singleton($glue, $warn)
 
