@@ -810,9 +810,13 @@ sub _parse_args {
     return $opts;
 }
 sub _shm_key {
-    my ($knot) = @_;
+    # Generates a 32-bit CRC on the key string. The $key_str parameter is used
+    # for testing only, for purposes of testing various key strings
 
-    my $key_str = ($knot->attributes('key') || '');
+    my ($knot, $key_str) = @_;
+
+    $key_str //= ($knot->attributes('key') || '');
+
     my $key;
 
     if ($key_str eq '') {
@@ -828,7 +832,11 @@ sub _shm_key {
     $used_ids{$key}++;
 
     if ($key > MAX_KEY_INT_SIZE) {
-        $key = $key - MAX_KEY_INT_SIZE
+        $key = $key - MAX_KEY_INT_SIZE;
+
+        if ($key == 0) {
+            croak "We've calculated a key which equals 0. This is a fatal error";
+        }
     }
 
     return $key;

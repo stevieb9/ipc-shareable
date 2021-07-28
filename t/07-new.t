@@ -30,11 +30,8 @@ if ($pid == 0) {
     my $cs = $mod->new(key => 'scalar2', var => 'SCALAR');
     $$cs = 'child';
 
-    exit;
 } else {
     # parent
-
-    IPC::Shareable->clean_up_all;
 
     my $ph = $mod->new(key => 'hash2', create => 1, destroy => 1);
     my $pa = $mod->new(key => 'array2', create => 1, destroy => 1, var => 'ARRAY');
@@ -43,10 +40,18 @@ if ($pid == 0) {
     kill ALRM => $pid;
     waitpid($pid, 0);
 
-    $pa->[0] = 'parent';
-    $ph->{parent} = 'parent';
-    $$ps = "parent";
+    is $ph->{child}, 'child', 'child set the hash value ok';
+    is $pa->[1], 'child', 'child set the array value ok';
+    is $$ps, 'child', 'child set the scalar value ok';
 
+    $ph->{parent} = 'parent';
+    is $ph->{parent}, 'parent', 'parent set the hash value ok';
+
+    $pa->[0] = 'parent';
+    is $pa->[0], 'parent', 'parent set the array value ok';
+
+    $$ps = "parent";
+    is $$ps, 'parent', 'parent set the scalar value ok';
 
     IPC::Shareable->clean_up_all;
 }
