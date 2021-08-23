@@ -17,6 +17,7 @@ use IPC::SysV qw(
     SEM_UNDO
 );
 use JSON qw(-convert_blessed_universally);
+use Module::Installed qw(module_installed);
 use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
@@ -698,6 +699,22 @@ sub _tie {
 
     my $knot = bless { attributes => $opts }, $class;
 
+    if ($knot->attributes('serializer') eq 'sereal') {
+        if (module_installed('Sereal')) {
+            require Sereal::Encoder;
+            Sereal::Encoder->import;
+
+            require Sereal::Decoder;
+            Sereal::Decoder->import;
+
+            $knot->_sereal_encoder;
+            $knot->_sereal_decoder;
+        }
+        else {
+            croak("\nserealizer option set to 'sereal', but the Sereal distribution isn't installed\n");
+        }
+    }
+
     my $key      = $knot->_shm_key;
     my $flags    = $knot->_shm_flags;
     my $shm_size = $knot->attributes('size');
@@ -982,6 +999,24 @@ sub _reset_segment {
             (tied @{ $parent->{_data}[$id] })->remove;
         }
     }
+}
+sub _sereal_encoder {
+    my ($knot);
+
+    if (! exists $knot->{sereal_encoder}) {
+        $knot->{sereal_encoder} = Sereal::Encoder->new;
+    }
+
+    return $knot->{sereal_encoder};
+}
+sub _sereal_decodder {
+    my ($knot);
+
+    if (! exists $knot->{sereal_decoder}) {
+        $knot->{sereal_decoder} = Sereal::Decoder->new;
+    }
+
+    return $knot->{sereal_decoder};
 }
 
 sub _trace {

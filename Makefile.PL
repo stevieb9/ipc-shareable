@@ -35,10 +35,10 @@ WriteMakefile(
         'Test::SharedFork' => 0.35,
     },
     PREREQ_PM    => {
-        'JSON'          => 0,
-        'Scalar::Util'  => 0,
-        'Storable'      => 0.607,
-        'String::CRC32' => 0,
+        'JSON'              => 0,
+        'Module::Installed' => 1.02,
+        'Scalar::Util'      => 0,
+        'Storable'          => 0.607,
+        'String::CRC32'     => 0,
     },
-
 );
