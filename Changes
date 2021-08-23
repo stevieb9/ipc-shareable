@@ -6,7 +6,8 @@ Revision history for Perl extension IPC::Shareable.
       number exactly, casuing duplicates, and incorrect segment access
     - Added new() method, returns a reference (default hash) without having to
       do the tie() directly
-    -
+    - Fix issue in JSON decoder where an empty JSON string may have caused
+      decode failure
 
 1.05    2021-07-16
     - Bump prereq version of Test::SharedFork to 0.35

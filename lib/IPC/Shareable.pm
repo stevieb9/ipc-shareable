@@ -598,6 +598,9 @@ sub _encode {
     if ($serializer eq 'storable') {
         return _freeze($seg, $data);
     }
+    elsif ($serializer eq 'sereal'){
+        return _encode_sereal($knot, $seg, $data);
+    }
     elsif ($serializer eq 'json'){
         return _encode_json($seg, $data);
     }
@@ -611,6 +614,9 @@ sub _decode {
 
     if ($serializer eq 'storable') {
         return _thaw($seg);
+    }
+    elsif ($serializer eq 'sereal'){
+        return _decode_sereal($knot, $seg);
     }
     elsif ($serializer eq 'json'){
         return _decode_json($seg);
@@ -634,11 +640,10 @@ sub _decode_json {
 
     my $json = $seg->shmread;
 
-    return if ! $json;
-
     # Remove \x{0} after end of string (broke JSON)
-
     $json =~ s/\x00+//;
+
+    return if ! $json;
 
 #    my $tag = substr $json, 0, 14, '';
 
@@ -648,6 +653,39 @@ sub _decode_json {
             croak "Munged shared memory segment (size exceeded?)";
         }
         return $data;
+#    } else {
+#        return;
+#    }
+}
+sub _encode_sereal {
+    my ($knot, $seg, $data) = @_;
+
+    my $encoded = $knot->_sereal_encoder->encode($data);
+
+#    substr $encoded, 0, 0, 'IPC::Shareable';
+
+    if (length($encoded) > $seg->size) {
+        croak "Length of shared data exceeds shared segment size";
+    }
+    $seg->shmwrite($encoded);
+}
+sub _decode_sereal {
+    my ($knot, $seg) = @_;
+
+    print Dumper $seg;
+    my $encoded = $seg->shmread;
+
+    print $encoded;
+    return if ! $encoded;
+
+#    my $tag = substr $encoded, 0, 14, '';
+
+#    if ($tag eq 'IPC::Shareable') {
+        my $decoded = $knot->_decode_sereal($encoded);
+        if (! defined($decoded)){
+            croak "Munged shared memory segment (size exceeded?)";
+        }
+        return $decoded;
 #    } else {
 #        return;
 #    }
@@ -1001,7 +1039,7 @@ sub _reset_segment {
     }
 }
 sub _sereal_encoder {
-    my ($knot);
+    my ($knot) = @_;
 
     if (! exists $knot->{sereal_encoder}) {
         $knot->{sereal_encoder} = Sereal::Encoder->new;
@@ -1009,8 +1047,8 @@ sub _sereal_encoder {
 
     return $knot->{sereal_encoder};
 }
-sub _sereal_decodder {
-    my ($knot);
+sub _sereal_decoder {
+    my ($knot) = @_;
 
     if (! exists $knot->{sereal_decoder}) {
         $knot->{sereal_decoder} = Sereal::Decoder->new;

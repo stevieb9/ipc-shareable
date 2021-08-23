@@ -5,7 +5,7 @@ use strict;
 use Benchmark qw(:all) ;
 use Data::Dumper;
 use IPC::Shareable;
-use JSON qw(-convert_blessed_universally);
+#use JSON qw(-convert_blessed_universally);
 use Storable qw(freeze thaw);
 
 if (@ARGV < 1){
