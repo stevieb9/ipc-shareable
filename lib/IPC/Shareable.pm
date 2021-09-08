@@ -1,5 +1,6 @@
 package IPC::Shareable;
 
+use Devel::Trace::Subs qw(trace trace_dump); # injected by Devel::Trace::Subs
 use warnings;
 use strict;
 
@@ -113,15 +114,19 @@ sub _debug;
 
 # --- "Magic" methods
 sub TIESCALAR {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     return _tie('SCALAR', @_);
 }
 sub TIEARRAY {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     return _tie('ARRAY', @_);
 }
 sub TIEHASH {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     return _tie('HASH', @_);
 }
 sub STORE {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     my $sid = $knot->seg->{_id};
@@ -160,6 +165,7 @@ sub STORE {
     return 1;
 }
 sub FETCH {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     my $sid = $knot->seg->{_id};
@@ -212,6 +218,7 @@ sub FETCH {
 
 }
 sub CLEAR {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     if ($knot->{_type} eq 'HASH') {
@@ -234,6 +241,7 @@ sub CLEAR {
     }
 }
 sub DELETE {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
     my $key  = shift;
 
@@ -250,6 +258,7 @@ sub DELETE {
     return $val;
 }
 sub EXISTS {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
     my $key  = shift;
 
@@ -257,15 +266,18 @@ sub EXISTS {
     return exists $knot->{_data}->{$key};
 }
 sub FIRSTKEY {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     $knot->{_iterating} = 1;
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
+
     my $reset = keys %{$knot->{_data}};
     my $first = each %{$knot->{_data}};
     return $first;
 }
 sub NEXTKEY {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     # caveat emptor if hash was changed by another process
@@ -279,9 +291,11 @@ sub NEXTKEY {
     }
 }
 sub EXTEND {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     #XXX Noop
 }
 sub PUSH {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     $global_register{$knot->seg->id} ||= $knot;
@@ -297,6 +311,7 @@ sub PUSH {
     }
 }
 sub POP {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
@@ -312,6 +327,7 @@ sub POP {
     return $val;
 }
 sub SHIFT {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
@@ -326,6 +342,7 @@ sub SHIFT {
     return $val;
 }
 sub UNSHIFT {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
@@ -340,6 +357,7 @@ sub UNSHIFT {
     return $val;
 }
 sub SPLICE {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my($knot, $off, $n, @av) = @_;
 
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
@@ -354,12 +372,14 @@ sub SPLICE {
     return @val;
 }
 sub FETCHSIZE {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     return scalar(@{$knot->{_data}});
 }
 sub STORESIZE {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
     my $n    = shift;
 
@@ -378,6 +398,7 @@ sub STORESIZE {
 # --- Public methods
 
 sub new {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($class, %opts) = @_;
 
     my $type = $opts{var} || 'HASH';
@@ -396,13 +417,16 @@ sub new {
     }
 }
 sub global_register {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     return \%global_register;
 }
 sub process_register {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     return \%process_register;
 }
 
 sub attributes {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot, $attr) = @_;
 
     my $attrs = $knot->{attributes};
@@ -415,11 +439,13 @@ sub attributes {
     }
 }
 sub ipcs {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $count = `ipcs -m | wc -l`;
     chomp $count;
     return $count;
 }
 sub spawn {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot, %opts) = @_;
 
     croak "spawn() requires a key/glue sent in..." if ! defined $opts{key};
@@ -432,6 +458,7 @@ sub spawn {
     );
 }
 sub _spawn {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my (%opts) = @_;
 
     my $pid = fork;
@@ -459,6 +486,7 @@ sub _spawn {
     }
 }
 sub unspawn {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     shift;
     my ($key, $destroy) = @_;
 
@@ -477,6 +505,7 @@ sub unspawn {
     IPC::Shareable->clean_up_all if $destroy;
 }
 sub lock {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot, $flags) = @_;
     $flags = LOCK_EX if ! defined $flags;
 
@@ -496,6 +525,7 @@ sub lock {
     return $return_val;
 }
 sub unlock {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     return 1 unless $knot->{_lock};
@@ -518,6 +548,7 @@ sub unlock {
 *shunlock = \&unlock;
 
 sub clean_up {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $class = shift;
 
     for my $s (values %process_register) {
@@ -526,6 +557,7 @@ sub clean_up {
     }
 }
 sub clean_up_all {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $class = shift;
     for my $s (values %process_register) {
         remove($s);
@@ -536,6 +568,7 @@ sub clean_up_all {
     }
 }
 sub remove {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $knot = shift;
 
     my $s = $knot->seg;
@@ -551,14 +584,17 @@ sub remove {
     delete $global_register{$id};
 }
 sub seg {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot) = @_;
     return $knot->{_shm} if defined $knot->{_shm};
 }
 sub sem {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot) = @_;
     return $knot->{_sem} if defined $knot->{_sem};
 }
 sub singleton {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($class, $glue, $warn) = @_;
 
     if (! defined $glue) {
@@ -591,6 +627,7 @@ END {
 # --- Private methods below
 
 sub _encode {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot, $seg, $data) = @_;
 
     my $serializer = $knot->attributes('serializer');
@@ -608,6 +645,7 @@ sub _encode {
     return undef;
 }
 sub _decode {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot, $seg) = @_;
 
     my $serializer = $knot->attributes('serializer');
@@ -625,10 +663,13 @@ sub _decode {
     return undef;
 }
 sub _encode_json {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $seg  = shift;
     my $data = shift;
 
     my $json = encode_json $data;
+
+    substr $json, 0, 0, 'IPC::Shareable';
 
     if (length($json) > $seg->size) {
         croak "Length of shared data exceeds shared segment size";
@@ -636,6 +677,7 @@ sub _encode_json {
     $seg->shmwrite($json);
 }
 sub _decode_json {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $seg = shift;
 
     my $json = $seg->shmread;
@@ -645,24 +687,25 @@ sub _decode_json {
 
     return if ! $json;
 
-#    my $tag = substr $json, 0, 14, '';
+    my $tag = substr $json, 0, 14, '';
 
-#    if ($tag eq 'IPC::Shareable') {
+    if ($tag eq 'IPC::Shareable') {
         my $data = decode_json $json;
         if (! defined($data)){
             croak "Munged shared memory segment (size exceeded?)";
         }
         return $data;
-#    } else {
-#        return;
-#    }
+    } else {
+        return;
+    }
 }
 sub _encode_sereal {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot, $seg, $data) = @_;
 
     my $encoded = $knot->_sereal_encoder->encode($data);
 
-#    substr $encoded, 0, 0, 'IPC::Shareable';
+    substr $encoded, 0, 0, 'IPC::Shareable';
 
     if (length($encoded) > $seg->size) {
         croak "Length of shared data exceeds shared segment size";
@@ -670,27 +713,27 @@ sub _encode_sereal {
     $seg->shmwrite($encoded);
 }
 sub _decode_sereal {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot, $seg) = @_;
 
-    print Dumper $seg;
     my $encoded = $seg->shmread;
 
-    print $encoded;
     return if ! $encoded;
 
-#    my $tag = substr $encoded, 0, 14, '';
+    my $tag = substr $encoded, 0, 14, '';
 
-#    if ($tag eq 'IPC::Shareable') {
-        my $decoded = $knot->_decode_sereal($encoded);
+    if ($tag eq 'IPC::Shareable') {
+        my $decoded = $knot->_sereal_decoder->decode($encoded);
         if (! defined($decoded)){
             croak "Munged shared memory segment (size exceeded?)";
         }
         return $decoded;
-#    } else {
-#        return;
-#    }
+    } else {
+        return;
+    }
 }
 sub _freeze {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $seg  = shift;
     my $water = shift;
 
@@ -704,6 +747,7 @@ sub _freeze {
     $seg->shmwrite($ice);
 }
 sub _thaw {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $seg = shift;
 
     my $ice = $seg->shmread;
@@ -723,6 +767,7 @@ sub _thaw {
     }
 }
 sub _tie {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($type, $class, $key_str, $opts);
 
     if (scalar @_ == 4) {
@@ -828,7 +873,7 @@ sub _tie {
         _was_changed => 0,
     );
 
-    $knot->{_data} = _thaw($seg);
+    $knot->{_data} = $knot->_decode($seg);
 
     if ($sem->getval(SEM_MARKER) != SHM_EXISTS) {
         $global_register{$knot->seg->id} ||= $knot;
@@ -843,6 +888,7 @@ sub _tie {
     return $knot;
 }
 sub _parse_args {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($opts) = @_;
 
     $opts  = defined $opts  ? $opts  : { %default_options };
@@ -865,6 +911,7 @@ sub _parse_args {
     return $opts;
 }
 sub _shm_key {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     # Generates a 32-bit CRC on the key string. The $key_str parameter is used
     # for testing only, for purposes of testing various key strings
 
@@ -897,6 +944,7 @@ sub _shm_key {
     return $key;
 }
 sub _shm_key_rand {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $key;
 
     do {
@@ -908,6 +956,7 @@ sub _shm_key_rand {
     return $key;
 }
 sub _shm_flags {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     # --- Parses the anonymous hash passed to constructors; returns a list
     # --- of args suitable for passing to shmget
     my ($knot) = @_;
@@ -921,6 +970,7 @@ sub _shm_flags {
     return $flags;
 }
 sub _mg_tie {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($parent, $val, $identifier) = @_;
 
     my $key;
@@ -977,6 +1027,7 @@ sub _mg_tie {
     return $child;
 }
 sub _is_kid {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my $data = shift or return;
 
     my $type = Scalar::Util::reftype( $data );
@@ -1001,6 +1052,7 @@ sub _is_kid {
     return;
 }
 sub _need_tie {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot, $val, $identifier) = @_;
 
     my $type = Scalar::Util::reftype($val);
@@ -1021,6 +1073,7 @@ sub _need_tie {
     return $need_tie ? 1 : 0;
 }
 sub _reset_segment {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($parent, $id) = @_;
 
     my $parent_type = Scalar::Util::reftype($parent->{_data}) || '';
@@ -1039,6 +1092,7 @@ sub _reset_segment {
     }
 }
 sub _sereal_encoder {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot) = @_;
 
     if (! exists $knot->{sereal_encoder}) {
@@ -1048,6 +1102,7 @@ sub _sereal_encoder {
     return $knot->{sereal_encoder};
 }
 sub _sereal_decoder {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     my ($knot) = @_;
 
     if (! exists $knot->{sereal_decoder}) {
@@ -1058,6 +1113,7 @@ sub _sereal_decoder {
 }
 
 sub _trace {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     require Carp;
     require Data::Dumper;
     my $caller = '    ' . (caller(1))[3] . " called with:\n";
@@ -1075,6 +1131,7 @@ sub _trace {
     Carp::carp "IPC::Shareable ($$) debug:\n", $caller, @msg;
 }
 sub _debug {
+    trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
     require Carp;
     require Data::Dumper;
     local $Data::Dumper::Terse = 1;
@@ -1644,6 +1701,7 @@ will remain in shared memory.  If you're cautious, you might try
 
  $SIG{INT} = \&catch_int;
  sub catch_int {
+     trace() if $ENV{DTS_ENABLE}; # injected by Devel::Trace::Subs
      die;
  }
  ...
@@ -1758,5 +1816,3 @@ Thanks to all those with comments or bug fixes, especially
 
 L<perltie>, L<Storable>, C<shmget>, C<ipcs>, C<ipcrm> and other SysV IPC manual
 pages.
-
-
