@@ -9,6 +9,8 @@ Revision history for Perl extension IPC::Shareable.
       number exactly, casuing duplicates, and incorrect segment access
     - Added new() method, returns a reference (default hash) without having to
       do the tie() directly
+    - Fix issue in JSON decoder where an empty JSON string may have caused
+      decode failure
     - Modify t/65-seg_size.t beyond RAM max test to cover varying error messages
       on differing OSs
     - Renamed t/67-out_of_memory.t as the tests are related to exhausting SHM
