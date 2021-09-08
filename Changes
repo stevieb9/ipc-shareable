@@ -1,5 +1,8 @@
 Revision history for Perl extension IPC::Shareable.
 
+1.07 UNREL
+    -
+
 1.06    2021-09-08
     - Fix significant bug where at least on MacOS, if we generated a CRC of a
       key that was greater than 0x80000000, it would round down the key to that

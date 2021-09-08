@@ -21,7 +21,7 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION = '1.06';
+our $VERSION = '1.07';
 
 $SIG{CHLD} = 'IGNORE';
 
