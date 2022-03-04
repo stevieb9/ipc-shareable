@@ -6,6 +6,8 @@ Revision history for Perl extension IPC::Shareable.
       issue, and added tests for it (added a call to srand())
     - Move $SIG{CHLD} handlers to spawn() and unspawn() instead of having them
       global (fixes #15)
+    - t/65-seg_size.t fails on 32-bit perls; Add a check and bail if we're on
+      a perl < 64-bit (fixes #14)
 
 1.06    2021-09-08
     - Fix significant bug where at least on MacOS, if we generated a CRC of a
