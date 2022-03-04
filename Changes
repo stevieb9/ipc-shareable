@@ -1,6 +1,6 @@
 Revision history for Perl extension IPC::Shareable.
 
-1.08 UNREL
+1.08    2022-03-04
     - Added 'protected' option and clean_up_protected(). If set, the cleanup
       methods, nor the automatic 'destroy' functionality will remove the segment
       the option was set in, nor any children created underneath of it. A call

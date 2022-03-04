@@ -41,5 +41,4 @@ WriteMakefile(
         'Storable'      => 0.607,
         'String::CRC32' => 0,
     },
-
 );
