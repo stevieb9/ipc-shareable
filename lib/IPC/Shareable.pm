@@ -95,9 +95,11 @@ my %default_options = (
     destroy    => 0,
     mode       => 0666,
     size       => SHM_BUFSIZ,
+    protected  => 0,
     limit      => 1,
     graceful   => 0,
     warn       => 0,
+    tidy       => 0,
     serializer => 'storable',
 );
 
@@ -523,16 +525,19 @@ sub clean_up {
 
     for my $s (values %process_register) {
         next unless $s->attributes('owner') == $$;
+        next if $s->attributes('protected');
         remove($s);
     }
 }
 sub clean_up_all {
     my $class = shift;
     for my $s (values %process_register) {
+        next if $s->attributes('protected');
         remove($s);
     }
 
     for my $s (values %global_register) {
+        next if $s->attributes('protected');
         remove($s);
     }
 }
@@ -583,8 +588,9 @@ sub singleton {
 END {
     for my $s (values %process_register) {
         unlock($s);
-        next unless $s->attributes('destroy');
-        next unless $s->attributes('owner') == $$;
+        next if $s->attributes('protected');
+        next if ! $s->attributes('destroy');
+        next if $s->attributes('owner') != $$;
         remove($s);
     }
 }
@@ -1183,6 +1189,18 @@ override this default.
 
 Default: C<IPC::Shareable::SHM_BUFSIZ()> (ie. B<65536>)
 
+=head2 protected
+
+If set, the C<clean_up()> and C<clean_up_all()> routines will not remove the
+segments or semaphores related to the tied object.
+
+Set this to a specific integer so we can pass the value to any child objects
+created under the main one.
+
+To clean up protected objects, call C<< (tied %object)->clean_protected >>.
+
+Default: B<0>
+
 =head2 limit
 
 This field will allow you to set a segment size larger than the default maximum
@@ -1235,6 +1253,7 @@ Default values for options are:
     exclusive   => 0,
     mode        => 0666,
     size        => IPC::Shareable::SHM_BUFSIZ(),
+    protected   => 0,
     limit       => 1,
     destroy     => 0,
     graceful    => 0,
