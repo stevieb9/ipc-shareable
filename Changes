@@ -3,7 +3,8 @@ Revision history for Perl extension IPC::Shareable.
 1.07 UNREL
     - When running in forked environments, _shm_key_rand() was consistently
       returning the same 'random' key to each forked process. We've fixed this
-      issue, and added tests for it (added a call to srand())
+      issue, and added tests for it (fixed by adding a call to srand() before
+      rand)
     - Move $SIG{CHLD} handlers to spawn() and unspawn() instead of having them
       global (fixes #15)
     - t/65-seg_size.t fails on 32-bit perls; Add a check and bail if we're on
@@ -12,7 +13,7 @@ Revision history for Perl extension IPC::Shareable.
 1.06    2021-09-08
     - Fix significant bug where at least on MacOS, if we generated a CRC of a
       key that was greater than 0x80000000, it would round down the key to that
-      number exactly, casuing duplicates, and incorrect segment access
+      number exactly, causing duplicates, and incorrect segment access
     - Added new() method, returns a reference (default hash) without having to
       do the tie() directly
     - Fix issue in JSON decoder where an empty JSON string may have caused
