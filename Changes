@@ -6,6 +6,11 @@ Revision history for Perl extension IPC::Shareable.
       the option was set in, nor any children created underneath of it. A call
       to clean_up_protected() is required to remove them
     - Updated attribute tests to include all available options
+    - _shm_key_rand() now checks EXCLUSIVE_CHECK_LIMIT times to find a key for
+      a free segment. It croaks if not
+    - Added _shm_key_rand_int() so we can mock it to test the dup random key
+      checks
+    - Added build prereq of Mock::Sub to test the random key function
 
 1.07    2022-03-04
     - When running in forked environments, _shm_key_rand() was consistently

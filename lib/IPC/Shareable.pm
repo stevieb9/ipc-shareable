@@ -24,23 +24,26 @@ use Storable 0.6 qw(freeze thaw);
 our $VERSION = '1.08';
 
 use constant {
-    LOCK_SH      => 1,
-    LOCK_EX      => 2,
-    LOCK_NB      => 4,
-    LOCK_UN      => 8,
+    LOCK_SH               => 1,
+    LOCK_EX               => 2,
+    LOCK_NB               => 4,
+    LOCK_UN               => 8,
 
-    DEBUGGING    => ($ENV{SHAREABLE_DEBUG} or 0),
-    SHM_BUFSIZ   => 65536,
-    SEM_MARKER   => 0,
-    SHM_EXISTS   => 1,
+    DEBUGGING             => ($ENV{SHAREABLE_DEBUG} or 0),
 
-    SHMMAX_BYTES => 1073741824, # 1 GB
+    SHM_BUFSIZ            => 65536,
+    SEM_MARKER            => 0,
+    SHM_EXISTS            => 1,
+
+    SHMMAX_BYTES          => 1073741824, # 1 GB
 
     # Perl sends in a double as opposed to an integer to shmat(), and on some
     # systems, this causes the IPC system to round down to the maximum integer
     # size of 0x80000000 we correct that when generating keys with CRC32
 
-    MAX_KEY_INT_SIZE => 0x80000000,
+    MAX_KEY_INT_SIZE      => 0x80000000,
+
+    EXCLUSIVE_CHECK_LIMIT => 10, # Number of times we'll check for existing segs
 };
 
 require Exporter;
@@ -879,14 +882,50 @@ sub _shm_key {
 sub _shm_key_rand {
     my $key;
 
-    do {
-        srand();
-        $key = int(rand(1_000_000));
-    } while ($used_ids{$key});
+    # Unfortunatly, the only way I know how to check if a segment exists is
+    # to actually create it. We must do that here, then remove it just to
+    # ensure the slot is available
+
+    my $verified_exclusive = 0;
+
+    my $check_count = 0;
+
+    while (! $verified_exclusive && $check_count < EXCLUSIVE_CHECK_LIMIT) {
+        $check_count++;
+
+        $key = _shm_key_rand_int();
+
+        next if $used_ids{$key};
+
+        my $flags;
+        $flags |= IPC_CREAT;
+        $flags |= IPC_EXCL;
+
+        my $seg;
+
+        my $shm_slot_available = eval {
+            $seg = IPC::Shareable::SharedMem->new($key, 1, $flags);
+            1;
+        };
+
+        if ($shm_slot_available) {
+            $verified_exclusive = 1;
+            $seg->remove if $seg;
+        }
+    }
+
+    if (! $verified_exclusive) {
+        croak
+            "_shm_key_rand() can't get an available key after $check_count tries";
+    }
 
     $used_ids{$key}++;
 
     return $key;
+}
+sub _shm_key_rand_int {
+    srand();
+    return int(rand(1_000_000));
 }
 sub _shm_flags {
     # --- Parses the anonymous hash passed to constructors; returns a list
