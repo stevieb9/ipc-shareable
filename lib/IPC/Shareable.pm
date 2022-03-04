@@ -845,6 +845,7 @@ sub _shm_key_rand {
     my $key;
 
     do {
+        srand();
         $key = int(rand(1_000_000));
     } while ($used_ids{$key});
 
@@ -1227,10 +1228,10 @@ Default: B<storable>
 
 Default values for options are:
 
-    key         => IPC_PRIVATE,
+    key         => IPC_PRIVATE, # 0
     create      => 0,
     exclusive   => 0,
-    mode        => 0,
+    mode        => 0666,
     size        => IPC::Shareable::SHM_BUFSIZ(),
     limit       => 1,
     destroy     => 0,
