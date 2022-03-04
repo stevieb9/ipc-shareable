@@ -4,6 +4,8 @@ Revision history for Perl extension IPC::Shareable.
     - When running in forked environments, _shm_key_rand() was consistently
       returning the same 'random' key to each forked process. We've fixed this
       issue, and added tests for it (added a call to srand())
+    - Move $SIG{CHLD} handlers to spawn() and unspawn() instead of having them
+      global (fixes #15)
 
 1.06    2021-09-08
     - Fix significant bug where at least on MacOS, if we generated a CRC of a

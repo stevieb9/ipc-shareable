@@ -23,8 +23,6 @@ use Storable 0.6 qw(freeze thaw);
 
 our $VERSION = '1.07';
 
-$SIG{CHLD} = 'IGNORE';
-
 use constant {
     LOCK_SH      => 1,
     LOCK_EX      => 2,
@@ -425,6 +423,8 @@ sub spawn {
 
     $opts{mode} = 0666 if ! defined $opts{mode};
 
+    $SIG{CHLD} = 'IGNORE';
+
     _spawn(
         key     => $opts{key},
         mode    => $opts{mode},
@@ -470,6 +470,8 @@ sub unspawn {
     };
 
     $h{__ipc}->{run} = 0;
+
+    $SIG{CHLD} = undef;
 
     sleep 1;
 
