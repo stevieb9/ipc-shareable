@@ -541,6 +541,33 @@ sub clean_up_all {
         remove($s);
     }
 }
+sub clean_up_protected {
+    my ($knot, $protect_key);
+
+    if (scalar @_ == 2) {
+        ($knot, $protect_key) = @_;
+    }
+    if (scalar @_ == 1) {
+        ($protect_key) = @_;
+    }
+
+    if (! defined $protect_key) {
+        croak "clean_up_protected() requires a \$protect_key param";
+    }
+
+    if ($protect_key !~ /^\d+$/) {
+        croak
+            "clean_up_protected() \$protect_key must be an integer. You sent $protect_key";
+    }
+
+    for my $s (values %global_register) {
+        my $stored_key = $s->attributes('protected');
+
+        if ($stored_key && $stored_key == $protect_key) {
+            remove($s);
+        }
+    }
+}
 sub remove {
     my $knot = shift;
 
@@ -1065,8 +1092,9 @@ IPC::Shareable - Use shared memory backed variables across processes
 
     (tied VARIABLE)->remove;
 
-    IPC::Shareable->clean_up;
-    IPC::Shareable->clean_up_all;
+    IPC::Shareable::clean_up;
+    IPC::Shareable::clean_up_all;
+    IPC::Shareable::clean_up_protected;
 
     # Ensure only one instance of a script can be run at any time
 
@@ -1223,6 +1251,9 @@ removed.
 Use this option with care. In particular you should not use this option in a
 program that will fork after binding the data.  On the other hand, shared memory
 is a finite resource and should be released if it is not needed.
+
+B<NOTE>: If the segment was created with its L</protected> attribute set,
+it will not be removed upon program completion, even if C<destroy> is set.
 
 Default: B<false>
 
@@ -1432,6 +1463,8 @@ Parameters:
 Optional, String: The name of the attribute. If sent in, we'll return the value
 of this specific attribute. Returns C<undef> if the attribute isn't found.
 
+Attributes are the C<OPTIONS> that were used to create the object.
+
 Returns: A hash reference of all attributes if C<$attributes> isn't sent in, the
 value of the specific attribute if it is.
 
@@ -1522,6 +1555,9 @@ shared memory segment when the process calling C<tie()> exits gracefully.
 B<NOTE>: The destruction is handled in an C<END> block. Only those memory
 segments that are tied to the current process will be removed.
 
+B<NOTE>: If the segment was created with its L</protected> attribute set,
+it will not be removed in the C<END> block, even if C<destroy> is set.
+
 =head2 remove
 
     tied($var)->remove;
@@ -1551,6 +1587,8 @@ This is a class method that provokes L<IPC::Shareable> to remove all
 shared memory segments created by the process.  Segments not created
 by the calling process are not removed.
 
+This method will not clean up segments created with the C<protected> option.
+
 =head2 clean_up_all
 
     IPC::Shareable->clean_up_all;
@@ -1566,6 +1604,24 @@ by the calling process are not removed.
 This is a class method that provokes L<IPC::Shareable> to remove all
 shared memory segments encountered by the process.  Segments are
 removed even if they were not created by the calling process.
+
+This method will not clean up segments created with the C<protected> option.
+
+=head2 clean_up_protected($protect_key)
+
+If a segment is created with the C<protected> option, it, nor its children will
+be removed during calls of C<clean_up()> or C<clean_up_all()>.
+
+When setting L</protected>, you specified a lock key integer. When calling this
+method, you must send that integer in as a parameter so we know which segments
+to clean up.
+
+Parameters:
+
+    $protect_key
+
+Mandatory, Integer: The integer protect key you assigned wit the C<protected>
+option
 
 =head1 RETURN VALUES
 

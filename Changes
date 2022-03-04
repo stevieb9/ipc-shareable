@@ -1,7 +1,11 @@
 Revision history for Perl extension IPC::Shareable.
 
 1.08 UNREL
-    -
+    - Added 'protected' option and clean_up_protected(). If set, the cleanup
+      methods, nor the automatic 'destroy' functionality will remove the segment
+      the option was set in, nor any children created underneath of it. A call
+      to clean_up_protected() is required to remove them
+    - Updated attribute tests to include all available options
 
 1.07    2022-03-04
     - When running in forked environments, _shm_key_rand() was consistently

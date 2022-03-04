@@ -43,7 +43,6 @@ for my $event ($event_one, $event_two) {
     );
 }
 
-(tied %shared_data)->remove;
 
 sub update {
     # Because each event runs in its own process, $$ will be set to the
@@ -51,4 +50,8 @@ sub update {
     # same function
 
     $shared_data{called_count}->{$$}++;
+}
+
+END {
+    (tied %shared_data)->clean_up_all;
 }

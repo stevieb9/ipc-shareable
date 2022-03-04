@@ -48,6 +48,7 @@ t/77-singleton_warn.t
 t/80-exceptions.t
 t/81-fork_dup_rand_keys.t
 t/82-sig_child_ignore.t
+t/83-clean_protected.t
 t/85-spawn_object_contains_data.t
 t/86-unspawn_object_contains_data.t
 t/90-pod_coverage.t
