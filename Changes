@@ -1,6 +1,6 @@
 Revision history for Perl extension IPC::Shareable.
 
-1.07 UNREL
+1.07    2022-03-04
     - When running in forked environments, _shm_key_rand() was consistently
       returning the same 'random' key to each forked process. We've fixed this
       issue, and added tests for it (fixed by adding a call to srand() before
