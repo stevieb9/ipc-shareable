@@ -40,7 +40,7 @@ put the file into a ""/Library/LaunchDaemons/SharedMemory.plist" file and reboot
  <string>kern.sysv.shmseg=8</string>
  <string>kern.sysv.shmall=1024</string>
  <string>kern.sysv.shmmin=1</string>
-  </array>
+ </array>
  <key>KeepAlive</key>
  <false/>
  <key>RunAtLoad</key>
