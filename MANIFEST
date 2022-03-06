@@ -7,6 +7,7 @@ Changes
 COPYING
 CREDITS
 DISCLAIMER
+'docs/Shared Memory Configuration.txt'
 lib/IPC/Shareable.pm
 lib/IPC/Shareable/SharedMem.pm
 Makefile.PL
