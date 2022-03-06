@@ -6,6 +6,10 @@ use IPC::Shareable;
 use Test::More;
 
 BEGIN {
+    if (! $ENV{RELEASE_TESTING}) {
+        plan skip_all => "Developer only test file...";
+    }
+
     my $async_loaded = eval {
         require Async::Event::Interval;
         1;

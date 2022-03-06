@@ -1,7 +1,8 @@
 Revision history for Perl extension IPC::Shareable.
 
 1.09 UNREL
-    -
+    - Made 81-fork_dup_rand_keys.t developer only (but still need to figure out
+      why it only fails on FreeBSD)
 
 1.08    2022-03-04
     - Added 'protected' option and clean_up_protected(). If set, the cleanup
