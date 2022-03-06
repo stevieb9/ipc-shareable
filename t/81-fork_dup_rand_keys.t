@@ -6,8 +6,8 @@ use IPC::Shareable;
 use Test::More;
 
 BEGIN {
-    if (! $ENV{RELEASE_TESTING}) {
-        plan skip_all => "Developer only test file...";
+    if (! $ENV{CI_TESTING}) {
+        plan skip_all => "Not on a legit CI platform...";
     }
 
     my $async_loaded = eval {

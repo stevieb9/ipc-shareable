@@ -5,6 +5,12 @@ use Data::Dumper;
 use IPC::Shareable;
 use Test::More;
 
+BEGIN {
+    if (! $ENV{CI_TESTING}) {
+        plan skip_all => "Not on a legit CI platform...";
+    }
+}
+
 my $k = tie my $sv, 'IPC::Shareable', 'testing', {create => 1, destroy => 1};
 
 my $attrs_tied = (tied $sv)->attributes;
