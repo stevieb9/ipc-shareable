@@ -20,8 +20,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Set up perl
-        env:
-          CI_TESTING: 1
         uses: shogo82148/actions-setup-perl@v1
         with:
           perl-version: ${{ matrix.perl }}
@@ -30,6 +28,8 @@ jobs:
       - run: cpanm ExtUtils::MakeMaker
       - run: cpanm --installdeps .
       - name: Run tests (no coverage)
+        env:
+          CI_TESTING: 1
         if: ${{ !matrix.coverage }}
         run: prove -lv t
       - name: Run tests (with coverage)
