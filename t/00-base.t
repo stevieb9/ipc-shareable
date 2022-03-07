@@ -7,6 +7,8 @@ use Test::More;
 BEGIN { use_ok('IPC::Shareable') };
 
 warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
+my $segs = IPC::Shareable::ipcs();
+print "Starting with $segs segments\n";
 
 {
     my $a = tie my $x, 'IPC::Shareable';
@@ -20,10 +22,6 @@ warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
     }
 
     $a->remove;
-
-    my $segs = IPC::Shareable::ipcs();
-
-    print "Starting with $segs segments\n";
 
     # Store existing segments in a shared hash to test against
     # at conclusion of test suite run
