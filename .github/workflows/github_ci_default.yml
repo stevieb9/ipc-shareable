@@ -36,6 +36,7 @@ jobs:
         if: ${{ matrix.coverage }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_TESTING: 1
         run: |
           cpanm -n Devel::Cover::Report::Coveralls
           cover -test -report Coveralls
