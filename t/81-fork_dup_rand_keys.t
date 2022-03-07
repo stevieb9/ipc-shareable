@@ -11,6 +11,10 @@ BEGIN {
         plan skip_all => "Not on a legit CI platform...";
     }
 
+    if (! $ENV{RELEASE_TESTING}) {
+        plan skip_all => "Developer only test...";
+    }
+
     warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
     $segs_before = IPC::Shareable::ipcs();
 }
