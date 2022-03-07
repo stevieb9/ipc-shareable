@@ -7,10 +7,11 @@ use Test::More;
 
 BEGIN {
     use_ok( 'IPC::Shareable' ) || print "Bail out!\n";
+}
 
-    if (! $ENV{CI_TESTING}) {
-        plan skip_all => "Not on a legit CI platform...";
-    }
+if (! $ENV{CI_TESTING}) {
+    done_testing();
+    exit;
 }
 
 tie my %store, 'IPC::Shareable', {key => 'async_tests', destroy => 1};
