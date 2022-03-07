@@ -26,6 +26,7 @@ jobs:
       - run: perl -V
       - run: cpanm ExtUtils::PL2Bat
       - run: cpanm ExtUtils::MakeMaker
+      - run: cpanm Async::Event::Interval
       - run: cpanm --installdeps .
       - name: Run tests (no coverage)
         env:
