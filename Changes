@@ -1,5 +1,8 @@
 Revision history for Perl extension IPC::Shareable.
 
+1.12 UNREL
+    -
+
 1.11    2022-03-07
     - Fix certain tests so they don't throw if we bail early
 
