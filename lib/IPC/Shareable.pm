@@ -403,7 +403,7 @@ sub new {
 sub global_register {
      # This is a ridiculous way to do this, but if we don't call Dumper, hashes
     # that are created in a separate process than the parent hash don't
-    # show up properly in the global register. t/90
+    # show up properly in the global register. t/81
 
     local $SIG{__WARN__} = sub {
         my ($warning) = @_;
@@ -554,10 +554,8 @@ sub clean_up_all {
 
     my $global_register = __PACKAGE__->global_register;
 
-    my %deleted = %$global_register;
-
-    for my $id (keys %deleted) {
-        my $s = $deleted{$id};
+    for my $id (keys %$global_register) {
+        my $s = $global_register->{$id};
         next if $s->attributes('protected');
         remove($s);
     }
@@ -581,7 +579,10 @@ sub clean_up_protected {
             "clean_up_protected() \$protect_key must be an integer. You sent $protect_key";
     }
 
-    for my $s (values %global_register) {
+    my $global_register = __PACKAGE__->global_register;
+
+    for my $id (keys %$global_register) {
+        my $s = $global_register->{$id};
         my $stored_key = $s->attributes('protected');
 
         if ($stored_key && $stored_key == $protect_key) {
