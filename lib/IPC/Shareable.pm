@@ -437,75 +437,6 @@ sub ipcs {
     chomp $count;
     return int($count);
 }
-sub spawn {
-    my ($knot) = @_;
-
-    if (! defined $knot || ref($knot) ne 'IPC::Shareable') {
-        croak "spawn() requires a tied() IPC::Shareable object sent in";
-    }
-
-    $SIG{CHLD} = 'IGNORE';
-
-    _spawn($knot);
-}
-sub _spawn {
-    my ($knot) = @_;
-
-    my $key = $knot->seg->key . '_spawn';
-
-    my $protected;
-    $protected .= ord($_) for (split //, $key);
-    $knot->{attributes}{protected} = $protected;
-
-    my $pid = fork;
-    return if $pid;
-
-    if (! $pid) {
-
-        # Make the key identifiable as a spawned object
-        # and set the protected status
-
-        tie my %h, 'IPC::Shareable', {
-            key         => $key,
-            create      => 1,
-            protected   => $protected,
-        };
-
-        $h{__ipc}->{run} = 1;
-
-        while (1) {
-            local $SIG{__WARN__} = sub {};
-            last if ! defined $h{__ipc};
-            last if ! $h{__ipc}->{run};
-        }
-
-        exit 0;
-    }
-}
-sub unspawn {
-    my ($knot, $destroy) = @_;
-
-    $destroy ||= 0;
-
-    my $key = $knot->seg->key . '_spawn';
-
-    my $protected;
-    $protected .= ord($_) for(split //, $key);
-
-    $knot->{attributes}{protected} = $protected;
-
-    tie my %h, 'IPC::Shareable', {
-        key       => $key,
-        destroy   => $destroy,
-        protected => $protected
-    };
-
-    $h{__ipc}->{run} = 0;
-
-    $SIG{CHLD} = undef;
-
-    IPC::Shareable->clean_up_protected($protected) if $destroy;
-}
 sub lock {
     my ($knot, $flags) = @_;
     $flags = LOCK_EX if ! defined $flags;
@@ -1419,54 +1350,6 @@ on the system. This isn't precise; it simply does a C<wc -l> line count on your
 system's C<ipcs -m> call. It is guaranteed though to produce reliable results.
 
 Return: Integer
-
-=head2 spawn(%opts)
-
-Spawns a forked process running in the background that holds the shared memory
-segments backing your variable open.
-
-Parameters:
-
-Paremters are sent in as a hash.
-
-    key => $glue
-
-Mandatory, String/Integer: The glue that you will be accessing your data as.
-
-    mode => 0666
-
-Optional, Integer: The read/write permissions on the variable. Defaults to
-C<0666>.
-
-Example:
-
-    use IPC::Shareable;
-
-    # The following line sets things up and returns
-
-    IPC::Shareable->spawn(key => 'GLUE STRING');
-
-Now, either within the same script, or any other script on the system, your
-data will be available at the key/glue C<GLUE STRING>. Call
-L<unspawn()|/unspawn($key, $destroy)> to remove it.
-
-=head2 unspawn($key, $destroy)
-
-This method will kill off the background process created with
-L<spawn()|/spawn(%opts)>.
-
-Parameters:
-
-    $key
-
-Mandatory, String/Integer: The glue (aka key) used in the call to C<spawn()>.
-
-    $destroy
-
-Optional, Bool. If set to a true value, we will remove all semaphores and memory
-segments related to your data, thus removing the data in its entirety. If not
-set to a true value, we'll leave the memory segments in place, and you'll be
-able to re-attach to the data at any time. Defaults to false (C<0>).
 
 =head2 lock($flags)
 
