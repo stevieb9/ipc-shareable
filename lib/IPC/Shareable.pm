@@ -553,6 +553,15 @@ sub sem {
     return $knot->{_sem} if defined $knot->{_sem};
 }
 sub singleton {
+
+    # If called with IPC::Shareable::singleton() as opposed to
+    # IPC::Shareable->singleton(), the class isn't sent in. Check
+    # for this and fix it if necessary
+
+    if (! defined $_[0] || $_[0] ne __PACKAGE__) {
+        unshift @_, __PACKAGE__;
+    }
+
     my ($class, $glue, $warn) = @_;
 
     if (! defined $glue) {

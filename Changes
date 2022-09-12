@@ -1,7 +1,9 @@
 Revision history for Perl extension IPC::Shareable.
 
 1.13 UNREL
-    -
+    - In singleton(), do a check whether class was sent in. There was a shifting
+      issue if called with IPC::Shareable::singleton() as opposed to
+      IPC::Shareable->singleton()
 
 1.12    2022-03-13
     - Add tests in t/07-new.t to test how using tied() against a dereferenced
