@@ -726,7 +726,7 @@ sub _tie {
 
         if (! defined $exclusive) {
             if ($knot->attributes('warn')) {
-                my $key = sprintf("0x%X", $knot->_shm_key);
+                my $key = lc(sprintf("0x%X", $knot->_shm_key));
 
                 warn "Process ID $$ exited due to exclusive shared memory collision at segment/semaphore key '$key'\n";
             }

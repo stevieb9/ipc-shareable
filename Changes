@@ -1,6 +1,6 @@
 Revision history for Perl extension IPC::Shareable.
 
-1.13 UNREL
+1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
       issue if called with IPC::Shareable::singleton() as opposed to
       IPC::Shareable->singleton()
