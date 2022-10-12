@@ -21,7 +21,7 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION = '1.13';
+our $VERSION = '1.14';
 
 use constant {
     LOCK_SH               => 1,
