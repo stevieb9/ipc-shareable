@@ -530,19 +530,42 @@ sub clean_up_protected {
     }
 }
 sub remove {
-    my $knot = shift;
+    my ($knot) = @_;
 
-    my $s = $knot->seg;
-    my $id = $s->id;
+    # Segment cleanup
 
-    $s->remove or warn "Couldn't remove shared memory segment $id: $!";
+    my $seg = $knot->seg;
+    my $id = $seg->id;
 
-    $s = $knot->sem;
+    my $seg_removed = 0;
 
-    $s->remove or warn "Couldn't remove semaphore set $id: $!";
+    if ($seg->remove ne '0 but true') {
+        warn "Couldn't remove shm segment $id: $!";
+    }
+    else {
+        $seg_removed = 1;
+    }
 
-    delete $process_register{$id};
-    delete $global_register{$id};
+    # Semaphore cleanup
+
+    my $sem = $knot->sem;
+
+    my $sem_removed = 0;
+
+    if ($sem->remove ne '0 but true') {
+        warn "Couldn't remove semaphore set $id: $!";
+    }
+    else {
+        $sem_removed = 1;
+    }
+
+    # If the segment or semaphore couldn't be cleaned up, we need to
+    # keep state
+
+    if ($seg_removed && $sem_removed) {
+        delete $process_register{$id};
+        delete $global_register{$id};
+    }
 }
 sub seg {
     my ($knot) = @_;

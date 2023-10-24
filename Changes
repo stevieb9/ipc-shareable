@@ -1,7 +1,10 @@
 Revision history for Perl extension IPC::Shareable.
 
 1.14 UNREL
-    -
+    - Modify remove() to properly catch a non "0 but true" case when trying
+      to destroy segments and semaphores so warnings are displayed properly
+    - remove() now leaves the global and process registers intact if the destroy
+      operation fails
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
