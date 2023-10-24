@@ -17,6 +17,16 @@ stabilized and polished.
 You can modify the kern.sysv parameters in the below file to your liking, then
 put the file into a ""/Library/LaunchDaemons/SharedMemory.plist" file and reboot.
 
+Here's what mine is currently set to:
+
+    <string>kern.sysv.shmmax=4194304</string>
+    <string>kern.sysv.shmmni=128</string>
+    <string>kern.sysv.shmseg=32</string>
+    <string>kern.sysv.shmall=2048</string>
+    <string>kern.sysv.shmmin=1</string>
+
+ Sample config file:
+
 ---
 
 <?xml version="1.0" encoding="UTF-8"?>
