@@ -1,6 +1,9 @@
 use warnings;
 use strict;
 
+# Test the fix to a bug where a random SHM key wasn't being created inside
+# of a fork()
+
 use IPC::Shareable;
 use Test::More;
 

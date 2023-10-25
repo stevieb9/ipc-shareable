@@ -18,7 +18,8 @@ my $mod = 'IPC::Shareable';
 my $knot = tie my %hv, $mod, {
     create => 1,
     key => 1234,
-    destroy => 1, 
+    destroy => 1,
+    serializer => 'json',
 #    persist => 1
 };
 

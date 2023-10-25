@@ -158,7 +158,6 @@ warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
 
 # _shm_key_rand() collisions (in _mg_tie())
 {
-
     my $m = Mock::Sub->new;
     my $sub = $m->mock('IPC::Shareable::_shm_key_rand_int');
     $sub->return_value(555555);

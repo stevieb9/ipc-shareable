@@ -80,10 +80,9 @@ IPC::Shareable->clean_up_all;
 
 # deeply nested
 
-tie $sv, 'IPC::Shareable', { destroy => 1 };
+tie $sv, 'IPC::Shareable', { serializer => 'storable', destroy => 1 };
 
 $sv->{this}->{is}->{nested}->{deeply}->[0]->[1]->[2] = 'found';
-
 
 is
     $sv->{this}->{is}->{nested}->{deeply}->[0]->[1]->[2],

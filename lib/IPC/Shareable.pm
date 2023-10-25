@@ -667,6 +667,8 @@ sub _encode_json {
     if (length($json) > $seg->size) {
         croak "Length of shared data exceeds shared segment size";
     }
+
+    substr $json, 0, 0, 'IPC::Shareable';
     $seg->shmwrite($json);
 }
 sub _decode_json {
@@ -680,17 +682,19 @@ sub _decode_json {
 
     $json =~ s/\x00+//;
 
-#    my $tag = substr $json, 0, 14, '';
+    my $tag = substr $json, 0, 14, '';
 
-#    if ($tag eq 'IPC::Shareable') {
+    if ($tag eq 'IPC::Shareable') {
         my $data = decode_json $json;
+
         if (! defined($data)){
             croak "Munged shared memory segment (size exceeded?)";
         }
+
         return $data;
-#    } else {
-#        return;
-#    }
+    } else {
+        return;
+    }
 }
 sub _freeze {
     my $seg  = shift;
