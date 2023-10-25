@@ -5,7 +5,9 @@ Revision history for Perl extension IPC::Shareable.
       to destroy segments and semaphores so warnings are displayed properly
     - remove() now leaves the global and process registers intact if the destroy
       operation fails
-
+    - Rename _mg_tie() to _magic_tie()
+    - Rename _is_kid() to _is_child()
+    -
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
       issue if called with IPC::Shareable::singleton() as opposed to

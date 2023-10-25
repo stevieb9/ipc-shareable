@@ -135,17 +135,17 @@ sub STORE {
     if ($knot->{_type} eq 'HASH') {
         my ($key, $val) = @_;
         # If $val is a reference, we need to create a new segment
-        _mg_tie($knot, $val, $key) if $knot->_need_tie($val, $key);
+        _magic_tie($knot, $val, $key) if $knot->_need_tie($val, $key);
         $knot->{_data}{$key} = $val;
     }
     elsif ($knot->{_type} eq 'ARRAY') {
         my ($i, $val) = @_;
-        _mg_tie($knot, $val, $i) if $knot->_need_tie($val, $i);
+        _magic_tie($knot, $val, $i) if $knot->_need_tie($val, $i);
         $knot->{_data}[$i] = $val;
     }
     elsif ($knot->{_type} eq 'SCALAR') {
         my ($val) = @_;
-        _mg_tie($knot, $val) if $knot->_need_tie($val);
+        _magic_tie($knot, $val) if $knot->_need_tie($val);
         $knot->{_data} = \$val;
     }
     else {
@@ -207,7 +207,7 @@ sub FETCH {
         croak "Variables of type $knot->{_type} not supported";
     }
 
-    if (my $inner = _is_kid($val)) {
+    if (my $inner = _is_child($val)) {
         my $s = $inner->seg;
         $inner->{_data} = $knot->_decode($s);
     }
@@ -621,6 +621,7 @@ END {
 
 # --- Private methods below
 
+# Encoding/Decoding
 sub _encode {
     my ($knot, $seg, $data) = @_;
 
@@ -634,15 +635,6 @@ sub _encode {
     }
 
     return undef;
-}
-sub _end {
-    for my $s (values %process_register) {
-        unlock($s);
-        next if $s->attributes('protected');
-        next if ! $s->attributes('destroy');
-        next if $s->attributes('owner') != $$;
-        remove($s);
-    }
 }
 sub _decode {
     my ($knot, $seg) = @_;
@@ -733,6 +725,8 @@ sub _thaw {
         return;
     }
 }
+
+# Data management
 sub _tie {
     my ($type, $class, $key_str, $opts);
 
@@ -845,28 +839,109 @@ sub _tie {
 
     return $knot;
 }
-sub _parse_args {
-    my ($opts) = @_;
+sub _magic_tie {
+    my ($parent, $val, $identifier) = @_;
 
-    $opts  = defined $opts  ? $opts  : { %default_options };
+    my $key;
 
-    for my $k (keys %default_options) {
-        if (not defined $opts->{$k}) {
-            $opts->{$k} = $default_options{$k};
-        }
-        elsif ($opts->{$k} eq 'no') {
-            if ($^W) {
-                require Carp;
-                Carp::carp("Use of `no' in IPC::Shareable args is obsolete");
-            }
-
-            $opts->{$k} = 0;
-        }
+    if ($parent->{_key} == IPC_PRIVATE) {
+        $key = IPC_PRIVATE;
     }
-    $opts->{owner} = ($opts->{owner} or $$);
-    $opts->{magic} = ($opts->{magic} or 0);
-    return $opts;
+    else {
+        $key = _shm_key_rand();
+    }
+
+    my %opts = (
+        %{ $parent->attributes },
+        key       => $key,
+        exclusive => 1,
+        create    => 1,
+        magic     => 1,
+    );
+
+    # XXX I wish I didn't have to take a copy of data here and copy it back in
+    # XXX Also, have to peek inside potential objects to see their implementation
+    my $child;
+    my $type = Scalar::Util::reftype($val) || '';
+
+    if ($type eq "HASH") {
+        my %copy = %$val;
+        $child = tie %$val, 'IPC::Shareable', $key, { %opts };
+        croak "Could not create inner tie" if ! $child;
+
+        _reset_segment($parent, $identifier) if $opts{tidy};
+
+        %$val = %copy;
+    }
+    elsif ($type eq "ARRAY") {
+        my @copy = @$val;
+        $child = tie @$val, 'IPC::Shareable', $key, { %opts };
+        croak "Could not create inner tie" if ! $child;
+
+        _reset_segment($parent, $identifier) if $opts{tidy};
+
+        @$val = @copy;
+    }
+    elsif ($type eq "SCALAR") {
+        my $copy = $$val;
+        $child = tie $$val, 'IPC::Shareable', $key, { %opts };
+        croak "Could not create inner tie" if ! $child;
+
+        $$val = $copy;
+    }
+    else {
+        croak "Variables of type $type not implemented";
+    }
+
+    return $child;
 }
+sub _is_child {
+    my $data = shift or return;
+
+    my $type = Scalar::Util::reftype( $data );
+    return unless $type;
+
+    my $obj;
+
+    if ($type eq "HASH") {
+        $obj = tied %$data;
+    }
+    elsif ($type eq "ARRAY") {
+        $obj = tied @$data;
+    }
+    elsif ($type eq "SCALAR") {
+        $obj = tied $$data;
+    }
+
+    if (ref $obj eq 'IPC::Shareable') {
+        return $obj;
+    }
+
+    return;
+}
+sub _need_tie {
+    my ($knot, $val, $identifier) = @_;
+
+    my $type = Scalar::Util::reftype($val);
+    return 0 if ! $type;
+
+    my $need_tie;
+
+    if ($type eq "HASH") {
+        $need_tie = !(tied %$val);
+    }
+    elsif ($type eq "ARRAY") {
+        $need_tie = !(tied @$val);
+    }
+    elsif ($type eq "SCALAR") {
+        $need_tie = !(tied $$val);
+    }
+
+    return $need_tie ? 1 : 0;
+}
+
+# Segment operations
+
 sub _shm_key {
     # Generates a 32-bit CRC on the key string. The $key_str parameter is used
     # for testing only, for purposes of testing various key strings
@@ -960,106 +1035,6 @@ sub _shm_flags {
 
     return $flags;
 }
-sub _mg_tie {
-    my ($parent, $val, $identifier) = @_;
-
-    my $key;
-
-    if ($parent->{_key} == IPC_PRIVATE) {
-        $key = IPC_PRIVATE;
-    }
-    else {
-        $key = _shm_key_rand();
-    }
-
-    my %opts = (
-        %{ $parent->attributes },
-        key       => $key,
-        exclusive => 1,
-        create    => 1,
-        magic     => 1,
-    );
-
-    # XXX I wish I didn't have to take a copy of data here and copy it back in
-    # XXX Also, have to peek inside potential objects to see their implementation
-    my $child;
-    my $type = Scalar::Util::reftype($val) || '';
-
-    if ($type eq "HASH") {
-        my %copy = %$val;
-        $child = tie %$val, 'IPC::Shareable', $key, { %opts };
-        croak "Could not create inner tie" if ! $child;
-
-        _reset_segment($parent, $identifier) if $opts{tidy};
-
-        %$val = %copy;
-    }
-    elsif ($type eq "ARRAY") {
-        my @copy = @$val;
-        $child = tie @$val, 'IPC::Shareable', $key, { %opts };
-        croak "Could not create inner tie" if ! $child;
-
-        _reset_segment($parent, $identifier) if $opts{tidy};
-
-        @$val = @copy;
-    }
-    elsif ($type eq "SCALAR") {
-        my $copy = $$val;
-        $child = tie $$val, 'IPC::Shareable', $key, { %opts };
-        croak "Could not create inner tie" if ! $child;
-
-        $$val = $copy;
-    }
-    else {
-        croak "Variables of type $type not implemented";
-    }
-
-    return $child;
-}
-sub _is_kid {
-    my $data = shift or return;
-
-    my $type = Scalar::Util::reftype( $data );
-    return unless $type;
-
-    my $obj;
-
-    if ($type eq "HASH") {
-        $obj = tied %$data;
-    }
-    elsif ($type eq "ARRAY") {
-        $obj = tied @$data;
-    }
-    elsif ($type eq "SCALAR") {
-        $obj = tied $$data;
-    }
-
-    if (ref $obj eq 'IPC::Shareable') {
-        return $obj;
-    }
-
-    return;
-}
-sub _need_tie {
-    my ($knot, $val, $identifier) = @_;
-
-    my $type = Scalar::Util::reftype($val);
-    return 0 if ! $type;
-
-    my $need_tie;
-
-    if ($type eq "HASH") {
-        $need_tie = !(tied %$val);
-    }
-    elsif ($type eq "ARRAY") {
-        $need_tie = !(tied @$val);
-    }
-    elsif ($type eq "SCALAR") {
-        $need_tie = !(tied $$val);
-    }
-
-    return $need_tie ? 1 : 0;
-}
 sub _reset_segment {
     my ($parent, $id) = @_;
 
@@ -1076,6 +1051,39 @@ sub _reset_segment {
         if (exists $data->[$id] && tied @{ $data->[$id] }) {
             (tied @{ $parent->{_data}[$id] })->remove;
         }
+    }
+}
+
+# Misc
+sub _parse_args {
+    my ($opts) = @_;
+
+    $opts  = defined $opts  ? $opts  : { %default_options };
+
+    for my $k (keys %default_options) {
+        if (not defined $opts->{$k}) {
+            $opts->{$k} = $default_options{$k};
+        }
+        elsif ($opts->{$k} eq 'no') {
+            if ($^W) {
+                require Carp;
+                Carp::carp("Use of `no' in IPC::Shareable args is obsolete");
+            }
+
+            $opts->{$k} = 0;
+        }
+    }
+    $opts->{owner} = ($opts->{owner} or $$);
+    $opts->{magic} = ($opts->{magic} or 0);
+    return $opts;
+}
+sub _end {
+    for my $s (values %process_register) {
+        unlock($s);
+        next if $s->attributes('protected');
+        next if ! $s->attributes('destroy');
+        next if $s->attributes('owner') != $$;
+        remove($s);
     }
 }
 
@@ -1113,6 +1121,7 @@ sub _debug {
     }  @_;
     Carp::carp "IPC::Shareable ($$) debug:\n", $caller, @msg;
 }
+
 sub _placeholder {}
 
 1;
