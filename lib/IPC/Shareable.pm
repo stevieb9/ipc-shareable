@@ -134,6 +134,7 @@ sub STORE {
 
     if ($knot->{_type} eq 'HASH') {
         my ($key, $val) = @_;
+        # If $val is a reference, we need to create a new segment
         _mg_tie($knot, $val, $key) if $knot->_need_tie($val, $key);
         $knot->{_data}{$key} = $val;
     }
@@ -261,21 +262,30 @@ sub EXISTS {
 sub FIRSTKEY {
     my $knot = shift;
 
+    # each() or keys() has been called. Track this
     $knot->{_iterating} = 1;
+
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     my $reset = keys %{$knot->{_data}};
     my $first = each %{$knot->{_data}};
     return $first;
 }
 sub NEXTKEY {
-    my $knot = shift;
+    my ($knot, $last_key_accessed) = @_;
 
-    # caveat emptor if hash was changed by another process
+    # We don't use ordered hashes, so we don't need to use
+    # the last key accessed parameter
+
+    # Caveat emptor if hash was changed by another process
+
     my $next = each %{$knot->{_data}};
+
     if (not defined $next) {
+        # No more data, reset the each() or keys() loop
         $knot->{_iterating} = 0;
         return;
     } else {
+        # We're still in an each() or keys() loop
         $knot->{_iterating} = 1;
         return $next;
     }
@@ -718,6 +728,7 @@ sub _tie {
     my ($type, $class, $key_str, $opts);
 
     if (scalar @_ == 4) {
+        # Legacy API allowed a string scalar key
         ($type, $class, $key_str, $opts) = @_;
         $opts->{key} = $key_str;
     }
@@ -815,6 +826,7 @@ sub _tie {
         }
 
         $process_register{$knot->seg->id} ||= $knot;
+
         if (! $sem->setval(SEM_MARKER, SHM_EXISTS)){
             croak "Couldn't set semaphore during object creation: $!";
         }
