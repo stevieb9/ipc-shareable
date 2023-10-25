@@ -679,8 +679,13 @@ sub _decode_json {
     return if ! $json;
 
     # Remove \x{0} after end of string (broke JSON)
-
     $json =~ s/\x00+//;
+
+    # The return of shmread() is the actual size of the defined size of the
+    # shared memory segment. Even if the return equates to an empty string
+    # (which it will if it contains no data), there will always be a length().
+    # Therefore, we must see if we've tagged this data as a valid structure,
+    # or else decode will fail
 
     my $tag = substr $json, 0, 14, '';
 
