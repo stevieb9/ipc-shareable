@@ -411,7 +411,7 @@ sub new {
     }
 }
 sub global_register {
-     # This is a ridiculous way to do this, but if we don't call Dumper, hashes
+    # This is a ridiculous way to do this, but if we don't call Dumper, hashes
     # that are created in a separate process than the parent hash don't
     # show up properly in the global register. t/81
 
@@ -941,7 +941,6 @@ sub _need_tie {
 }
 
 # Segment operations
-
 sub _shm_key {
     # Generates a 32-bit CRC on the key string. The $key_str parameter is used
     # for testing only, for purposes of testing various key strings

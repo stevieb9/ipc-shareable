@@ -4,6 +4,9 @@ use strict;
 # Test the fix to a bug where a random SHM key wasn't being created inside
 # of a fork()
 
+# It also regression tests a fix in global_register() where writing to the same
+# hash from two procs didn't update the global_register properly
+
 use IPC::Shareable;
 use Test::More;
 
