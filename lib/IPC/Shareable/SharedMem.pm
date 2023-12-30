@@ -19,7 +19,7 @@ sub default_size {
 }
 
 sub new {
-    my($class, $key, $size, $flags, $type) = @_;
+    my ($class, $key, $size, $flags, $type) = @_;
 
     defined $key or do {
         confess "usage: IPC::SharedMem->new(KEY, [ SIZE,  [ FLAGS ] ])";
@@ -109,31 +109,69 @@ sub remove {
 
 =head1 NAME
 
-IPC::Shareable::SharedMem - Object oriented interface to shared memory
+IPC::Shareable::SharedMem - Allows access to a shared memory segment via an
+object oriented interface.
+
+=head1 DESCRIPTION
+
+This module provides object oriented access to a shared memory segment. Although
+it can be used standalone, it was designed for use specifically within the
+L<< IPC::Shareable >> library.
 
 =for html
 <a href="https://github.com/stevieb9/ipc-shareable/actions"><img src="https://github.com/stevieb9/ipc-shareable/workflows/CI/badge.svg"/></a>
 <a href='https://coveralls.io/github/stevieb9/ipc-shareable?branch=master'><img src='https://coveralls.io/repos/stevieb9/ipc-shareable/badge.svg?branch=master&service=github' alt='Coverage Status' /></a>
 
-
 =head1 SYNOPSIS
 
- *** No public interface ***
+=head1 METHODS
 
-=head1 WARNING
+=head2 new($key, $size, $flags, $type)
 
-This module is not intended for public consumption.  It is used
-internally by IPC::Shareable to access shared memory.
+Instantiates and returns an object that represents a shared memory segment.
 
-=head1 DESCRIPTION
+Parameters:
 
-This module provides and object-oriented framework to access shared
-memory.  Its use is intended to be limited to IPC::Shareable.
-Therefore I have not documented an interface.
+    $key
+
+I<< Mandatory, Integer >>: An integer that references the shared memory segment.
+
+If this option is missing, we'll default to using C<IPC_PRIVATE>. This default
+key will not allow sharing of the variable between processes.
+
+I<Default>: C<IPC_PRIVATE>.
+
+    $size
+
+I<Optional, Integer>: An integer representing the size in bytes of the
+shared memory segment. The maximum is Operating System independent.
+
+I<Default>: 1024
+
+    $flags
+
+I<Optional, Bitwise Mask>: A bitwise mask of options logically OR'd together
+with any or all of C<IPC_CREAT> (create segment if it doesn't exist),
+C<IPC_EXCL> (exclusive access; if the segment already exists,
+we'll C<croak>) and C<IPC_RDONLY> (create a read only segment).
+
+See L<IPC::SysV> for further details.
+
+I<Default>: C<IPC_CREAT> (ie. C<512>).
+
+    $type
+
+I<Optional, String>: The type of data that will be stored in the shared memory
+segment. Must be one of C<SCALAR>, C<ARRAY> or C<HASH>.
+
 
 =head1 AUTHOR
 
 Ben Sugars (bsugars@canoe.ca)
+
+=head1 MAINTAINED BY
+
+Steve Bertrand <steveb@cpan.org>
 
 =head1 SEE ALSO
 
