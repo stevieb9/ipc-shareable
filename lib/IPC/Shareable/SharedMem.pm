@@ -68,30 +68,20 @@ sub type {
     $self->{type} = $type if defined $type;
     return $self->{type};
 }
-sub shmwrite {
-    my($self, $data) = @_;
-    return shmwrite($self->{id}, $data, 0, $self->{size});
-}
 sub shmread {
-    my $self = shift;
+    my ($self) = @_;
 
     my $data = '';
-    shmread($self->{id}, $data, 0, $self->{size}) or return;
+    shmread($self->id, $data, 0, $self->size) or return;
     return $data;
 }
+sub shmwrite {
+    my($self, $data) = @_;
+    return shmwrite($self->id, $data, 0, $self->size);
+}
 sub remove {
-    my $to_remove = shift;
-
-    my $id;
-
-    if (ref $to_remove eq __PACKAGE__){
-        $id = $to_remove->{id};
-    }
-
-    my $arg = 0;
-
-    my $ret = shmctl($id, IPC_RMID, $arg);
-    return $ret;
+    my ($self) = @_;
+    return shmctl($self->id, IPC_RMID, 0);
 }
 
 1;
@@ -152,6 +142,31 @@ I<Default>: C<IPC_CREAT> (ie. C<512>).
 
 I<Optional, String>: The type of data that will be stored in the shared memory
 segment. L<IPC::Shareable> uses C<SCALAR>, C<ARRAY> or C<HASH>.
+
+=head2 shmread
+
+Returns the data stored in the shared memory segment.
+
+I<Return>: The data if any is stored, empty string if no data has been stored
+yet, and C<undef> if a failure to read occurs.
+
+=head2 shmwrite($data)
+
+Stores the serialized data to the shared memory segment.
+
+Parameters:
+
+    $data
+
+I<Mandatory, String>: Typically, the data will be serialized.
+
+I<Return>: True on success, false on failure.
+
+=head2 remove
+
+Removes the shared memory segment and returns the resources to the system.
+
+I<Return>: True on success, false on failure.
 
 =head1 AUTHOR
 

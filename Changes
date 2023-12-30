@@ -9,7 +9,8 @@ Revision history for Perl extension IPC::Shareable.
     - Rename _is_kid() to _is_child()
     - In IPC::SharedMem, removed leading underscore from object attributes
     - Parameter list in IPC::SharedMem::new() is now in the form of a hash
-
+    - Code refactoring in IPC::SharedMem
+    - Add POD for IPC::SharedMem
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
       issue if called with IPC::Shareable::singleton() as opposed to
