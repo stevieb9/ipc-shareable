@@ -10,12 +10,12 @@ our $VERSION = '1.14';
 
 use constant DEBUGGING => ($ENV{SHM_DEBUG} or 0);
 
-my $default_size = 1024;
+my $defaultsize = 1024;
 
-sub default_size {
+sub defaultsize {
     my $class = shift;
-    $default_size = shift if @_;
-    return $default_size;
+    $defaultsize = shift if @_;
+    return $defaultsize;
 }
 
 sub new {
@@ -25,7 +25,7 @@ sub new {
         confess "usage: IPC::SharedMem->new(KEY, [ SIZE,  [ FLAGS ] ])";
     };
 
-    $size  ||= $default_size;
+    $size  ||= $defaultsize;
     $flags ||= 0;
 
     my $id = shmget($key, $size, $flags);
@@ -40,54 +40,49 @@ sub new {
     };
 
     my $sh = {
-        _id    => $id,
-        _key   => $key,
-        _size  => $size,
-        _flags => $flags,
-        _type  => $type,
+        id    => $id,
+        key   => $key,
+        size  => $size,
+        flags => $flags,
+        type  => $type,
     };
 
     return bless $sh => $class;
 }
 sub id {
-    my $self = shift;
-
-    $self->{_id} = shift if @_;
-    return $self->{_id};
+    my ($self, $id) = @_;
+    $self->{id} = $id if defined $id;
+    return $self->{id};
 }
 sub key {
-    my $self = shift;
-
-    $self->{_key} = shift if @_;
-    return $self->{_key};
+    my ($self, $key) = @_;
+    $self->{key} = $key if defined $key;
+    return $self->{key};
 }
 sub flags {
-    my $self = shift;
-
-    $self->{_flags} = shift if @_;
-    return $self->{_flags};
+    my ($self, $flags) = @_;
+    $self->{flags} = $flags if defined $flags;
+    return $self->{flags};
 }
 sub size {
-    my $self = shift;
-
-    $self->{_size} = shift if @_;
-    return $self->{_size};
+    my ($self, $size) = @_;
+    $self->{size} = $size if defined $size;
+    return $self->{size};
 }
 sub type {
-    my $self = shift;
-
-    $self->{_type} = shift if @_;
-    return $self->{_type};
+    my ($self, $type) = @_;
+    $self->{type} = $type if defined $type;
+    return $self->{type};
 }
 sub shmwrite {
     my($self, $data) = @_;
-    return shmwrite($self->{_id}, $data, 0, $self->{_size});
+    return shmwrite($self->{id}, $data, 0, $self->{size});
 }
 sub shmread {
     my $self = shift;
 
     my $data = '';
-    shmread($self->{_id}, $data, 0, $self->{_size}) or return;
+    shmread($self->{id}, $data, 0, $self->{size}) or return;
     return $data;
 }
 sub remove {
@@ -96,7 +91,7 @@ sub remove {
     my $id;
 
     if (ref $to_remove eq __PACKAGE__){
-        $id = $to_remove->{_id};
+        $id = $to_remove->{id};
     }
 
     my $arg = 0;
