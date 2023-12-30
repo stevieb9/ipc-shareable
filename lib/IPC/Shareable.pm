@@ -757,7 +757,12 @@ sub _tie {
 
     if ($knot->attributes('graceful')) {
         my $exclusive = eval {
-            $seg = IPC::Shareable::SharedMem->new($key, $shm_size, $flags);
+            $seg = IPC::Shareable::SharedMem->new(
+                key   => $key,
+                size  => $shm_size,
+                flags => $flags,
+                type  => $type,
+            );
             1;
         };
 
@@ -771,7 +776,12 @@ sub _tie {
         }
     }
     else {
-        $seg = IPC::Shareable::SharedMem->new($key, $shm_size, $flags);
+        $seg = IPC::Shareable::SharedMem->new(
+            key   => $key,
+            size  => $shm_size,
+            flags => $flags,
+            type  => $type,
+        );
     }
 
     if (! defined $seg) {
@@ -998,7 +1008,11 @@ sub _shm_key_rand {
         my $seg;
 
         my $shm_slot_available = eval {
-            $seg = IPC::Shareable::SharedMem->new($key, 1, $flags);
+            $seg = IPC::Shareable::SharedMem->new(
+                key     => $key,
+                size    => 1,
+                flags   => $flags,
+            );
             1;
         };
 

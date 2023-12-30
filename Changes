@@ -8,6 +8,7 @@ Revision history for Perl extension IPC::Shareable.
     - Rename _mg_tie() to _magic_tie()
     - Rename _is_kid() to _is_child()
     - In IPC::SharedMem, removed leading underscore from object attributes
+    - Parameter list in IPC::SharedMem::new() is now in the form of a hash
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

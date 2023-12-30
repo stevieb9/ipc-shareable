@@ -4,34 +4,34 @@ use warnings;
 use strict;
 
 use Carp qw(carp croak confess);
-use IPC::SysV qw(IPC_RMID);
+use IPC::SysV qw(IPC_CREAT IPC_RMID);
 
 our $VERSION = '1.14';
 
-use constant DEBUGGING => ($ENV{SHM_DEBUG} or 0);
-
-my $defaultsize = 1024;
-
-sub defaultsize {
-    my $class = shift;
-    $defaultsize = shift if @_;
-    return $defaultsize;
-}
+use constant {
+    DEBUGGING           => ($ENV{SHM_DEBUG} || 0),
+    DEFAULT_SEG_SIZE    => 1024,
+};
 
 sub new {
-    my ($class, $key, $size, $flags, $type) = @_;
+    my ($class, %params) = @_;
 
-    defined $key or do {
-        confess "usage: IPC::SharedMem->new(KEY, [ SIZE,  [ FLAGS ] ])";
-    };
+    my $self = bless {}, $class;
 
-    $size  ||= $defaultsize;
-    $flags ||= 0;
+    if (! defined $params{key}) {
+        croak "new() requires a 'key' parameter with value";
+    }
 
-    my $id = shmget($key, $size, $flags);
+    $self->key($params{key});
+    $self->size($params{size} || DEFAULT_SEG_SIZE);
+    $self->flags($params{flags} || IPC_CREAT);
+    $self->type($params{type});
+
+    my $id = shmget($self->key, $self->size, $self->flags);
 
     defined $id or do {
         if ($! =~ /File exists/){
+            my $key = $self->key;
             croak "\nERROR: IPC::Shareable::SharedMem: shmget $key: $!\n\n" .
                   "Are you using exclusive, but trying to create multiple " .
                   "instances?\n\n";
@@ -39,15 +39,9 @@ sub new {
         return undef;
     };
 
-    my $sh = {
-        id    => $id,
-        key   => $key,
-        size  => $size,
-        flags => $flags,
-        type  => $type,
-    };
+    $self->id($id);
 
-    return bless $sh => $class;
+    return $self;
 }
 sub id {
     my ($self, $id) = @_;
@@ -121,13 +115,13 @@ L<< IPC::Shareable >> library.
 
 =head1 METHODS
 
-=head2 new($key, $size, $flags, $type)
+=head2 new(%params)
 
 Instantiates and returns an object that represents a shared memory segment.
 
-Parameters:
+Parameters (must be in key => value pairs):
 
-    $key
+    key
 
 I<< Mandatory, Integer >>: An integer that references the shared memory segment.
 
@@ -136,14 +130,14 @@ key will not allow sharing of the variable between processes.
 
 I<Default>: C<IPC_PRIVATE>.
 
-    $size
+    size
 
 I<Optional, Integer>: An integer representing the size in bytes of the
 shared memory segment. The maximum is Operating System independent.
 
 I<Default>: 1024
 
-    $flags
+    flags
 
 I<Optional, Bitwise Mask>: A bitwise mask of options logically OR'd together
 with any or all of C<IPC_CREAT> (create segment if it doesn't exist),
@@ -154,11 +148,10 @@ See L<IPC::SysV> for further details.
 
 I<Default>: C<IPC_CREAT> (ie. C<512>).
 
-    $type
+    type
 
 I<Optional, String>: The type of data that will be stored in the shared memory
-segment. Must be one of C<SCALAR>, C<ARRAY> or C<HASH>.
-
+segment. L<IPC::Shareable> uses C<SCALAR>, C<ARRAY> or C<HASH>.
 
 =head1 AUTHOR
 
