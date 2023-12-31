@@ -50,6 +50,11 @@ sub id {
 }
 sub key {
     my ($self, $key) = @_;
+
+    if ($self->id) {
+        croak "Can't set the 'key' attribute after object is already established";
+    }
+
     $self->{key} = $key if defined $key;
     return $self->{key};
 }
@@ -111,7 +116,7 @@ Instantiates and returns an object that represents a shared memory segment.
 
 Parameters (must be in key => value pairs):
 
-    key
+=head3 key
 
 I<< Mandatory, Integer >>: An integer that references the shared memory segment.
 
@@ -120,14 +125,14 @@ key will not allow sharing of the variable between processes.
 
 I<Default>: C<IPC_PRIVATE>.
 
-    size
+=head3 size
 
 I<Optional, Integer>: An integer representing the size in bytes of the
 shared memory segment. The maximum is Operating System independent.
 
 I<Default>: 1024
 
-    flags
+=head3 flags
 
 I<Optional, Bitwise Mask>: A bitwise mask of options logically OR'd together
 with any or all of C<IPC_CREAT> (create segment if it doesn't exist),
@@ -138,10 +143,34 @@ See L<IPC::SysV> for further details.
 
 I<Default>: C<IPC_CREAT> (ie. C<512>).
 
-    type
+=head3 type
 
 I<Optional, String>: The type of data that will be stored in the shared memory
 segment. L<IPC::Shareable> uses C<SCALAR>, C<ARRAY> or C<HASH>.
+
+=head2 key
+
+Sets/gets the key used to identify the shared memory segment.
+
+Setting this attribute should only be done internally. If it is sent in after
+the object is already associated with a shared memory segment, we will C<croak>.
+
+See L</key> for further details.
+
+=head2 size
+
+Sets/gets the size of the shared memory segment in bytes. See L</size> for
+further details.
+
+=head2 flags
+
+Sets/gets the flags that the segment will be created with. See L</flags> for
+details.
+
+=head2 type
+
+Sets/gets the type of data that will be contained in the shared memory segment.
+See L</type> for details.
 
 =head2 shmread
 
