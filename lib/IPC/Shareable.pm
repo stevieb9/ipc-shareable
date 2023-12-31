@@ -761,6 +761,7 @@ sub _tie {
                 key   => $key,
                 size  => $shm_size,
                 flags => $flags,
+                mode  => $knot->attributes('mode'),
                 type  => $type,
             );
             1;
@@ -1044,7 +1045,6 @@ sub _shm_flags {
 
     $flags |= IPC_CREAT if $knot->attributes('create');
     $flags |= IPC_EXCL  if $knot->attributes('exclusive');;
-    $flags |= ($knot->attributes('mode') or 0666);
 
     return $flags;
 }

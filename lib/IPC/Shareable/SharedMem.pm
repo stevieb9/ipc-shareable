@@ -24,7 +24,10 @@ sub new {
 
     $self->key($params{key});
     $self->size($params{size} || DEFAULT_SEG_SIZE);
-    $self->flags($params{flags} || IPC_CREAT);
+
+    $self->mode($params{mode} || 0666);
+    $self->flags(($params{flags} || IPC_CREAT) | $self->mode);
+
     $self->type($params{type});
 
     my $id = shmget($self->key, $self->size, $self->flags);
@@ -80,6 +83,20 @@ sub flags {
         $self->{flags} = $flags;
     }
     return $self->{flags};
+}
+sub mode {
+    my ($self, $mode) = @_;
+
+    if (defined $mode) {
+        if ($self->id) {
+            warn "Can't set mode() after object already instantiated";
+            return $self->{mode};
+        }
+
+        $self->{mode} = $mode;
+    }
+
+    return $self->{mode};
 }
 sub size {
     my ($self, $size) = @_;
@@ -183,6 +200,14 @@ See L<IPC::SysV> for further details.
 
 I<Default>: C<IPC_CREAT> (ie. C<512>).
 
+=head3 mode
+
+I<Optional, Octal Integer>: An octal number representing the access permissions
+for the shared memory segment. Exactly the same as a Unix file system
+permissions.
+
+I<Default>: 0666 (User RW, Group RW, World RW).
+
 =head3 type
 
 I<Optional, String>: The type of data that will be stored in the shared memory
@@ -218,6 +243,13 @@ Sets/gets the flags that the segment will be created with. See L</flags> for
 details.
 
 A warning will be thrown if you try to set the flags after the object is already
+instantiated, and no change will occur.
+
+=head2 mode
+
+Sets/gets the access permissions. See L</mode> for further details.
+
+A warning will be thrown if you try to set the mode after the object is already
 instantiated, and no change will occur.
 
 =head2 type
