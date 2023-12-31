@@ -133,6 +133,10 @@ sub shmread {
 
     my $data = '';
     shmread($self->id, $data, 0, $self->size) or return;
+
+    # Remove \x{0} after end of string
+    $data =~ s/\x00+//;
+
     return $data;
 }
 sub shmwrite {

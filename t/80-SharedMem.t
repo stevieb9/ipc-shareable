@@ -171,11 +171,7 @@ my $mod = 'IPC::Shareable::SharedMem';
 
     is $seg->shmwrite($data), 1, "shmwrite() returns 1 on success";
 
-    my $read = $seg->shmread;
-
-    print ">$read<, >$data<\n";
-
-    like $read, qr/^$data/, "shmread() returns the proper data ok";
+    is $seg->shmread, $data, "shmread() returns the proper data ok";
 
     is $seg->remove, 1, "seg removed ok";
 }

@@ -656,11 +656,12 @@ sub _encode_json {
 
     my $json = encode_json $data;
 
+    substr $json, 0, 0, 'IPC::Shareable';
+
     if (length($json) > $seg->size) {
         croak "Length of shared data exceeds shared segment size";
     }
 
-    substr $json, 0, 0, 'IPC::Shareable';
     $seg->shmwrite($json);
 }
 sub _decode_json {
@@ -669,9 +670,6 @@ sub _decode_json {
     my $json = $seg->shmread;
 
     return if ! $json;
-
-    # Remove \x{0} after end of string (broke JSON)
-    $json =~ s/\x00+//;
 
     # The return of shmread() is the actual size of the defined size of the
     # shared memory segment. Even if the return equates to an empty string
@@ -704,6 +702,7 @@ sub _freeze {
     if (length($ice) > $seg->size) {
         croak "Length of shared data exceeds shared segment size";
     }
+
     $seg->shmwrite($ice);
 }
 sub _thaw {
