@@ -45,7 +45,14 @@ sub new {
 }
 sub id {
     my ($self, $id) = @_;
-    $self->{id} = $id if defined $id;
+
+    if (defined $id) {
+        if ($self->{id}) {
+            warn "Can't set id() after object already instantiated";
+            return $self->{id};
+        }
+        $self->{id} = $id;
+    }
     return $self->{id};
 }
 sub key {
@@ -63,17 +70,45 @@ sub key {
 }
 sub flags {
     my ($self, $flags) = @_;
-    $self->{flags} = $flags if defined $flags;
+
+    if (defined $flags) {
+        if ($self->id) {
+            warn "Can't set flags() after object already instantiated";
+            return $self->{flags};
+        }
+
+        $self->{flags} = $flags;
+    }
     return $self->{flags};
 }
 sub size {
     my ($self, $size) = @_;
-    $self->{size} = $size if defined $size;
+
+    if (defined $size) {
+        if ($self->id) {
+            warn "Can't set size() after object already instantiated";
+            return $self->{size};
+        }
+        if ($size !~ /^\d+$/) {
+            croak "size() requires an integer as parameter";
+        }
+
+        $self->{size} = $size;
+    }
     return $self->{size};
 }
 sub type {
     my ($self, $type) = @_;
-    $self->{type} = $type if defined $type;
+
+    if (defined $type) {
+        if ($self->id) {
+            warn "Can't set type() after object already instantiated";
+            return $self->{type};
+        }
+
+        $self->{type} = $type;
+    }
+
     return $self->{type};
 }
 sub shmread {
@@ -153,6 +188,13 @@ I<Default>: C<IPC_CREAT> (ie. C<512>).
 I<Optional, String>: The type of data that will be stored in the shared memory
 segment. L<IPC::Shareable> uses C<SCALAR>, C<ARRAY> or C<HASH>.
 
+=head2 id
+
+Sets/gets the identification number that references the shared memory segment.
+
+A warning will be thrown if you try to set the ID after the object is already
+instantiated, and no change will occur.
+
 =head2 key
 
 Sets/gets the key used to identify the shared memory segment.
@@ -167,15 +209,24 @@ See L</key> for further details.
 Sets/gets the size of the shared memory segment in bytes. See L</size> for
 further details.
 
+A warning will be thrown if you try to set the size after the object is already
+instantiated, and no change will occur.
+
 =head2 flags
 
 Sets/gets the flags that the segment will be created with. See L</flags> for
 details.
 
+A warning will be thrown if you try to set the flags after the object is already
+instantiated, and no change will occur.
+
 =head2 type
 
 Sets/gets the type of data that will be contained in the shared memory segment.
 See L</type> for details.
+
+A warning will be thrown if you try to set the type after the object is already
+instantiated, and no change will occur.
 
 =head2 shmread
 
