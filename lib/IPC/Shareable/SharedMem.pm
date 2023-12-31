@@ -200,7 +200,7 @@ I<Return>: True on success, false on failure.
 
 Removes the shared memory segment and returns the resources to the system.
 
-I<Return>: True on success, false on failure.
+I<Return>: True (C<1>) on success, false (C<0>) on failure.
 
 =head1 AUTHOR
 
