@@ -18,8 +18,8 @@ sub new {
 
     my $self = bless {}, $class;
 
-    if (! defined $params{key}) {
-        croak "new() requires a 'key' parameter with value";
+    if (! defined $params{key} || $params{key} !~ /^\d+$/) {
+        croak "new() requires a 'key' parameter with an integer value";
     }
 
     $self->key($params{key});
@@ -89,7 +89,9 @@ sub shmwrite {
 }
 sub remove {
     my ($self) = @_;
-    return shmctl($self->id, IPC_RMID, 0);
+    my $os_return_value = shmctl($self->id, IPC_RMID, 0);
+
+    return $os_return_value eq '0 but true' ? 1 : 0;
 }
 
 1;

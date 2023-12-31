@@ -549,7 +549,7 @@ sub remove {
 
     my $seg_removed = 0;
 
-    if ($seg->remove ne '0 but true') {
+    if (! $seg->remove) {
         warn "Couldn't remove shm segment $id: $!";
     }
     else {

@@ -11,6 +11,7 @@ Revision history for Perl extension IPC::Shareable.
     - Parameter list in IPC::SharedMem::new() is now in the form of a hash
     - Code refactoring in IPC::SharedMem
     - Add POD for IPC::SharedMem
+    - SharedMem::remove() now returns 1 on '0 but true' and 0 otherwise
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
