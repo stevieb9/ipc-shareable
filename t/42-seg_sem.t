@@ -19,11 +19,11 @@ my $k = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 1 };
 # seg()
 
 my @seg_keys = qw(
-    _id
-    _key
-    _flags
-    _type
-    _size
+    id
+    key
+    flags
+    type
+    size
 );
 
 my $knot_seg = $k->seg;

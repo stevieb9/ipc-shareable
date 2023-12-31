@@ -51,11 +51,14 @@ sub id {
 sub key {
     my ($self, $key) = @_;
 
-    if ($self->id) {
-        croak "Can't set the 'key' attribute after object is already established";
+    if (defined $key) {
+        if ($self->id) {
+            croak "Can't set the 'key' attribute after object is already established";
+        }
+
+        $self->{key} = $key;
     }
 
-    $self->{key} = $key if defined $key;
     return $self->{key};
 }
 sub flags {
