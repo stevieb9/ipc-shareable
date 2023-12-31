@@ -187,7 +187,7 @@ Parameters:
 
     $data
 
-I<Mandatory, String>: Typically, the data will be serialized.
+I<Mandatory, String>: Typically, the a serialized data structure.
 
 I<Return>: True on success, false on failure.
 
@@ -207,4 +207,4 @@ Steve Bertrand <steveb@cpan.org>
 
 =head1 SEE ALSO
 
-L<IPC::Shareable>, L<IPC::ShareLite>
+L<IPC::Shareable>, L<IPC::Shareable::SharedMem> L<IPC::ShareLite>
