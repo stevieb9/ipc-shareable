@@ -5,7 +5,7 @@ use strict;
 
 use Carp qw(carp croak confess);
 use Data::Dumper;
-use IPC::SysV qw(IPC_CREAT IPC_RMID);
+use IPC::SysV qw(IPC_RMID);
 
 our $VERSION = '1.14';
 

@@ -443,7 +443,7 @@ sub attributes {
     }
 }
 sub ipcs {
-    my $count = `ipcs -m | wc -l`;
+    my $count = `ipcs -m | grep "0x" | wc -l`;
     chomp $count;
     return int($count);
 }

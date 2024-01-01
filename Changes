@@ -14,6 +14,7 @@ Revision history for Perl extension IPC::Shareable.
     - SharedMem::remove() now returns 1 on '0 but true' and 0 otherwise
     - Fix issue in SharedMem::shmread() where we have to remove an eol char
       that was preventing matches from happening, and broke JSON
+    - ipcs() now ignores lines that don't include an actual key
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
