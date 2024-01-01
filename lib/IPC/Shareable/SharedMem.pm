@@ -25,6 +25,8 @@ sub new {
     }
 
     $self->key($params{key});
+    $self->key_hex($self->key);
+
     $self->size($params{size} || DEFAULT_SEG_SIZE);
 
     $self->mode($params{mode} || DEFAULT_SEG_MODE);
@@ -72,6 +74,15 @@ sub key {
     }
 
     return $self->{key};
+}
+sub key_hex {
+    my ($self, $key_int) = @_;
+
+    if (defined $key_int) {
+        $self->{key_hex} = sprintf "0x%08x", $key_int;
+    }
+
+    return $self->{key_hex};
 }
 sub flags {
     my ($self, $flags) = @_;

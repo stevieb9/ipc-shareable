@@ -16,6 +16,8 @@ Revision history for Perl extension IPC::Shareable.
     - ipcs() now ignores lines that don't include an actual key
     - Add data() method to SharedMem. This strips off the NULL pad bytes from
       shmread()
+    - Added key_hex() to SharedMem. Will allow for easier troubleshooting when
+      using ipcs (closes #32)
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

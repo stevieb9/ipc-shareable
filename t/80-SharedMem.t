@@ -168,6 +168,7 @@ my $mod = 'IPC::Shareable::SharedMem';
 {
     my $seg = $mod->new(key => 5555, flags => IPC_CREAT);
 
+    print Dumper $seg;
     my $data = "blah";
 
     is $seg->shmwrite($data), 1, "shmwrite() returns 1 on success";

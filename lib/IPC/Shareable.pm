@@ -433,8 +433,6 @@ sub process_register {
 sub attributes {
     my ($knot, $attr) = @_;
 
-    my $attrs = $knot->{attributes};
-
     if (defined $attr) {
         return $knot->{attributes}{$attr};
     }
@@ -825,6 +823,7 @@ sub _tie {
         %$knot,
         _iterating   => 0,
         _key         => $key,
+        _key_hex     => $sem->key_hex,
         _lock        => 0,
         _shm         => $seg,
         _sem         => $sem,
