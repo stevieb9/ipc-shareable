@@ -667,7 +667,7 @@ sub _encode_json {
 sub _decode_json {
     my $seg = shift;
 
-    my $json = $seg->shmread;
+    my $json = $seg->data;
 
     return if ! $json;
 

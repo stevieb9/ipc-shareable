@@ -10,8 +10,8 @@ use IPC::SysV qw(IPC_RMID);
 our $VERSION = '1.14';
 
 use constant {
-    DEBUGGING           => ($ENV{SHM_DEBUG} || 0),
     DEFAULT_SEG_SIZE    => 1024,
+    DEFAULT_SEG_FLAGS   => 0000,
     DEFAULT_SEG_MODE    => 0666,
 };
 
@@ -28,7 +28,7 @@ sub new {
     $self->size($params{size} || DEFAULT_SEG_SIZE);
 
     $self->mode($params{mode} || DEFAULT_SEG_MODE);
-    $self->flags(($params{flags} || 0) | $self->mode);
+    $self->flags(($params{flags} || DEFAULT_SEG_FLAGS) | $self->mode);
 
     $self->type($params{type});
 
@@ -130,17 +130,21 @@ sub type {
 
     return $self->{type};
 }
+sub data {
+    my ($self) = @_;
+
+    my $data = $self->shmread;
+
+    # Remove \x{0} (NULL bytes) after end of string
+    $data =~ s/\x00+//;
+
+    return $data;
+}
 sub shmread {
-    my ($self, $strip_null) = @_;
+    my ($self) = @_;
 
     my $data = '';
     shmread($self->id, $data, 0, $self->size) or return;
-
-    if ($strip_null) {
-        # Remove \x{0} (NULL bytes) after end of string
-        $data =~ s/\x00+//;
-    }
-
     return $data;
 }
 sub shmwrite {
@@ -266,18 +270,26 @@ See L</type> for details.
 A warning will be thrown if you try to set the type after the object is already
 instantiated, and no change will occur.
 
-=head2 shmread($strip_null)
+=head2 data
 
-Returns the data stored in the shared memory segment.
+Returns the data in the shared memory segment, with all NULL pad bytes removed.
 
-Parameters:
+Use this method for text data. For binary data where you need all blocks within
+the segment, use the L</shmread> method.
 
-=head3 $strip_null
+=head2 shmread
+
+Returns the data (and NULL pad bytes) stored in the shared memory segment.
 
 By default, when data is retrieved from the shared memory segment, the data
 is padded to the right by NULL bytes to fill up the entire size of the segment.
 This can cause issues when using the space for non serialized data (ie. if you
 stored "hello" in a 1024 byte segment, the ASCII text wouldn't match).
+
+Typically this method is used when you want all blocks of the segment, such as
+if you've stored binary data.
+
+For text/ASCII data, use the L</data> method.
 
 Send in a true value as this parameter and we'll clean the NULLs for you.
 

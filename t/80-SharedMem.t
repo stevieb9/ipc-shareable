@@ -45,7 +45,6 @@ my $mod = 'IPC::Shareable::SharedMem';
         is $ok, 1, "segment object created ok";
         is ref $seg, 'IPC::Shareable::SharedMem', "object is of proper type ok";
 
-        sleep 10;
         is $seg->key, 5555, "key attr set ok";
         is $seg->size, 1024, "size attr default ok";
         is $seg->flags, 950, "flags attr default ok";
@@ -173,7 +172,7 @@ my $mod = 'IPC::Shareable::SharedMem';
 
     is $seg->shmwrite($data), 1, "shmwrite() returns 1 on success";
 
-    is $seg->shmread(1), $data, "shmread() returns the proper data ok";
+    is $seg->data, $data, "shmread() returns the proper data ok";
 
     is $seg->remove, 1, "seg removed ok";
 }
