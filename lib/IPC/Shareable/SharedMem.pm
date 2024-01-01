@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use Carp qw(carp croak confess);
+use Data::Dumper;
 use IPC::SysV qw(IPC_CREAT IPC_RMID);
 
 our $VERSION = '1.14';
@@ -11,6 +12,7 @@ our $VERSION = '1.14';
 use constant {
     DEBUGGING           => ($ENV{SHM_DEBUG} || 0),
     DEFAULT_SEG_SIZE    => 1024,
+    DEFAULT_SEG_MODE    => 0666,
 };
 
 sub new {
@@ -25,8 +27,8 @@ sub new {
     $self->key($params{key});
     $self->size($params{size} || DEFAULT_SEG_SIZE);
 
-    $self->mode($params{mode} || 0666);
-    $self->flags(($params{flags} || IPC_CREAT) | $self->mode);
+    $self->mode($params{mode} || DEFAULT_SEG_MODE);
+    $self->flags(($params{flags} || 0) | $self->mode);
 
     $self->type($params{type});
 
@@ -129,13 +131,15 @@ sub type {
     return $self->{type};
 }
 sub shmread {
-    my ($self) = @_;
+    my ($self, $strip_null) = @_;
 
     my $data = '';
     shmread($self->id, $data, 0, $self->size) or return;
 
-    # Remove \x{0} after end of string
-    $data =~ s/\x00+//;
+    if ($strip_null) {
+        # Remove \x{0} (NULL bytes) after end of string
+        $data =~ s/\x00+//;
+    }
 
     return $data;
 }
@@ -175,16 +179,14 @@ L<< IPC::Shareable >> library.
 
 Instantiates and returns an object that represents a shared memory segment.
 
+If for any reason we can't create the shared memory segment, we'll return
+C<undef>.
+
 Parameters (must be in key => value pairs):
 
 =head3 key
 
 I<< Mandatory, Integer >>: An integer that references the shared memory segment.
-
-If this option is missing, we'll default to using C<IPC_PRIVATE>. This default
-key will not allow sharing of the variable between processes.
-
-I<Default>: C<IPC_PRIVATE>.
 
 =head3 size
 
@@ -202,7 +204,7 @@ we'll C<croak>) and C<IPC_RDONLY> (create a read only segment).
 
 See L<IPC::SysV> for further details.
 
-I<Default>: C<IPC_CREAT> (ie. C<512>).
+I<Default>: C<0> (ie. no flags).
 
 =head3 mode
 
@@ -264,9 +266,20 @@ See L</type> for details.
 A warning will be thrown if you try to set the type after the object is already
 instantiated, and no change will occur.
 
-=head2 shmread
+=head2 shmread($strip_null)
 
 Returns the data stored in the shared memory segment.
+
+Parameters:
+
+=head3 $strip_null
+
+By default, when data is retrieved from the shared memory segment, the data
+is padded to the right by NULL bytes to fill up the entire size of the segment.
+This can cause issues when using the space for non serialized data (ie. if you
+stored "hello" in a 1024 byte segment, the ASCII text wouldn't match).
+
+Send in a true value as this parameter and we'll clean the NULLs for you.
 
 I<Return>: The data if any is stored, empty string if no data has been stored
 yet, and C<undef> if a failure to read occurs.

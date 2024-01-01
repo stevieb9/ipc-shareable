@@ -780,6 +780,7 @@ sub _tie {
             key   => $key,
             size  => $shm_size,
             flags => $flags,
+            mode  => $knot->attributes('mode'),
             type  => $type,
         );
     }
@@ -810,7 +811,8 @@ sub _tie {
         }
     }
 
-    my $sem = IPC::Semaphore->new($key, 3, $flags);
+    my $sem = IPC::Semaphore->new($key, 3, $seg->flags);
+
     if (! defined $sem){
         croak "Could not create semaphore set: $!\n";
     }
@@ -1043,7 +1045,7 @@ sub _shm_flags {
     my $flags = 0;
 
     $flags |= IPC_CREAT if $knot->attributes('create');
-    $flags |= IPC_EXCL  if $knot->attributes('exclusive');;
+    $flags |= IPC_EXCL  if $knot->attributes('exclusive');
 
     return $flags;
 }

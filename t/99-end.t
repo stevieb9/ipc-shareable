@@ -23,6 +23,8 @@ my $segs = IPC::Shareable::ipcs();
 
 is $segs, $start_segs, "All test segments cleaned up after test run";
 
-print "Started with $start_segs, ending with $segs\n";
+if ($ENV{PRINT_SEGS}) {
+    warn "Started with $start_segs, ending with $segs\n";
+}
 
 done_testing();

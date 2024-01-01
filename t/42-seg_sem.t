@@ -22,6 +22,7 @@ my @seg_keys = qw(
     id
     key
     flags
+    mode
     type
     size
 );

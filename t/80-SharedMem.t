@@ -3,6 +3,7 @@ use strict;
 
 use Data::Dumper;
 use IPC::Shareable;
+use IPC::SysV qw(IPC_CREAT IPC_EXCL);
 use Mock::Sub;
 use Test::More;
 
@@ -40,7 +41,7 @@ my $mod = 'IPC::Shareable::SharedMem';
 
     {
         my $seg;
-        my $ok = eval { $seg = $mod->new(key => 5555); 1; };
+        my $ok = eval { $seg = $mod->new(key => 5555, flags => IPC_CREAT); 1; };
         is $ok, 1, "segment object created ok";
         is ref $seg, 'IPC::Shareable::SharedMem', "object is of proper type ok";
 
@@ -64,7 +65,7 @@ my $mod = 'IPC::Shareable::SharedMem';
         my $warning;
         local $SIG{__WARN__} = sub { $warning = shift; };
 
-        my $seg = $mod->new(key => 5555);
+        my $seg = $mod->new(key => 5555, flags => IPC_CREAT);
         $seg->size(2048);
         like $warning, qr/instantiated/, "size() warns that it can't be set after obj created";
         is $seg->size, 1024, "...and it hasn't been changed ok";
@@ -90,7 +91,7 @@ my $mod = 'IPC::Shareable::SharedMem';
         my $warning;
         local $SIG{__WARN__} = sub { $warning = shift; };
 
-        my $seg = $mod->new(key => 5555);
+        my $seg = $mod->new(key => 5555, flags => IPC_CREAT);
         $seg->flags(1024);
         like $warning, qr/instantiated/, "flags() warns that it can't be set after obj created";
         is $seg->flags, 950, "...and it hasn't been changed ok";
@@ -108,7 +109,7 @@ my $mod = 'IPC::Shareable::SharedMem';
         my $warning;
         local $SIG{__WARN__} = sub { $warning = shift; };
 
-        my $seg = $mod->new(key => 5555);
+        my $seg = $mod->new(key => 5555, flags => IPC_CREAT);
         $seg->mode(0666);
         like $warning, qr/instantiated/, "mode() warns that it can't be set after obj created";
         is $seg->mode, 0666, "...and it hasn't been changed ok";
@@ -119,7 +120,7 @@ my $mod = 'IPC::Shareable::SharedMem';
     # Successful change
 
     {
-        my $seg = $mod->new(key => 5555, mode => 0444);
+        my $seg = $mod->new(key => 5555, flags => IPC_CREAT, mode => 0444);
         is $seg->mode, 0444, "mode() set ok in new";
         is $seg->remove, 1, "seg cleaned up ok";
     }
@@ -134,7 +135,7 @@ my $mod = 'IPC::Shareable::SharedMem';
         my $warning;
         local $SIG{__WARN__} = sub { $warning = shift; };
 
-        my $seg = $mod->new(key => 5555, type => 'TESTING');
+        my $seg = $mod->new(key => 5555, flags => IPC_CREAT, type => 'TESTING');
         $seg->type('HELLO');
         like $warning, qr/instantiated/, "type() warns that it can't be set after obj created";
         is $seg->type, 'TESTING', "...and it hasn't been changed ok";
@@ -151,7 +152,7 @@ my $mod = 'IPC::Shareable::SharedMem';
         my $warning;
         local $SIG{__WARN__} = sub { $warning = shift; };
 
-        my $seg = $mod->new(key => 5555);
+        my $seg = $mod->new(key => 5555, flags => IPC_CREAT);
         my $created_id = $seg->id;
 
         $seg->id(9998);
@@ -165,13 +166,13 @@ my $mod = 'IPC::Shareable::SharedMem';
 
 # shmread() & shmwrite()
 {
-    my $seg = $mod->new(key => 5555);
+    my $seg = $mod->new(key => 5555, flags => IPC_CREAT);
 
     my $data = "blah";
 
     is $seg->shmwrite($data), 1, "shmwrite() returns 1 on success";
 
-    is $seg->shmread, $data, "shmread() returns the proper data ok";
+    is $seg->shmread(1), $data, "shmread() returns the proper data ok";
 
     is $seg->remove, 1, "seg removed ok";
 }
