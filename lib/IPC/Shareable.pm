@@ -1284,10 +1284,10 @@ Default: B<false>
 The B<mode> argument is an octal number specifying the access
 permissions when a new data binding is being created.  These access
 permission are the same as file access permissions in that C<0666> is
-world readable, C<0600> is readable only by the effective UID of the
-process creating the shared variable, etc.
+world readable and writable, C<0600> is readable only by the effective UID of
+the process creating the shared variable, etc.
 
-Default: B<0666> (world read and writeable)
+Default: B<0666> (world readable and writeable)
 
 =head2 size
 
