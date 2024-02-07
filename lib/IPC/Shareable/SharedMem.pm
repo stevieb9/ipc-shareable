@@ -5,7 +5,7 @@ use strict;
 
 use Carp qw(carp croak confess);
 use Data::Dumper;
-use IPC::SysV qw(IPC_RMID);
+use IPC::SysV qw(IPC_RMID IPC_STAT);
 
 our $VERSION = '1.14';
 
@@ -14,6 +14,27 @@ use constant {
     DEFAULT_SEG_FLAGS   => 0000,
     DEFAULT_SEG_MODE    => 0666,
 };
+
+{
+    package IPC::Shareable::SharedMem::stat;
+
+    use Class::Struct qw(struct);
+
+    struct 'IPC::Shareable::SharedMem::stat' => [
+        uid     => '$',
+        gid     => '$',
+        cuid    => '$',
+        cgid    => '$',
+        mode    => '$',
+        segsz   => '$',
+        lpid    => '$',
+        cpid    => '$',
+        nattch  => '$',
+        atime   => '$',
+        dtime   => '$',
+        ctime   => '$',
+    ];
+}
 
 sub new {
     my ($class, %params) = @_;
@@ -151,6 +172,24 @@ sub data {
 
     return $data;
 }
+sub stat {
+    my ($self) = @_;
+    my $data = '';
+    shmctl($self->id, IPC_STAT, $data) or return undef;
+
+    my @unpacked_data = unpack("IIIIIIIIIIIIIIIIIIIIIII", $data);
+    my @struct_initializers;
+
+    print Dumper \@unpacked_data;
+
+    my $iter = 0;
+    for (_stat_list()) {
+        push @struct_initializers, $_ => $unpacked_data[$iter];
+        $iter++;
+    }
+    #print Dumper \@struct_initializers;
+    IPC::Shareable::SharedMem::stat->new(@struct_initializers);
+}
 sub shmread {
     my ($self) = @_;
 
@@ -167,6 +206,26 @@ sub remove {
     my $os_return_value = shmctl($self->id, IPC_RMID, 0);
 
     return $os_return_value eq '0 but true' ? 1 : 0;
+}
+
+sub _stat_list {
+    return qw(
+        uid
+        gid
+        cuid
+        cgid
+        mode
+        segsz
+        lpid
+        cpid
+        nattch
+        atime
+        dtime
+        ctime
+        z
+        y
+        x
+    );
 }
 
 1;

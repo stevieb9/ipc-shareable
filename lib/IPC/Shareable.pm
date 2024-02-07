@@ -823,7 +823,7 @@ sub _tie {
         %$knot,
         _iterating   => 0,
         _key         => $key,
-        _key_hex     => $sem->key_hex,
+        _key_hex     => $seg->key_hex,
         _lock        => 0,
         _shm         => $seg,
         _sem         => $sem,
