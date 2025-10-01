@@ -21,23 +21,27 @@ if (! %s_hash) {
         create     => 1,
         destroy    => 1,
         key        => 'testing',
-        serializer => 'storable'
+        serializer => 'storable',
+        size => 655365,
     };
 }
 
-print Dumper \%s_hash;
+my $t = time();
 
-timethese($ARGV[0],
-    {
-        store   => \&storable,
-    },
-);
+for (1..1000) {
+    storable($_);
+    $iter++;
+}
+
+my $end = time() - $t;
+
+print "Elapsed: $end seconds\n";
 
 tied(%s_hash)->clean_up_all;
 
 sub storable {
-    $s_hash{"10.10.1.$iter"}->{$iter} = time();
-    $iter++;
+    $s_hash{"10.10.1.$iter"}->{time} = time();
+    $s_hash{"10.10.1.$iter"}->{iter} = $iter;
 }
 
 __END__
