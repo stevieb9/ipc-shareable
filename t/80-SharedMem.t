@@ -43,6 +43,7 @@ my $mod = 'IPC::Shareable::SharedMem';
         my $seg;
         my $ok = eval { $seg = $mod->new(key => 5555, flags => IPC_CREAT); 1; };
         is $ok, 1, "segment object created ok";
+
         is ref $seg, 'IPC::Shareable::SharedMem', "object is of proper type ok";
 
         is $seg->key, 5555, "key attr set ok";
@@ -184,13 +185,8 @@ my $mod = 'IPC::Shareable::SharedMem';
     my $data = "blah";
     is $seg->shmwrite($data), 1, "shmwrite() returns 1 on success";
 
-    #print Dumper $seg->stat;
-    #my @stat = unpack("iiiiiiiiiiii", $seg->stat);
+    # printf("%d: %d\n", $seg->stat->uid, $seg->stat->ctime);
 
-    printf("%d: %d\n", $seg->stat->uid, $seg->stat->ctime);
-
-    sleep 20;
-    #print Dumper \@stat;
     is $seg->remove, 1, "seg removed ok";
 }
 warn "Segs After: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};

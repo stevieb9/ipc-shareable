@@ -58,13 +58,17 @@ sub new {
     my $id = shmget($self->key, $self->size, $self->flags);
 
     defined $id or do {
-        if ($! =~ /File exists/){
-            my $key = $self->key;
-            croak "\nERROR: IPC::Shareable::SharedMem: shmget $key: $!\n\n" .
-                  "Are you using exclusive, but trying to create multiple " .
-                  "instances?\n\n";
+        my $key = $self->key_hex;
+
+        if ($!) {
+            if ($! =~ /File exists/ || $! =~ /Permission denied/) {
+                croak "\nERROR: IPC::Shareable::SharedMem: shmget $key: $!\n\n" .
+                    "Are you using exclusive, but trying to create multiple " .
+                    "instances?\n\n";
+            }
+
+            return undef;
         }
-        return undef;
     };
 
     $self->id($id);
@@ -180,15 +184,15 @@ sub stat {
     my @unpacked_data = unpack("IIIIIIIIIIIIIIIIIIIIIII", $data);
     my @struct_initializers;
 
-    print Dumper \@unpacked_data;
+    # print Dumper \@unpacked_data;
 
     my $iter = 0;
     for (_stat_list()) {
         push @struct_initializers, $_ => $unpacked_data[$iter];
         $iter++;
     }
-    #print Dumper \@struct_initializers;
-    IPC::Shareable::SharedMem::stat->new(@struct_initializers);
+
+    return IPC::Shareable::SharedMem::stat->new(@struct_initializers);
 }
 sub shmread {
     my ($self) = @_;
@@ -205,12 +209,11 @@ sub remove {
     my ($self) = @_;
     my $os_return_value = shmctl($self->id, IPC_RMID, 0);
 
-    if ($os_return_value == 0 || $os_return_value == 1) {
-        return $os_return_value;
+    if ($os_return_value eq '0 but true' || $os_return_value == 1) {
+        return 1;
     }
     else {
-        my $return = $os_return_value eq '0 but true' ? 1 : 0;
-        return $return;
+        return 0;
     }
 }
 
