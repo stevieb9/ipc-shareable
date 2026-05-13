@@ -66,7 +66,7 @@ use constant BYTES => 2000000; # ~2MB
     like $@, qr/Cannot allocate memory|Out of memory|Invalid argument/, "...and error is sane";
 }
 
-my $k = tie my $sv, 'IPC::Shareable', {
+my $k = tie my %hv, 'IPC::Shareable', {
     create => 1,
     destroy => 1,
     size => BYTES,
