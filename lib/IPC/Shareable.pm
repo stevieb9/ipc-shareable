@@ -106,6 +106,10 @@ my %default_options = (
     serializer => 'storable',
 );
 
+# Seed the random number generator
+
+srand();
+
 my %global_register;
 my %process_register;
 my %used_ids;
@@ -460,7 +464,7 @@ sub lock {
     my $return_val = $sem->op(@{ $semop_args{$flags} });
     if ($return_val) {
         $knot->{_lock} = $flags;
-        $knot->{_data} = $knot->_decode($knot->seg),
+        $knot->{_data} = $knot->_decode($knot->seg);
     }
     return $return_val;
 }
@@ -831,7 +835,14 @@ sub _tie {
         _was_changed => 0,
     );
 
-    $knot->{_data} = _thaw($seg);
+    my $serializer = $knot->attributes('serializer');
+    
+    if ($serializer eq 'json') {
+        $knot->{_data} = $knot->_decode($seg);
+    }
+    else {
+        $knot->{_data} = _thaw($seg);
+    }
 
     if ($sem->getval(SEM_MARKER) != SHM_EXISTS) {
 
@@ -1033,7 +1044,6 @@ sub _shm_key_rand {
     return $key;
 }
 sub _shm_key_rand_int {
-    srand();
     return int(rand(1_000_000));
 }
 sub _shm_flags {
