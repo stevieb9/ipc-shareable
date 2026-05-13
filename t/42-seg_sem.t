@@ -21,6 +21,7 @@ my $k = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 1 };
 my @seg_keys = qw(
     id
     key
+    key_hex
     flags
     mode
     type
