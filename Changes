@@ -18,6 +18,8 @@ Revision history for Perl extension IPC::Shareable.
       shmread()
     - Added key_hex() to SharedMem. Will allow for easier troubleshooting when
       using ipcs (closes #32)
+    - Added SharedMem::stat(); returns a new object that contains the related
+      info about the actual shared memory segment
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
