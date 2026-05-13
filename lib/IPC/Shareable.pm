@@ -563,8 +563,9 @@ sub remove {
     my $sem = $knot->sem;
 
     my $sem_removed = 0;
+    my $sem_remove_status = $sem->remove;
 
-    if ($sem->remove ne '0 but true') {
+    if ($sem_remove_status != 1 && $sem_remove_status ne '0 but true') {
         warn "Couldn't remove semaphore set $id: $!";
     }
     else {

@@ -205,7 +205,13 @@ sub remove {
     my ($self) = @_;
     my $os_return_value = shmctl($self->id, IPC_RMID, 0);
 
-    return $os_return_value eq '0 but true' ? 1 : 0;
+    if ($os_return_value == 0 || $os_return_value == 1) {
+        return $os_return_value;
+    }
+    else {
+        my $return = $os_return_value eq '0 but true' ? 1 : 0;
+        return $return;
+    }
 }
 
 sub _stat_list {
