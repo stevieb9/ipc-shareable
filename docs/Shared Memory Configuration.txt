@@ -46,7 +46,7 @@ Then in /usr/local/bin/set-shm.sh, I have (with root:wheel, 755):
     /usr/sbin/sysctl -w kern.sysv.shmmni=128
     /usr/sbin/sysctl -w kern.sysv.shmmax=4194304
     /usr/sbin/sysctl -w kern.sysv.shmseg=256
-    /usr/sbin/sysctl -w kern.sysv.shmall=65536
+    /usr/sbin/sysctl -w kern.sysv.shmall=262144
     /usr/sbin/sysctl -w kern.sysv.shmmin=1
 
 You can attempt to load it live time:

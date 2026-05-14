@@ -171,6 +171,8 @@ sub data {
 
     my $data = $self->shmread;
 
+    return if ! defined $data;
+
     # Remove \x{0} (NULL bytes) after end of string
     $data =~ s/\x00+//;
 

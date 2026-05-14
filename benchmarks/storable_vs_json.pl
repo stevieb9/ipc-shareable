@@ -69,13 +69,6 @@ sub storable {
     %s_hash = %$base_data;
 
     $s_hash{struct1} = {a => [qw(b c d)]};
-#    $s_hash{struct2} = {a => [qw(b c d)]};
-#    $s_hash{struct3} = {a => [qw(b c d)]};
-#    $s_hash{struct4} = {a => [qw(b c d)]};
-#    $s_hash{struct5} = {a => [qw(b c d)]};
-#    $s_hash{struct6} = {a => [qw(b c d)]};
-#    $s_hash{struct7} = {a => [qw(b c d)]};
-#    $s_hash{struct8} = {a => [qw(b c d)]};
 
     tied(%s_hash)->clean_up_all;
 }

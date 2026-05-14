@@ -648,7 +648,7 @@ sub _decode {
         return _thaw($seg);
     }
     elsif ($serializer eq 'json'){
-        return _decode_json($seg);
+        return _decode_json($seg, $knot);
     }
 
     return undef;
@@ -657,7 +657,7 @@ sub _encode_json {
     my $seg  = shift;
     my $data = shift;
 
-    my $json = encode_json $data;
+    my $json = encode_json _encode_json_prepare($data);
 
     substr $json, 0, 0, 'IPC::Shareable';
 
@@ -667,8 +667,36 @@ sub _encode_json {
 
     $seg->shmwrite($json);
 }
+sub _encode_json_prepare {
+    my $data = shift;
+
+    my $type = Scalar::Util::reftype($data);
+    return $data if ! $type;
+
+    if ($type eq 'HASH') {
+        my %result;
+        for my $key (keys %$data) {
+            $result{$key} = _encode_json_val($data->{$key});
+        }
+        return \%result;
+    }
+    elsif ($type eq 'ARRAY') {
+        return [ map { _encode_json_val($_) } @$data ];
+    }
+
+    return $data;
+}
+sub _encode_json_val {
+    my $val = shift;
+
+    if (my $inner = _is_child($val)) {
+        return { '__ics__' => { type => $inner->{_type}, key => $inner->{_key} } };
+    }
+
+    return _encode_json_prepare($val);
+}
 sub _decode_json {
-    my $seg = shift;
+    my ($seg, $knot) = @_;
 
     my $json = $seg->data;
 
@@ -689,9 +717,70 @@ sub _decode_json {
             croak "Munged shared memory segment (size exceeded?)";
         }
 
+        _decode_json_restore($data, $knot) if defined $knot;
+
         return $data;
     } else {
         return;
+    }
+}
+sub _decode_json_restore {
+    my ($data, $knot) = @_;
+
+    my $type = Scalar::Util::reftype($data);
+    return if ! $type;
+
+    my @items;
+    if ($type eq 'HASH') {
+        @items = map { [$_, \$data->{$_}] } keys %$data;
+    }
+    elsif ($type eq 'ARRAY') {
+        @items = map { [$_, \$data->[$_]] } 0 .. $#$data;
+    }
+    else {
+        return;
+    }
+
+    for my $item (@items) {
+        my ($idx, $ref) = @$item;
+        my $val = $$ref;
+
+        if (ref($val) eq 'HASH' && exists $val->{'__ics__'}
+                && ref($val->{'__ics__'}) eq 'HASH'
+                && exists $val->{'__ics__'}{type}
+                && exists $val->{'__ics__'}{key}) {
+
+            my $info   = $val->{'__ics__'};
+            my $c_type = $info->{type};
+            my $c_key  = $info->{key};
+
+            my %opts = (
+                %{ $knot->attributes },
+                key       => $c_key,
+                exclusive => 0,
+                create    => 0,
+                magic     => 1,
+            );
+
+            if ($c_type eq 'HASH') {
+                my %h;
+                tie %h, 'IPC::Shareable', \%opts;
+                $$ref = \%h;
+            }
+            elsif ($c_type eq 'ARRAY') {
+                my @a;
+                tie @a, 'IPC::Shareable', \%opts;
+                $$ref = \@a;
+            }
+            elsif ($c_type eq 'SCALAR') {
+                my $s;
+                tie $s, 'IPC::Shareable', \%opts;
+                $$ref = \$s;
+            }
+        }
+        else {
+            _decode_json_restore($val, $knot);
+        }
     }
 }
 sub _freeze {
@@ -867,7 +956,7 @@ sub _magic_tie {
 
     my $key;
 
-    if ($parent->{_key} == IPC_PRIVATE) {
+    if ($parent->{_key} == IPC_PRIVATE && $parent->attributes('serializer') ne 'json') {
         $key = IPC_PRIVATE;
     }
     else {
