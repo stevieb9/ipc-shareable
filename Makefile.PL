@@ -36,6 +36,7 @@ WriteMakefile(
         'Test::SharedFork' => 0.35,
     },
     PREREQ_PM    => {
+        'Class::Struct' => 0,
         'JSON'          => 0,
         'Scalar::Util'  => 0,
         'Storable'      => 0.607,
