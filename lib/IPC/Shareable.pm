@@ -102,7 +102,7 @@ my %default_options = (
     limit      => 1,
     graceful   => 0,
     warn       => 0,
-    tidy       => 0,
+    tidy       => 1,
     serializer => 'storable',
 );
 
@@ -1491,7 +1491,7 @@ Default: B<false>
 For long running processes, set this to a true value to clean up unneeded
 segments from nested data structures. Comes with a slight performance hit.
 
-Default: B<false>
+Default: B<true>
 
 =head2 serializer
 
@@ -1518,7 +1518,7 @@ Default values for options are:
     destroy     => 0,
     graceful    => 0,
     warn        => 0,
-    tidy        => 0,
+    tidy        => 1,
     serializer  => 'storable',
 
 =head1 METHODS

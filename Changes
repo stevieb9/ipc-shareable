@@ -38,6 +38,8 @@ Revision history for Perl extension IPC::Shareable.
     - Closes #24; lock() now allows a cref parameter. If a LOCK_EX lock can be
       acquired, we will set the lock, execute the subroutine, then release the
       lock
+    - 'tidy' attribute now defaults to true
+    -
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

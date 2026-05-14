@@ -31,7 +31,7 @@ warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
         ],
     );
 
-    tie my @a, 'IPC::Shareable', {create => 1, destroy => 1};
+    tie my @a, 'IPC::Shareable', {create => 1, destroy => 1, tidy => 0};
 
     my $initial_seg_count = seg_count();
 
@@ -70,7 +70,7 @@ warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
         }
     );
 
-    tie my %h, 'IPC::Shareable', {create => 1, destroy => 1};
+    tie my %h, 'IPC::Shareable', {create => 1, destroy => 1, tidy => 0};
 
     my $initial_seg_count = seg_count();
 
