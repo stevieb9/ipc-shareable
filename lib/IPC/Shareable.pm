@@ -436,7 +436,27 @@ sub ipcs {
     return int($count);
 }
 sub lock {
-    my ($knot, $flags) = @_;
+    my $knot = shift;
+
+    my ($flags, $code);
+
+    if (scalar @_ == 2) {
+        ($flags, $code) = @_;
+    }
+
+    if (defined $_[0]) {
+        if (ref $_[0] eq 'CODE') {
+            $code = shift;
+        }
+        else {
+            $flags = shift;
+        }
+    }
+
+    if (defined $code && ref $code ne 'CODE') {
+        croak "\$code param to lock() must be a code ref"
+    }
+
     $flags = LOCK_EX if ! defined $flags;
 
     return $knot->unlock if ($flags & LOCK_UN);
@@ -447,25 +467,36 @@ sub lock {
     $knot->unlock if ($knot->{_lock});
 
     my $sem = $knot->sem;
-    my $return_val = $sem->op(@{ $semop_args{$flags} });
-    if ($return_val) {
+    my $lock_success = $sem->op(@{ $semop_args{$flags} });
+
+    if ($lock_success) {
         $knot->{_lock} = $flags;
         $knot->{_data} = $knot->_decode($knot->seg);
     }
-    return $return_val;
+
+    if ($flags == LOCK_EX && $lock_success) {
+        if ($code) {
+            $code->();
+            return $knot->unlock;
+        }
+    }
+    return $lock_success;
 }
 sub unlock {
     my $knot = shift;
 
     return 1 unless $knot->{_lock};
+
     if ($knot->{_was_changed}) {
         if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!\n";
         }
         $knot->{_was_changed} = 0;
     }
+
     my $sem = $knot->sem;
     my $flags = $knot->{_lock} | LOCK_UN;
+
     $flags ^= LOCK_NB if ($flags & LOCK_NB);
     $sem->op(@{ $semop_args{$flags} });
 
@@ -1280,6 +1311,8 @@ IPC::Shareable - Use shared memory backed variables across processes
     tied(VARIABLE)->lock(LOCK_SH|LOCK_NB)
         or print "Resource unavailable\n";
 
+    tied(VARIABLE->lock(LOCK_EX, sub { print "hello!\n"; });
+
     my $segment   = tied(VARIABLE)->seg;
     my $semaphore = tied(VARIABLE)->sem;
 
@@ -1543,7 +1576,21 @@ system's C<ipcs -m> call. It is guaranteed though to produce reliable results.
 
 Return: Integer
 
-=head2 lock($flags)
+=head2 lock($flags, $code)
+
+Parameters:
+
+    $flags
+
+Optional, Integer: See C<flock()> system call for lock flag combinations. If
+this parameter is omitted, we default to C<LOCK_EX>, an exclusive blocking
+lock.
+
+    $code
+
+Optional, Code reference: If this parameter is sent in, and an exclusive lock
+is asked for, we will set the lock, execute the subroutine, and then unlock
+the segment.
 
 Obtains a lock on the shared memory. C<$flags> specifies the type
 of lock to acquire.  If C<$flags> is not specified, an exclusive

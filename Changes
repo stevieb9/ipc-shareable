@@ -35,7 +35,9 @@ Revision history for Perl extension IPC::Shareable.
     - Add new scripts/flush_ipc.sh script that cleans out all segments and
       semaphores from the system for the current user
     - Closes #28; Add link to Script::Singleton in singleton() POD
-    -
+    - Closes #24; lock() now allows a cref parameter. If a LOCK_EX lock can be
+      acquired, we will set the lock, execute the subroutine, then release the
+      lock
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
