@@ -190,8 +190,16 @@ sub stat {
 
     my $iter = 0;
     for (stat_list()) {
-        push @struct_initializers, $_ => $unpacked_data[$iter];
-        $iter++;
+        my $value = $unpacked_data[$iter];
+        if ($_ eq 'mode') {
+            # Make the mode octal so it's easier to read
+            $value = $value & 0777;
+            push @struct_initializers, $_ => sprintf("%#o", $value);
+        }
+        else {
+            push @struct_initializers, $_ => $value;
+        }
+            $iter++;
     }
 
     return IPC::Shareable::SharedMem::stat->new(@struct_initializers);
@@ -404,18 +412,18 @@ Example call:
 Returns an href of the various system-level stat information:
 
     {
-        'cuid' => 501,
-        'atime' => 86370,
-        'cgid' => 20,
-        'segsz' => 1234,
-        'mode' => 1506019766,
-        'ctime' => 1778777512,
-        'lpid' => 65536,
-        'uid' => 501,
-        'gid' => 20,
-        'cpid' => 0,
-        'nattch' => 86370,
-        'dtime' => 0
+        uid     => 501,
+        gid     => 20,
+        cuid    => 501,
+        cgid    => 20,
+        mode    => 0666,
+        segsz   => 65536,
+        lpid    => 61270,
+        cpid    => 61270,
+        nattch  => 0,
+        atime   => 1778791348,
+        dtime   => 1778791348,
+        ctime   => 1778791348,
     }
 
 =head2 stat_list

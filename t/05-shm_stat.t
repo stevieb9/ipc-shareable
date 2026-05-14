@@ -31,9 +31,8 @@ for (@stat_list) {
 
 $hv{a} = {b => {c => 1}};
 
-print Dumper \%hv;
-print Dumper $knot->seg->stats;
-
+# print Dumper \%hv;
+# print Dumper $knot->seg->stats;
 #print Dumper $stats;
 #print Dumper $knot;
 #print Dumper $seg;
