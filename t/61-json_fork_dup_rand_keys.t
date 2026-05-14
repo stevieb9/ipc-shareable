@@ -21,8 +21,8 @@ BEGIN {
         plan skip_all => "Developer only test...";
     }
 
+    warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
     $segs_before = IPC::Shareable::ipcs();
-    warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 }
 
 use Async::Event::Interval;
@@ -31,6 +31,7 @@ use Async::Event::Interval;
     tie my %shared_data, 'IPC::Shareable', {
         key     => 'fork rand dup keys',
         create  => 1,
+        serializer => 'json',
         destroy => 1
     };
 
@@ -48,8 +49,8 @@ use Async::Event::Interval;
     my $one_pid = $event_one->pid;
     my $two_pid = $event_two->pid;
 
-    is exists $shared_data{$one_pid}{called}, 1, "Event one got a rand shm key ok";
-    is exists $shared_data{$two_pid}{called}, 1, "Adding srand() ensures _shm_key_rand() gives out rand key in fork()";
+    is exists $shared_data{$one_pid}{called}, 1, "json: Event one got a rand shm key ok";
+    is exists $shared_data{$two_pid}{called}, 1, "json: Adding srand() ensures _shm_key_rand() gives out rand key in fork()";
 
     IPC::Shareable::clean_up_all;
 }
@@ -57,9 +58,9 @@ use Async::Event::Interval;
 Async::Event::Interval::_end;
 IPC::Shareable::_end;
 
+warn "Segs After: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
 my $segs_after = IPC::Shareable::ipcs();
-warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 
-is $segs_after, $segs_before, "All segs, even those created in separate procs, cleaned up ok";
+is $segs_after, $segs_before, "json: All segs, even those created in separate procs, cleaned up ok";
 
 done_testing();

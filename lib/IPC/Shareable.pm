@@ -174,8 +174,7 @@ sub FETCH {
     }
 
     my $data;
-    if ($knot->{_lock} || $knot->{_iterating}) {
-        $knot->{_iterating} = 0; # In case we break out
+    if ($knot->{_lock}) {
         $data = $knot->{_data};
     } else {
         $data = $knot->_decode($knot->seg);
@@ -212,6 +211,13 @@ sub FETCH {
     }
 
     if (my $inner = _is_child($val)) {
+        # Register the inner knot so clean_up_all() can find it even when it
+        # was created in a forked child process
+
+        if (! exists $global_register{$inner->seg->id}) {
+            $global_register{$inner->seg->id} = $inner;
+        }
+
         my $s = $inner->seg;
         $inner->{_data} = $knot->_decode($s);
     }
@@ -266,13 +272,11 @@ sub EXISTS {
 sub FIRSTKEY {
     my $knot = shift;
 
-    # each() or keys() has been called. Track this
-    $knot->{_iterating} = 1;
-
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
-    my $reset = keys %{$knot->{_data}};
-    my $first = each %{$knot->{_data}};
-    return $first;
+
+    $knot->{_hkey_list} = [ keys %{$knot->{_data}} ];
+
+    return $knot->NEXTKEY;
 }
 sub NEXTKEY {
     my ($knot, $last_key_accessed) = @_;
@@ -282,17 +286,7 @@ sub NEXTKEY {
 
     # Caveat emptor if hash was changed by another process
 
-    my $next = each %{$knot->{_data}};
-
-    if (not defined $next) {
-        # No more data, reset the each() or keys() loop
-        $knot->{_iterating} = 0;
-        return;
-    } else {
-        # We're still in an each() or keys() loop
-        $knot->{_iterating} = 1;
-        return $next;
-    }
+    return shift @{$knot->{_hkey_list}};
 }
 sub EXTEND {
     #XXX Noop
@@ -415,19 +409,6 @@ sub new {
     }
 }
 sub global_register {
-    # This is a ridiculous way to do this, but if we don't call Dumper, hashes
-    # that are created in a separate process than the parent hash don't
-    # show up properly in the global register. t/81
-
-    local $SIG{__WARN__} = sub {
-        my ($warning) = @_;
-        if ($warning !~ /hash after insertion/) {
-            warn $warning;
-        }
-    };
-
-    Dumper \%global_register;
-
     return \%global_register;
 }
 sub process_register {
@@ -936,7 +917,7 @@ sub _tie {
 
     %$knot = (
         %$knot,
-        _iterating   => 0,
+        _hkey_list   => undef,
         _key         => $key,
         _key_hex     => $seg->key_hex,
         _lock        => 0,
@@ -955,11 +936,16 @@ sub _tie {
         $knot->{_data} = _thaw($seg);
     }
 
-    if ($sem->getval(SEM_MARKER) != SHM_EXISTS) {
+    # Register unconditionally so any process that attaches to an existing
+    # segment (create=>0, re-attach, cross-process) is also tracked for
+    # clean_up_all(). Previously only new segments were registered here,
+    # requiring the Dumper hack in global_register() to catch the rest.
 
-        if (! exists $global_register{$knot->seg->id}) {
-            $global_register{$knot->seg->id} = $knot;
-        }
+    if (! exists $global_register{$knot->seg->id}) {
+        $global_register{$knot->seg->id} = $knot;
+    }
+
+    if ($sem->getval(SEM_MARKER) != SHM_EXISTS) {
 
         $process_register{$knot->seg->id} ||= $knot;
 

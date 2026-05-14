@@ -35,7 +35,7 @@ for (@stat_list) {
 
 IPC::Shareable->clean_up_all;
 
-is % hv, '', "hash deleted after clean_up()";
+is %hv, '', "hash deleted after clean_up()";
 
 IPC::Shareable::_end;
 warn "Segs After: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
