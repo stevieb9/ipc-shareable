@@ -38,6 +38,44 @@ sub default {
         d => {z => 26, y => 25},
     };
 }
+
+sub _run_ops {
+    my ($h) = @_;
+
+    # scalar values
+    $h->{count}  = 42;
+    $h->{label}  = 'hello world';
+    $h->{ratio}  = 3.14159;
+    $h->{flag}   = 0;
+
+    # nested hash
+    $h->{nested} = { x => 10, y => 20, z => { deep => 'value' } };
+
+    # array ref
+    $h->{list}   = [1, 2, 3, 4, 5];
+
+    # array of hashes
+    $h->{records} = [
+        { id => 1, name => 'alice' },
+        { id => 2, name => 'bob'   },
+        { id => 3, name => 'carol' },
+    ];
+
+    # mixed-depth structure
+    $h->{config} = {
+        debug   => 1,
+        servers => [qw(alpha beta gamma)],
+        limits  => { max => 100, min => 0 },
+    };
+
+    # reads of written values
+    my $v1 = $h->{count};
+    my $v2 = $h->{nested}{z}{deep};
+    my $v3 = $h->{list}[2];
+    my $v4 = $h->{records}[1]{name};
+    my $v5 = $h->{config}{limits}{max};
+}
+
 sub json {
     my $base_data = default();
 
@@ -52,6 +90,8 @@ sub json {
     %j_hash = %$base_data;
 
     $j_hash{struct1} = {a => [qw(b c d)]};
+
+    _run_ops(\%j_hash);
 
     tied(%j_hash)->clean_up_all;
 }
@@ -69,6 +109,8 @@ sub storable {
     %s_hash = %$base_data;
 
     $s_hash{struct1} = {a => [qw(b c d)]};
+
+    _run_ops(\%s_hash);
 
     tied(%s_hash)->clean_up_all;
 }
