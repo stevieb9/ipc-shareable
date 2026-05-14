@@ -116,7 +116,7 @@ sub storable {
 }
 
 __END__
-# As of:
+# As of: 4f53428d
        Rate store  json
 store 196/s    --  -14%
 json  227/s   16%    --
