@@ -183,13 +183,13 @@ sub stat {
     my $data = '';
     shmctl($self->id, IPC_STAT, $data) or return undef;
 
-    my @unpacked_data = unpack("IIIIIIIIIIIIIIIIIIIIIII", $data);
+    my @unpacked_data = unpack("LLLLSx[6]QllSx[2]qqq", $data);
     my @struct_initializers;
 
     # print Dumper \@unpacked_data;
 
     my $iter = 0;
-    for (_stat_list()) {
+    for (stat_list()) {
         push @struct_initializers, $_ => $unpacked_data[$iter];
         $iter++;
     }
@@ -198,7 +198,7 @@ sub stat {
 }
 sub stats {
     my ($self) = @_;
-    my @stat_list = _stat_list();
+    my @stat_list = stat_list();
 
     my %stats;
 
@@ -208,6 +208,23 @@ sub stats {
 
     return \%stats;
 }
+sub stat_list {
+    return qw(
+        uid
+        gid
+        cuid
+        cgid
+        mode
+        segsz
+        lpid
+        cpid
+        nattch
+        atime
+        dtime
+        ctime
+    );
+}
+
 sub shmread {
     my ($self) = @_;
 
@@ -229,23 +246,6 @@ sub remove {
     else {
         return 0;
     }
-}
-
-sub _stat_list {
-    return qw(
-        uid
-        gid
-        cuid
-        cgid
-        mode
-        segsz
-        lpid
-        cpid
-        nattch
-        atime
-        dtime
-        ctime
-    );
 }
 
 1;
@@ -417,6 +417,11 @@ Returns an href of the various system-level stat information:
         'nattch' => 86370,
         'dtime' => 0
     }
+
+=head2 stat_list
+
+Returns an array of all the segment's system stat entries. These are what make
+up the method names of the C<< $seg->stat >> object.
 
 =head2 shmread
 

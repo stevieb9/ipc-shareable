@@ -158,7 +158,8 @@ sub STORE {
 
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
-    } else {
+    }
+    else {
         if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!\n";
         }
@@ -176,7 +177,8 @@ sub FETCH {
     my $data;
     if ($knot->{_lock}) {
         $data = $knot->{_data};
-    } else {
+    }
+    else {
         $data = $knot->_decode($knot->seg);
         $knot->{_data} = $data;
     }
@@ -187,7 +189,8 @@ sub FETCH {
         if (defined $data) {
             my $key = shift;
             $val = $data->{$key};
-        } else {
+        }
+        else {
             return;
         }
     }
@@ -195,14 +198,16 @@ sub FETCH {
         if (defined $data) {
             my $i = shift;
             $val = $data->[$i];
-        } else {
+        }
+        else {
             return;
         }
     }
     elsif ($knot->{_type} eq 'SCALAR') {
         if (defined $data) {
             $val = $$data;
-        } else {
+        }
+        else {
             return;
         }
     }
