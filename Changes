@@ -29,7 +29,9 @@ Revision history for Perl extension IPC::Shareable.
       CI_TESTING flag required
     - Greatly simplify the FIRSTKEY and NEXTKEY shared hash ops; removed the
       _iterating flag complexity and replaced it with an _hkey_list instead
-    -
+    - Fixes #38; Fixed issue where the global_register was not being populated
+      if a data access hadn't happened yet, causing leaked segments upon
+      cleanup. This fix eliminated the weird 'Dumper' hack
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
