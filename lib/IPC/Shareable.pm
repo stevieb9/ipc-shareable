@@ -211,6 +211,13 @@ sub FETCH {
     }
 
     if (my $inner = _is_child($val)) {
+        # Register the inner knot so clean_up_all() can find it even when it
+        # was created in a forked child process
+
+        if (! exists $global_register{$inner->seg->id}) {
+            $global_register{$inner->seg->id} = $inner;
+        }
+
         my $s = $inner->seg;
         $inner->{_data} = $knot->_decode($s);
     }
@@ -402,19 +409,6 @@ sub new {
     }
 }
 sub global_register {
-    # This is a ridiculous way to do this, but if we don't call Dumper, hashes
-    # that are created in a separate process than the parent hash don't
-    # show up properly in the global register. t/81
-
-    local $SIG{__WARN__} = sub {
-        my ($warning) = @_;
-        if ($warning !~ /hash after insertion/) {
-            warn $warning;
-        }
-    };
-
-    Dumper \%global_register;
-
     return \%global_register;
 }
 sub process_register {
@@ -942,11 +936,16 @@ sub _tie {
         $knot->{_data} = _thaw($seg);
     }
 
-    if ($sem->getval(SEM_MARKER) != SHM_EXISTS) {
+    # Register unconditionally so any process that attaches to an existing
+    # segment (create=>0, re-attach, cross-process) is also tracked for
+    # clean_up_all(). Previously only new segments were registered here,
+    # requiring the Dumper hack in global_register() to catch the rest.
 
-        if (! exists $global_register{$knot->seg->id}) {
-            $global_register{$knot->seg->id} = $knot;
-        }
+    if (! exists $global_register{$knot->seg->id}) {
+        $global_register{$knot->seg->id} = $knot;
+    }
+
+    if ($sem->getval(SEM_MARKER) != SHM_EXISTS) {
 
         $process_register{$knot->seg->id} ||= $knot;
 
