@@ -11,8 +11,8 @@ BEGIN {
     use_ok('IPC::Shareable');
 };
 
-warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
 my $segs_before = IPC::Shareable::ipcs();
+warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 print "Starting with $segs_before segments\n";
 is $segs_before, $segs_before, "Initial test ok";

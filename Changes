@@ -39,7 +39,9 @@ Revision history for Perl extension IPC::Shareable.
       acquired, we will set the lock, execute the subroutine, then release the
       lock
     - 'tidy' attribute now defaults to true
-    -
+    - All unit tests do a check for leaked segments and semaphores at their
+      conclusion. Also, when running 'make test' it compares the numbers before
+      and after and doubly makes sure there are no leaks
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

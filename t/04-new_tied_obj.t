@@ -11,7 +11,8 @@ use Test::More;
 #    }
 #}
 
-warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
+my $segs_before = IPC::Shareable::ipcs();
+warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 my $mod = 'IPC::Shareable';
 
@@ -27,6 +28,9 @@ is ref $k, 'IPC::Shareable', "tied() returns a proper IPC::Shareable object ok";
 is exists $k->{attributes}, 1, "...and it has proper attributes ok";
 
 IPC::Shareable::_end;
-warn "Segs After: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
+
+my $segs_after = IPC::Shareable::ipcs();
+warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
+is $segs_after, $segs_before, "All segs, even those created in separate procs, cleaned up ok";
 
 done_testing();

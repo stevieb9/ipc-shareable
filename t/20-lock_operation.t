@@ -12,7 +12,8 @@ use Test::SharedFork;
 #    }
 #}
 
-warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
+my $segs_before = IPC::Shareable::ipcs();
+warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 my $sv;
 
@@ -55,6 +56,9 @@ if ($pid == 0) {
 }
 
 IPC::Shareable::_end;
-warn "Segs After: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
+
+my $segs_after = IPC::Shareable::ipcs();
+warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
+is $segs_after, $segs_before, "All segs cleaned up ok";
 
 done_testing();

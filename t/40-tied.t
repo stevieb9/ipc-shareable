@@ -10,7 +10,8 @@ use Test::More;
 #    }
 #}
 
-warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
+my $segs_before = IPC::Shareable::ipcs();
+warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 tie my %hv, 'IPC::Shareable', {destroy => 1};
 
@@ -23,6 +24,9 @@ tied(%hv)->clean_up;
 is %hv, '', "data is removed after tied(\$data)->clean_up()";
 
 IPC::Shareable::_end;
-warn "Segs After: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
+
+my $segs_after = IPC::Shareable::ipcs();
+warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
+is $segs_after, $segs_before, "All segs cleaned up ok";
 
 done_testing();

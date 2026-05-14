@@ -4,6 +4,7 @@ use strict;
 use Carp;
 use IPC::Shareable;
 use Test::More;
+use Test::SharedFork;
 
 #BEGIN {
 #    if (! $ENV{CI_TESTING}) {
@@ -11,9 +12,10 @@ use Test::More;
 #    }
 #}
 
-warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
+my $segs_before = IPC::Shareable::ipcs();
+warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
-plan tests => 8;
+#plan tests => 8;
 
 my %shareOpts = (
 		 create =>       'yes',
@@ -94,6 +96,11 @@ if ($pid == 0) {
 }
 
 IPC::Shareable::_end;
-warn "Segs After: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
 
-#done_testing();
+if ($pid != 0) {
+    my $segs_after = IPC::Shareable::ipcs();
+    warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
+    is $segs_after, $segs_before, "All segs, even those created in separate procs, cleaned up ok";
+    done_testing();
+}
+

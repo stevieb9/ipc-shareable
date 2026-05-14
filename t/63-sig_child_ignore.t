@@ -10,7 +10,8 @@ use Test::More;
 #    }
 #}
 
-warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
+my $segs_before = IPC::Shareable::ipcs();
+warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 my @command = ('date');
 my $rc = system( @command );
@@ -18,6 +19,9 @@ my $rc = system( @command );
 is $rc, 0, "system() returns success ok after moving CHLD handler";
 
 IPC::Shareable::_end;
-warn "Segs After: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
+
+my $segs_after = IPC::Shareable::ipcs();
+warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
+is $segs_after, $segs_before, "All segs cleaned up ok";
 
 done_testing();
