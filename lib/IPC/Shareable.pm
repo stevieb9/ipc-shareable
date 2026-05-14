@@ -1532,6 +1532,9 @@ warning that there's been a shared memory violation and that it will exit.
 
 Default: B<false>
 
+B<Note>: See L<Script::Singleton|https://metacpan.org/pod/Script::Singleton>.
+That library implements C<singleton> for a script with a simple C<use> line.
+
 =head2 ipcs
 
 Returns the number of instantiated shared memory segments that currently exist
