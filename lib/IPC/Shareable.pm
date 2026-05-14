@@ -1346,6 +1346,10 @@ Scalars, arrays, hashes and even objects can be tied. The variable being
 tied may contain arbitrarily complex data structures - including references to
 arrays, hashes of hashes, etc.
 
+B<Note>: When using nested data structures, each nested structure utilizes an
+additional shared memory segment. The entire structure is not squashed into a
+single segment.
+
 The association between variables in distinct processes is provided by
 GLUE (aka "key").  This is any arbitrary string or integer that serves as a
 common identifier for data across process space.  Hence the statement:
@@ -1443,6 +1447,10 @@ Default: B<0666> (world readable and writeable)
 
 This field may be used to specify the size of the shared memory segment
 allocated.
+
+B<Note>: Each nested data structure requires a new shared memory segment. The
+C<size> attribute is applied to the first, and all subsequent segments created,
+and does not reflect the overall size of memory to be used.
 
 The maximum size we allow by default is ~1GB. See the L</limit> option to
 override this default.

@@ -42,6 +42,10 @@ Revision history for Perl extension IPC::Shareable.
     - All unit tests do a check for leaked segments and semaphores at their
       conclusion. Also, when running 'make test' it compares the numbers before
       and after and doubly makes sure there are no leaks
+    - Closes #51; Better document that the 'size' attribute is for each segment,
+      and not the overall size of all the data. Also emphasize that each nested
+      data structure requires an additional segment, they aren't all stashed
+      into a single one
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
