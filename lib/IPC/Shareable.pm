@@ -1198,8 +1198,14 @@ sub _reset_segment {
 
     if ($parent_type eq 'HASH') {
         my $data = $parent->{_data};
-        if (exists $data->{$id} && keys %{ $data->{$id} } && tied %{ $data->{$id} }) {
-            (tied %{ $parent->{_data}{$id} })->remove;
+        if (exists $data->{$id}) {
+            my $child_type = Scalar::Util::reftype($data->{$id}) || '';
+            if ($child_type eq 'HASH' && keys %{ $data->{$id} } && tied %{ $data->{$id} }) {
+                (tied %{ $parent->{_data}{$id} })->remove;
+            }
+            elsif ($child_type eq 'ARRAY' && tied @{ $data->{$id} }) {
+                (tied @{ $parent->{_data}{$id} })->remove;
+            }
         }
     }
     elsif ($parent_type eq 'ARRAY') {
