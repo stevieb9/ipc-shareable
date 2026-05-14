@@ -23,6 +23,10 @@ Revision history for Perl extension IPC::Shareable.
     - Fixes #49; Logic error from old implementation of JSON
     - Fixes #47; Clean up broken code in old _decode_json()
     - Fixes #41; JSON serializer not handling nested data structures properly
+    - Closes #52; Add tests and POD for SharedMem::stat struct methods
+    - Added SharedMem::stats(), return an href of all segment stats
+    - Closes #48; All tests now run unconditionally; there is no more
+      CI_TESTING flag required
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
