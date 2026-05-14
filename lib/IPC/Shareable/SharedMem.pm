@@ -196,6 +196,18 @@ sub stat {
 
     return IPC::Shareable::SharedMem::stat->new(@struct_initializers);
 }
+sub stats {
+    my ($self) = @_;
+    my @stat_list = _stat_list();
+
+    my %stats;
+
+    for (@stat_list) {
+        $stats{$_} = $self->stat->$_;
+    }
+
+    return \%stats;
+}
 sub shmread {
     my ($self) = @_;
 
@@ -233,9 +245,6 @@ sub _stat_list {
         atime
         dtime
         ctime
-        z
-        y
-        x
     );
 }
 
@@ -320,6 +329,16 @@ the object is already associated with a shared memory segment, we will C<croak>.
 
 See L</key> for further details.
 
+=head2 key_hex($key)
+
+Returns the hex formatted key which appears in C<ipcs> calls.
+
+Parameters:
+
+=head3 $key
+
+I<< Optional, String >>: This is always sent in during initialization.
+
 =head2 size
 
 Sets/gets the size of the shared memory segment in bytes. See L</size> for
@@ -357,6 +376,47 @@ Returns the data in the shared memory segment, with all NULL pad bytes removed.
 
 Use this method for text data. For binary data where you need all blocks within
 the segment, use the L</shmread> method.
+
+=head2 stat
+
+This method has sub methods that display various system-level information about
+the memory segment. These sub methods are:
+
+    uid
+    gid
+    cuid
+    cgid
+    mode
+    segsz
+    lpid
+    cpid
+    nattch
+    atime
+    dtime
+    ctime
+
+Example call:
+
+    my $ctime = $seg->stat->ctime;
+
+=head2 stats
+
+Returns an href of the various system-level stat information:
+
+    {
+        'cuid' => 501,
+        'atime' => 86370,
+        'cgid' => 20,
+        'segsz' => 1234,
+        'mode' => 1506019766,
+        'ctime' => 1778777512,
+        'lpid' => 65536,
+        'uid' => 501,
+        'gid' => 20,
+        'cpid' => 0,
+        'nattch' => 86370,
+        'dtime' => 0
+    }
 
 =head2 shmread
 

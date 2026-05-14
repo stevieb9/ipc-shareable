@@ -1614,6 +1614,8 @@ See L</LOCKING> for further details.
 Called on either the tied variable or the tie object, returns the shared
 memory segment object currently in use.
 
+See L<Shareable::SharedMem> documentation for details.
+
 =head2 sem
 
 Called on either the tied variable or the tie object, returns the semaphore
