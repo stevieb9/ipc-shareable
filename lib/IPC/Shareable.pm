@@ -670,30 +670,40 @@ sub _encode_json {
 sub _encode_json_prepare {
     my $data = shift;
 
-    my $type = Scalar::Util::reftype($data);
-    return $data if ! $type;
+    my $type = Scalar::Util::reftype($data) or return $data;
 
+    # Replace direct IPC::Shareable child segments with __ics__ markers.
+    # All nested refs are tied children — no recursion needed; each child
+    # segment encodes its own children independently.
     if ($type eq 'HASH') {
+        my $changed = 0;
         my %result;
         for my $key (keys %$data) {
-            $result{$key} = _encode_json_val($data->{$key});
+            my $val = $data->{$key};
+            if (ref $val && (my $inner = _is_child($val))) {
+                $result{$key} = { '__ics__' => { type => $inner->{_type}, key => $inner->{_key} } };
+                $changed = 1;
+            } else {
+                $result{$key} = $val;
+            }
         }
-        return \%result;
+        return $changed ? \%result : $data;
     }
     elsif ($type eq 'ARRAY') {
-        return [ map { _encode_json_val($_) } @$data ];
+        my $changed = 0;
+        my @result;
+        for my $val (@$data) {
+            if (ref $val && (my $inner = _is_child($val))) {
+                push @result, { '__ics__' => { type => $inner->{_type}, key => $inner->{_key} } };
+                $changed = 1;
+            } else {
+                push @result, $val;
+            }
+        }
+        return $changed ? \@result : $data;
     }
 
     return $data;
-}
-sub _encode_json_val {
-    my $val = shift;
-
-    if (my $inner = _is_child($val)) {
-        return { '__ics__' => { type => $inner->{_type}, key => $inner->{_key} } };
-    }
-
-    return _encode_json_prepare($val);
 }
 sub _decode_json {
     my ($seg, $knot) = @_;
@@ -717,7 +727,7 @@ sub _decode_json {
             croak "Munged shared memory segment (size exceeded?)";
         }
 
-        _decode_json_restore($data, $knot) if defined $knot;
+        _decode_json_restore($data, $knot) if defined $knot && index($json, '"__ics__"') >= 0;
 
         return $data;
     } else {
@@ -727,60 +737,71 @@ sub _decode_json {
 sub _decode_json_restore {
     my ($data, $knot) = @_;
 
-    my $type = Scalar::Util::reftype($data);
-    return if ! $type;
+    my $type = Scalar::Util::reftype($data) or return;
 
-    my @items;
+    # Reuse existing tied child refs from previous decode where possible.
+    # This avoids a shmget+semget system call pair for each child on every
+    # decode cycle — only the first attach per segment incurs that cost.
+    my $prev = $knot->{_data};
+
     if ($type eq 'HASH') {
-        @items = map { [$_, \$data->{$_}] } keys %$data;
+        my $prev_is_hash = ref($prev) eq 'HASH';
+        for my $key (keys %$data) {
+            my $val = $data->{$key};
+            next unless ref($val) eq 'HASH' && exists $val->{'__ics__'};
+            my $info = $val->{'__ics__'};
+            if ($prev_is_hash && defined(my $existing = $prev->{$key})) {
+                my $inner = ref($existing) && _is_child($existing);
+                if ($inner && $inner->{_key} == $info->{key}) {
+                    $data->{$key} = $existing;
+                    next;
+                }
+            }
+            $data->{$key} = _decode_json_reattach($info, $knot);
+        }
     }
     elsif ($type eq 'ARRAY') {
-        @items = map { [$_, \$data->[$_]] } 0 .. $#$data;
-    }
-    else {
-        return;
-    }
-
-    for my $item (@items) {
-        my ($idx, $ref) = @$item;
-        my $val = $$ref;
-
-        if (ref($val) eq 'HASH' && exists $val->{'__ics__'}
-                && ref($val->{'__ics__'}) eq 'HASH'
-                && exists $val->{'__ics__'}{type}
-                && exists $val->{'__ics__'}{key}) {
-
-            my $info   = $val->{'__ics__'};
-            my $c_type = $info->{type};
-            my $c_key  = $info->{key};
-
-            my %opts = (
-                %{ $knot->attributes },
-                key       => $c_key,
-                exclusive => 0,
-                create    => 0,
-                magic     => 1,
-            );
-
-            if ($c_type eq 'HASH') {
-                my %h;
-                tie %h, 'IPC::Shareable', \%opts;
-                $$ref = \%h;
+        my $prev_is_array = ref($prev) eq 'ARRAY';
+        for my $i (0 .. $#$data) {
+            my $val = $data->[$i];
+            next unless ref($val) eq 'HASH' && exists $val->{'__ics__'};
+            my $info = $val->{'__ics__'};
+            if ($prev_is_array && $i <= $#$prev && defined(my $existing = $prev->[$i])) {
+                my $inner = ref($existing) && _is_child($existing);
+                if ($inner && $inner->{_key} == $info->{key}) {
+                    $data->[$i] = $existing;
+                    next;
+                }
             }
-            elsif ($c_type eq 'ARRAY') {
-                my @a;
-                tie @a, 'IPC::Shareable', \%opts;
-                $$ref = \@a;
-            }
-            elsif ($c_type eq 'SCALAR') {
-                my $s;
-                tie $s, 'IPC::Shareable', \%opts;
-                $$ref = \$s;
-            }
+            $data->[$i] = _decode_json_reattach($info, $knot);
         }
-        else {
-            _decode_json_restore($val, $knot);
-        }
+    }
+}
+sub _decode_json_reattach {
+    my ($info, $knot) = @_;
+
+    my %opts = (
+        %{ $knot->attributes },
+        key       => $info->{key},
+        exclusive => 0,
+        create    => 0,
+        magic     => 1,
+    );
+
+    if ($info->{type} eq 'HASH') {
+        my %h;
+        tie %h, 'IPC::Shareable', \%opts;
+        return \%h;
+    }
+    elsif ($info->{type} eq 'ARRAY') {
+        my @a;
+        tie @a, 'IPC::Shareable', \%opts;
+        return \@a;
+    }
+    elsif ($info->{type} eq 'SCALAR') {
+        my $s;
+        tie $s, 'IPC::Shareable', \%opts;
+        return \$s;
     }
 }
 sub _freeze {

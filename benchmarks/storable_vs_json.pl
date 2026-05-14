@@ -116,3 +116,7 @@ sub storable {
 }
 
 __END__
+# As of:
+       Rate store  json
+store 196/s    --  -14%
+json  227/s   16%    --
