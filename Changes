@@ -32,6 +32,9 @@ Revision history for Perl extension IPC::Shareable.
     - Fixes #38; Fixed issue where the global_register was not being populated
       if a data access hadn't happened yet, causing leaked segments upon
       cleanup. This fix eliminated the weird 'Dumper' hack
+    - Add new scripts/flush_ipc.sh script that cleans out all segments and
+      semaphores from the system for the current user
+    -
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
