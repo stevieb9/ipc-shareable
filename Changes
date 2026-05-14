@@ -27,6 +27,9 @@ Revision history for Perl extension IPC::Shareable.
     - Added SharedMem::stats(), return an href of all segment stats
     - Closes #48; All tests now run unconditionally; there is no more
       CI_TESTING flag required
+    - Greatly simplify the FIRSTKEY and NEXTKEY shared hash ops; removed the
+      _iterating flag complexity and replaced it with an _hkey_list instead
+    -
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

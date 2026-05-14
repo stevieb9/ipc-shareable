@@ -149,7 +149,6 @@ my $mod = 'IPC::Shareable';
     is keys(%hv), 0, "json: clearing a hash works ok";
     #is exists($hv{__ipc}), 1, "__ipc__ key still exists";
 
-
     IPC::Shareable->clean_up_all;
 
     is % hv, '', "hash deleted after clean_up()";

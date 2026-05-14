@@ -174,8 +174,7 @@ sub FETCH {
     }
 
     my $data;
-    if ($knot->{_lock} || $knot->{_iterating}) {
-        $knot->{_iterating} = 0; # In case we break out
+    if ($knot->{_lock}) {
         $data = $knot->{_data};
     } else {
         $data = $knot->_decode($knot->seg);
@@ -266,13 +265,11 @@ sub EXISTS {
 sub FIRSTKEY {
     my $knot = shift;
 
-    # each() or keys() has been called. Track this
-    $knot->{_iterating} = 1;
-
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
-    my $reset = keys %{$knot->{_data}};
-    my $first = each %{$knot->{_data}};
-    return $first;
+
+    $knot->{_hkey_list} = [ keys %{$knot->{_data}} ];
+
+    return $knot->NEXTKEY;
 }
 sub NEXTKEY {
     my ($knot, $last_key_accessed) = @_;
@@ -282,17 +279,7 @@ sub NEXTKEY {
 
     # Caveat emptor if hash was changed by another process
 
-    my $next = each %{$knot->{_data}};
-
-    if (not defined $next) {
-        # No more data, reset the each() or keys() loop
-        $knot->{_iterating} = 0;
-        return;
-    } else {
-        # We're still in an each() or keys() loop
-        $knot->{_iterating} = 1;
-        return $next;
-    }
+    return shift @{$knot->{_hkey_list}};
 }
 sub EXTEND {
     #XXX Noop
@@ -936,7 +923,7 @@ sub _tie {
 
     %$knot = (
         %$knot,
-        _iterating   => 0,
+        _hkey_list   => undef,
         _key         => $key,
         _key_hex     => $seg->key_hex,
         _lock        => 0,
