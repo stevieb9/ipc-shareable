@@ -23,6 +23,7 @@ my $knot = tie my %hv, $mod, {
 my $ok = eval {
     for my $alpha ('a' .. 'z', 'A' .. 'Z') {
         for my $num (0 .. 100) {
+            # print "$alpha:$num\n";
             $hv{$alpha}->{$num} = $alpha;
             my $thing = $hv{$alpha}->{num};
             delete $hv{$alpha};
@@ -30,6 +31,8 @@ my $ok = eval {
     };
     1;
 };
+
+# print $@;
 
 is $ok, undef, "If we try to use all available shm slots, we croak()";
 like $@, qr/No space left on device/, "...and error is sane";

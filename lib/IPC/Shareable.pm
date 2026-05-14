@@ -791,7 +791,7 @@ sub _tie {
     if (! defined $seg) {
         if ($! =~ /Cannot allocate memory/) {
             croak "\nERROR: Could not create shared memory segment: $!\n\n" .
-                  "Are you using too large a size?";
+                  "Are you using too large a segment size?";
         }
 
         if ($! =~ /No space left on device/) {
