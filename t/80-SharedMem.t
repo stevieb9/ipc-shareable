@@ -7,11 +7,11 @@ use IPC::SysV qw(IPC_CREAT IPC_EXCL);
 use Mock::Sub;
 use Test::More;
 
-BEGIN {
-    if (! $ENV{CI_TESTING}) {
-        plan skip_all => "Not on a legit CI platform...";
-    }
-}
+#BEGIN {
+#    if (! $ENV{CI_TESTING}) {
+#        plan skip_all => "Not on a legit CI platform...";
+#    }
+#}
 
 warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
 

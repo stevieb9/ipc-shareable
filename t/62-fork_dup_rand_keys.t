@@ -13,9 +13,9 @@ use Test::More;
 my $segs_before;
 
 BEGIN {
-    if (! $ENV{CI_TESTING}) {
-        plan skip_all => "Not on a legit CI platform...";
-    }
+    # if (! $ENV{CI_TESTING}) {
+    #     plan skip_all => "Not on a legit CI platform...";
+    # }
 
     if (! $ENV{RELEASE_TESTING}) {
         plan skip_all => "Developer only test...";
