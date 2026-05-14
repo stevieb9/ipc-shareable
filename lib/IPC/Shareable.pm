@@ -1495,7 +1495,7 @@ Default: B<false>
 =head2 tidy
 
 For long running processes, set this to a true value to clean up unneeded
-segments from nested data structures. Comes with a slight performance hit.
+segments from nested data structures. Comes with a slight 2% performance hit.
 
 Default: B<true>
 

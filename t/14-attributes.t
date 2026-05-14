@@ -57,7 +57,7 @@ is $attrs->{mode},      438, "mode is set ok";
 is $attrs->{create},    1, "create is set ok";
 is $attrs->{owner},     $$, "owner is set ok";
 is $attrs->{graceful},  0, "graceful is set ok";
-is $attrs->{tidy},      0, "tidy is set ok";
+is $attrs->{tidy},      1, "tidy is set ok";
 is $attrs->{destroy},   1, "destroy is set ok";
 
 is $k->attributes('no_exist'), undef, "attributes() on an undefined attr is undef";
