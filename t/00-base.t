@@ -15,8 +15,11 @@ warn "Segs Before: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
 my $segs_before = IPC::Shareable::ipcs();
 
 print "Starting with $segs_before segments\n";
-
 is $segs_before, $segs_before, "Initial test ok";
+
+tie my %store, 'IPC::Shareable', {key => 'async_tests', create => 1};
+$store{segs} = $segs_before;
+
 
 {
     my $a = tie my $x, 'IPC::Shareable';
@@ -31,6 +34,6 @@ is $segs_before, $segs_before, "Initial test ok";
 IPC::Shareable::_end;
 
 warn "Segs After: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
-is IPC::Shareable::ipcs(), $segs_before , "No segs left after test suite run ok";
+is IPC::Shareable::ipcs(), $segs_before + 1, "No segs left after test suite run ok";
 
 done_testing();
