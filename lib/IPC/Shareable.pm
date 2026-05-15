@@ -505,8 +505,11 @@ sub lock {
 
     if ($flags == LOCK_EX && $lock_success) {
         if ($code) {
-            $code->();
-            return $knot->unlock;
+            my $ok = eval { $code->(); 1 };
+            my $err = $@;
+            $knot->unlock;
+            die $err if ! $ok;
+            return 1;
         }
     }
     return $lock_success;
@@ -527,7 +530,10 @@ sub unlock {
     my $flags = $knot->{_lock} | LOCK_UN;
 
     $flags ^= LOCK_NB if ($flags & LOCK_NB);
-    $sem->op(@{ $semop_args{$flags} });
+
+    if (! $sem->op(@{ $semop_args{$flags} })) {
+        croak "Could not release semaphore lock: $!\n";
+    }
 
     $knot->{_lock} = 0;
 
@@ -692,13 +698,11 @@ sub _enforced_locking {
     # holds LOCK_EX (set via SEM_UNDO so it auto-releases on process exit).
 
     if ($knot->sem->getval(2) > 0) {
-        my $uuid = $knot->uuid;
-        my $seg_id = $knot->seg->id;
-
         if ($knot->attributes('violated_lock_warn')) {
-            my $warning = "Object with UUID $uuid attempted write to segment ID " .
-                "$seg_id which is exclusively locked (enforced locking enabled)";
-            warn $warning;
+            my $uuid   = $knot->uuid;
+            my $seg_id = $knot->seg->id;
+            warn "Object with UUID $uuid attempted write to segment ID "
+                . "$seg_id which is exclusively locked (enforced locking enabled)";
         }
 
         return 0;
