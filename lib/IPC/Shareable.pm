@@ -847,37 +847,35 @@ sub _decode_json_restore {
     my $prev = $knot->{_data};
 
     if ($type eq 'HASH') {
-        my $prev_is_hash = ref($prev) eq 'HASH';
         for my $key (keys %$data) {
-            my $val = $data->{$key};
-            next unless ref($val) eq 'HASH' && exists $val->{'__ics__'};
-            my $info = $val->{'__ics__'};
-            if ($prev_is_hash && defined(my $existing = $prev->{$key})) {
-                my $inner = ref($existing) && _is_child($existing);
-                if ($inner && $inner->{_key} == $info->{key}) {
-                    $data->{$key} = $existing;
-                    next;
-                }
-            }
-            $data->{$key} = _decode_json_reattach($info, $knot);
+            next unless ref($data->{$key}) eq 'HASH' && exists $data->{$key}{'__ics__'};
+            $data->{$key} = _decode_json_resolve(
+                $data->{$key}{'__ics__'},
+                ref($prev) eq 'HASH' ? $prev->{$key} : undef,
+                $knot,
+            );
         }
     }
     elsif ($type eq 'ARRAY') {
-        my $prev_is_array = ref($prev) eq 'ARRAY';
         for my $i (0 .. $#$data) {
-            my $val = $data->[$i];
-            next unless ref($val) eq 'HASH' && exists $val->{'__ics__'};
-            my $info = $val->{'__ics__'};
-            if ($prev_is_array && $i <= $#$prev && defined(my $existing = $prev->[$i])) {
-                my $inner = ref($existing) && _is_child($existing);
-                if ($inner && $inner->{_key} == $info->{key}) {
-                    $data->[$i] = $existing;
-                    next;
-                }
-            }
-            $data->[$i] = _decode_json_reattach($info, $knot);
+            next unless ref($data->[$i]) eq 'HASH' && exists $data->[$i]{'__ics__'};
+            $data->[$i] = _decode_json_resolve(
+                $data->[$i]{'__ics__'},
+                ref($prev) eq 'ARRAY' && $i <= $#$prev ? $prev->[$i] : undef,
+                $knot,
+            );
         }
     }
+}
+sub _decode_json_resolve {
+    my ($info, $existing, $knot) = @_;
+
+    if (defined $existing) {
+        my $inner = ref($existing) && _is_child($existing);
+        return $existing if $inner && $inner->{_key} == $info->{key};
+    }
+
+    return _decode_json_reattach($info, $knot);
 }
 sub _decode_json_reattach {
     my ($info, $knot) = @_;
