@@ -16,20 +16,18 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 my $mod = 'IPC::Shareable';
 
 my $knot = tie my %hv, $mod, {
-    create => 1,
-    key => 1234,
+    create  => 1,
+    key     => 1234,
     destroy => 1,
+    size    => 1_048_576,   # large enough that kernel slot limit is hit first
 };
 
 my $ok = eval {
-    for my $alpha ('a' .. 'z', 'A' .. 'Z') {
-        for my $num (0 .. 100) {
-            # print "$alpha:$num\n";
-            $hv{$alpha}->{$num} = $alpha;
-            my $thing = $hv{$alpha}->{num};
-            delete $hv{$alpha};
-        }
-    };
+    for my $i (1 .. 200) {
+        # Each unique key creates one child segment.  No delete, so segments
+        # accumulate until the kernel shm slot limit is reached.
+        $hv{$i} = {val => $i};
+    }
     1;
 };
 

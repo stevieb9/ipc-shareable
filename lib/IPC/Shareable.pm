@@ -133,7 +133,7 @@ sub TIEHASH {
 sub STORE {
     my $knot = shift;
 
-    return if ! _enforced_locking($knot);
+    return if ! _write_permitted($knot);
 
     if (! exists $global_register{$knot->seg->id}) {
         $global_register{$knot->seg->id} = $knot;
@@ -237,12 +237,26 @@ sub FETCH {
 sub CLEAR {
     my $knot = shift;
 
-    return if ! _enforced_locking($knot);
+    return if ! _write_permitted($knot);
+
+    $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
 
     if ($knot->{_type} eq 'HASH') {
+        # Remove any child segments before discarding the data
+        for my $val (values %{ $knot->{_data} }) {
+            if (my $child = _is_child($val)) {
+                $child->remove;
+            }
+        }
         $knot->{_data} = { };
     }
     elsif ($knot->{_type} eq 'ARRAY') {
+        # Remove any child segments before discarding the data
+        for my $val (@{ $knot->{_data} }) {
+            if (my $child = _is_child($val)) {
+                $child->remove;
+            }
+        }
         $knot->{_data} = [ ];
     }
 
@@ -263,10 +277,16 @@ sub DELETE {
     my $knot = shift;
     my $key  = shift;
 
-    return if ! _enforced_locking($knot);
+    return if ! _write_permitted($knot);
 
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     my $val = delete $knot->{_data}->{$key};
+
+    # Remove the child segment if the deleted value was a nested tied ref
+    if (my $child = _is_child($val)) {
+        $child->remove;
+    }
+
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
     }
@@ -310,7 +330,7 @@ sub EXTEND {
 sub PUSH {
     my $knot = shift;
 
-    return if ! _enforced_locking($knot);
+    return if ! _write_permitted($knot);
 
     if (! exists $global_register{$knot->seg->id}) {
         $global_register{$knot->seg->id} = $knot;
@@ -331,7 +351,7 @@ sub PUSH {
 sub POP {
     my $knot = shift;
 
-    return if ! _enforced_locking($knot);
+    return if ! _write_permitted($knot);
 
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
 
@@ -349,7 +369,7 @@ sub POP {
 sub SHIFT {
     my $knot = shift;
 
-    return if ! _enforced_locking($knot);
+    return if ! _write_permitted($knot);
 
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my $val = shift @{$knot->{_data}};
@@ -366,7 +386,7 @@ sub SHIFT {
 sub UNSHIFT {
     my $knot = shift;
 
-    return if ! _enforced_locking($knot);
+    return if ! _write_permitted($knot);
 
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my $val = unshift @{$knot->{_data}}, @_;
@@ -383,7 +403,7 @@ sub UNSHIFT {
 sub SPLICE {
     my($knot, $off, $n, @av) = @_;
 
-    return if ! _enforced_locking($knot);
+    return if ! _write_permitted($knot);
 
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my @val = splice @{$knot->{_data}}, $off, $n, @av;
@@ -407,7 +427,7 @@ sub STORESIZE {
     my $knot = shift;
     my $n    = shift;
 
-    return if ! _enforced_locking($knot);
+    return if ! _write_permitted($knot);
 
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     $#{$knot->{_data}} = $n - 1;
@@ -684,7 +704,7 @@ END {
 
 # --- Private methods below
 
-sub _enforced_locking {
+sub _write_permitted {
     my ($knot) = @_;
 
     return 1 unless $knot->attributes('enforced_locking');
@@ -1272,7 +1292,7 @@ sub _reset_segment {
         my $data = $parent->{_data};
         if (exists $data->{$id}) {
             my $child_type = Scalar::Util::reftype($data->{$id}) || '';
-            if ($child_type eq 'HASH' && keys %{ $data->{$id} } && tied %{ $data->{$id} }) {
+            if ($child_type eq 'HASH' && tied %{ $data->{$id} }) {
                 (tied %{ $parent->{_data}{$id} })->remove;
             }
             elsif ($child_type eq 'ARRAY' && tied @{ $data->{$id} }) {
@@ -1282,8 +1302,14 @@ sub _reset_segment {
     }
     elsif ($parent_type eq 'ARRAY') {
         my $data = $parent->{_data};
-        if (exists $data->[$id] && tied @{ $data->[$id] }) {
-            (tied @{ $parent->{_data}[$id] })->remove;
+        if (exists $data->[$id]) {
+            my $child_type = Scalar::Util::reftype($data->[$id]) || '';
+            if ($child_type eq 'HASH' && tied %{ $data->[$id] }) {
+                (tied %{ $parent->{_data}[$id] })->remove;
+            }
+            elsif ($child_type eq 'ARRAY' && tied @{ $data->[$id] }) {
+                (tied @{ $parent->{_data}[$id] })->remove;
+            }
         }
     }
 }
@@ -1313,11 +1339,11 @@ sub _parse_args {
 }
 sub _end {
     for my $s (values %process_register) {
-        unlock($s);
+        eval { unlock($s) };
         next if $s->attributes('protected');
         next if ! $s->attributes('destroy');
         next if $s->attributes('owner') != $$;
-        remove($s);
+        eval { remove($s) };
     }
 }
 
