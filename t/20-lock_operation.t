@@ -89,7 +89,7 @@ my $sv;
     #is_deeply {%h2}, {a => {b => 3}}, "h2 - back to pre-unlock of h1 data";
 }
 
-# enforced_locking: k2 attempting a write while k1 holds LOCK_EX must croak
+# enforced_locking w/o warn: k2 attempting a write while k1 holds LOCK_EX must croak
 {
     my $k1 = tie my %h1, 'IPC::Shareable', {
         key              => 'TEST2',
@@ -124,6 +124,49 @@ my $sv;
     $h2{a} = 3;
     is $h2{a}, 3, "enforced_locking - k2 can write after k1 unlocks";
 }
+
+# enforced_locking with warn: k2 attempting a write while k1 holds LOCK_EX must croak
+{
+    my $k1 = tie my %h1, 'IPC::Shareable', {
+        key                => 'TEST2',
+        create             => 1,
+        destroy            => 1,
+        enforced_locking   => 1,
+    };
+    my $k2 = tie my %h2, 'IPC::Shareable', {
+        key                 => 'TEST2',
+        enforced_locking    => 1,
+        violated_lock_warn  => 1,
+    };
+
+    $h1{a} = 1;
+    is $h1{a}, 1, "enforced_locking with warn - initial value set";
+
+    $k1->lock;
+
+    # k1 (the lock holder) can still write freely
+    $h1{a} = 2;
+    is $h1{a}, 2, "enforced_locking with warn - lock holder can write while locked";
+
+    local $SIG{__WARN__} = sub {
+        my $w = shift;
+        my $uuid = $k2->uuid;
+        my $seg_id = $k2->seg->id;
+
+        like $w, qr/$uuid/, "With enforced_locking and violated_lock_warn, UUID in warning ok";
+        like $w, qr/$seg_id/, "With enforced_locking and violated_lock_warn, seg ID in warning ok";
+    };
+
+    $h2{a} = 99;
+
+    $k1->unlock;
+
+    # after unlock, k2 can write freely again
+    is $h2{a}, 2, "enforced_locking with warn - after k1 unlock, h2 set properly";
+    $h2{a} = 3;
+    is $h2{a}, 3, "enforced_locking with warn - k2 can write after k1 unlocks";
+}
+
 IPC::Shareable::_end;
 
 my $segs_after = IPC::Shareable::ipcs();

@@ -1613,18 +1613,21 @@ Default: B<storable>
 
 Default values for options are:
 
-    key         => IPC_PRIVATE, # 0
-    create      => 0,
-    exclusive   => 0,
-    mode        => 0666,
-    size        => IPC::Shareable::SHM_BUFSIZ(), # 65536
-    protected   => 0,
-    limit       => 1,
-    destroy     => 0,
-    graceful    => 0,
-    warn        => 0,
-    tidy        => 1,
-    serializer  => 'storable',
+    key                 => IPC_PRIVATE, # 0
+    create              => 0,
+    exclusive           => 0,
+    mode                => 0666,
+    size                => IPC::Shareable::SHM_BUFSIZ(), # 65536
+    protected           => 0,
+    limit               => 1,
+    destroy             => 0,
+    graceful            => 0,
+    warn                => 0,
+    tidy                => 1,
+    serializer          => 'storable',
+    enforced_locking    => 1,
+    violated_lock_warn  => 0,
+
 
 =head1 METHODS
 
