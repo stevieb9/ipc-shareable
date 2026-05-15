@@ -775,7 +775,7 @@ sub _encode_json {
     $seg->shmwrite($json);
 }
 sub _encode_json_prepare {
-    my $data = shift;
+    my ($data) = @_;
 
     my $type = Scalar::Util::reftype($data) or return $data;
 
@@ -783,31 +783,26 @@ sub _encode_json_prepare {
     # All nested refs are tied children — no recursion needed; each child
     # segment encodes its own children independently.
     if ($type eq 'HASH') {
-        my $changed = 0;
         my %result;
         for my $key (keys %$data) {
-            my $val = $data->{$key};
-            if (ref $val && (my $inner = _is_child($val))) {
-                $result{$key} = { '__ics__' => { type => $inner->{_type}, key => $inner->{_key} } };
-                $changed = 1;
-            } else {
-                $result{$key} = $val;
-            }
+            my $val   = $data->{$key};
+            my $inner = ref($val) && _is_child($val);
+            $result{$key} = $inner
+                ? { '__ics__' => { type => $inner->{_type}, key => $inner->{_key} } }
+                : $val;
         }
-        return $changed ? \%result : $data;
+        return \%result;
     }
-    elsif ($type eq 'ARRAY') {
-        my $changed = 0;
-        my @result;
-        for my $val (@$data) {
-            if (ref $val && (my $inner = _is_child($val))) {
-                push @result, { '__ics__' => { type => $inner->{_type}, key => $inner->{_key} } };
-                $changed = 1;
-            } else {
-                push @result, $val;
-            }
-        }
-        return $changed ? \@result : $data;
+
+    if ($type eq 'ARRAY') {
+        return [
+            map {
+                my $inner = ref($_) && _is_child($_);
+                $inner
+                    ? { '__ics__' => { type => $inner->{_type}, key => $inner->{_key} } }
+                    : $_
+            } @$data
+        ];
     }
 
     return $data;
