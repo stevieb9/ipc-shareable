@@ -37,6 +37,7 @@ WriteMakefile(
     },
     PREREQ_PM    => {
         'Class::Struct' => 0,
+        'Digest::MD5'   => 0,
         'JSON'          => 0,
         'Scalar::Util'  => 0,
         'Storable'      => 0.607,

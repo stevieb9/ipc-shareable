@@ -46,6 +46,8 @@ Revision history for Perl extension IPC::Shareable.
       and not the overall size of all the data. Also emphasize that each nested
       data structure requires an additional segment, they aren't all stashed
       into a single one
+    - Added uuid(), sets an internal UUID for each tied object (primarily used
+      for troubleshooting)
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

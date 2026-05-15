@@ -7,6 +7,7 @@ require 5.00503;
 
 use Carp qw(croak confess carp);
 use Data::Dumper;
+use Digest::MD5 qw(md5_hex);
 use IPC::Semaphore;
 use IPC::Shareable::SharedMem;
 use IPC::SysV qw(
@@ -634,7 +635,15 @@ sub singleton {
 
     return $$;
 }
+sub uuid {
+    my ($knot) = @_;
 
+    if (! defined $knot->{_uuid}) {
+        $knot->{_uuid} = md5_hex(rand());
+    }
+
+    return $knot->{_uuid};
+}
 END {
     _end();
 }
@@ -871,6 +880,8 @@ sub _tie {
     $opts  = _parse_args($opts);
 
     my $knot = bless { attributes => $opts }, $class;
+
+    $knot->uuid;
 
     my $key      = $knot->_shm_key;
     my $flags    = $knot->_shm_flags;
@@ -1560,6 +1571,10 @@ either C<< var = > 'ARRAY' >> or C<< var => 'SCALAR' >> to do so.
 
 Return: A reference to a hash (or array or scalar) which is backed by shared
 memory.
+
+=head2 uuid
+
+Returns the UUID of the object.
 
 =head2 singleton($glue, $warn)
 
