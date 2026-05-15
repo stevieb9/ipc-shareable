@@ -45,6 +45,10 @@ use constant {
     MAX_KEY_INT_SIZE      => 0x80000000,
 
     EXCLUSIVE_CHECK_LIMIT => 10, # Number of times we'll check for existing segs
+
+    TYPE_HASH             => 0,
+    TYPE_ARRAY            => 1,
+    TYPE_SCALAR           => 2,
 };
 
 require Exporter;
@@ -135,26 +139,22 @@ sub STORE {
 
     return if ! _write_permitted($knot);
 
-    if (! exists $global_register{$knot->seg->id}) {
-        $global_register{$knot->seg->id} = $knot;
-    }
-
     $knot->{_data} = $knot->_decode($knot->seg) unless ($knot->{_lock});
 
-    if ($knot->{_type} eq 'HASH') {
+    if ($knot->{_type_int} == TYPE_HASH) {
         my ($key, $val) = @_;
         # If $val is a reference, we need to create a new segment
-        _magic_tie($knot, $val, $key) if $knot->_need_tie($val, $key);
+        _magic_tie($knot, $val, $key) if ref($val) && $knot->_need_tie($val, $key);
         $knot->{_data}{$key} = $val;
     }
-    elsif ($knot->{_type} eq 'ARRAY') {
+    elsif ($knot->{_type_int} == TYPE_ARRAY) {
         my ($i, $val) = @_;
-        _magic_tie($knot, $val, $i) if $knot->_need_tie($val, $i);
+        _magic_tie($knot, $val, $i) if ref($val) && $knot->_need_tie($val, $i);
         $knot->{_data}[$i] = $val;
     }
-    elsif ($knot->{_type} eq 'SCALAR') {
+    elsif ($knot->{_type_int} == TYPE_SCALAR) {
         my ($val) = @_;
-        _magic_tie($knot, $val) if $knot->_need_tie($val);
+        _magic_tie($knot, $val) if ref($val) && $knot->_need_tie($val);
         $knot->{_data} = \$val;
     }
     else {
@@ -175,10 +175,6 @@ sub STORE {
 sub FETCH {
     my $knot = shift;
 
-    if (! exists $global_register{$knot->seg->id}) {
-        $global_register{$knot->seg->id} = $knot;
-    }
-
     my $data;
     if ($knot->{_lock}) {
         $data = $knot->{_data};
@@ -190,7 +186,7 @@ sub FETCH {
 
     my $val;
 
-    if ($knot->{_type} eq 'HASH') {
+    if ($knot->{_type_int} == TYPE_HASH) {
         if (defined $data) {
             my $key = shift;
             $val = $data->{$key};
@@ -199,7 +195,7 @@ sub FETCH {
             return;
         }
     }
-    elsif ($knot->{_type} eq 'ARRAY') {
+    elsif ($knot->{_type_int} == TYPE_ARRAY) {
         if (defined $data) {
             my $i = shift;
             $val = $data->[$i];
@@ -208,7 +204,7 @@ sub FETCH {
             return;
         }
     }
-    elsif ($knot->{_type} eq 'SCALAR') {
+    elsif ($knot->{_type_int} == TYPE_SCALAR) {
         if (defined $data) {
             $val = $$data;
         }
@@ -220,7 +216,7 @@ sub FETCH {
         croak "Variables of type $knot->{_type} not supported";
     }
 
-    if (my $inner = _is_child($val)) {
+    if (ref($val) && (my $inner = _is_child($val))) {
         # Register the inner knot so clean_up_all() can find it even when it
         # was created in a forked child process
 
@@ -241,19 +237,19 @@ sub CLEAR {
 
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
 
-    if ($knot->{_type} eq 'HASH') {
+    if ($knot->{_type_int} == TYPE_HASH) {
         # Remove any child segments before discarding the data
         for my $val (values %{ $knot->{_data} }) {
-            if (my $child = _is_child($val)) {
+            if (ref($val) && (my $child = _is_child($val))) {
                 $child->remove;
             }
         }
         $knot->{_data} = { };
     }
-    elsif ($knot->{_type} eq 'ARRAY') {
+    elsif ($knot->{_type_int} == TYPE_ARRAY) {
         # Remove any child segments before discarding the data
         for my $val (@{ $knot->{_data} }) {
-            if (my $child = _is_child($val)) {
+            if (ref($val) && (my $child = _is_child($val))) {
                 $child->remove;
             }
         }
@@ -283,7 +279,7 @@ sub DELETE {
     my $val = delete $knot->{_data}->{$key};
 
     # Remove the child segment if the deleted value was a nested tied ref
-    if (my $child = _is_child($val)) {
+    if (ref($val) && (my $child = _is_child($val))) {
         $child->remove;
     }
 
@@ -331,10 +327,6 @@ sub PUSH {
     my $knot = shift;
 
     return if ! _write_permitted($knot);
-
-    if (! exists $global_register{$knot->seg->id}) {
-        $global_register{$knot->seg->id} = $knot;
-    }
 
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
 
@@ -707,7 +699,7 @@ END {
 sub _write_permitted {
     my ($knot) = @_;
 
-    return 1 unless $knot->attributes('enforced_locking');
+    return 1 unless $knot->{_enforced_locking};
 
     # If this knot itself holds LOCK_EX it is the owner of the lock and is
     # permitted to write.
@@ -718,7 +710,7 @@ sub _write_permitted {
     # holds LOCK_EX (set via SEM_UNDO so it auto-releases on process exit).
 
     if ($knot->sem->getval(2) > 0) {
-        if ($knot->attributes('violated_lock_warn')) {
+        if ($knot->{_violated_lock_warn}) {
             my $uuid   = $knot->uuid;
             my $seg_id = $knot->seg->id;
             warn "Object with UUID $uuid attempted write to segment ID "
@@ -735,12 +727,10 @@ sub _write_permitted {
 sub _encode {
     my ($knot, $seg, $data) = @_;
 
-    my $serializer = $knot->attributes('serializer');
-
-    if ($serializer eq 'storable') {
+    if ($knot->{_serializer} eq 'storable') {
         return _freeze($seg, $data);
     }
-    elsif ($serializer eq 'json'){
+    elsif ($knot->{_serializer} eq 'json'){
         return _encode_json($seg, $data);
     }
 
@@ -749,12 +739,10 @@ sub _encode {
 sub _decode {
     my ($knot, $seg) = @_;
 
-    my $serializer = $knot->attributes('serializer');
-
-    if ($serializer eq 'storable') {
+    if ($knot->{_serializer} eq 'storable') {
         return _thaw($seg);
     }
-    elsif ($serializer eq 'json'){
+    elsif ($knot->{_serializer} eq 'json'){
         return _decode_json($seg, $knot);
     }
 
@@ -1038,19 +1026,21 @@ sub _tie {
 
     %$knot = (
         %$knot,
-        _hkey_list   => undef,
-        _key         => $key,
-        _key_hex     => $seg->key_hex,
-        _lock        => 0,
-        _shm         => $seg,
-        _sem         => $sem,
-        _type        => $type,
-        _was_changed => 0,
+        _hkey_list          => undef,
+        _key                => $key,
+        _key_hex            => $seg->key_hex,
+        _lock               => 0,
+        _shm                => $seg,
+        _sem                => $sem,
+        _type               => $type,
+        _type_int           => $type eq 'HASH' ? TYPE_HASH : $type eq 'ARRAY' ? TYPE_ARRAY : TYPE_SCALAR,
+        _was_changed        => 0,
+        _serializer         => $knot->attributes('serializer'),
+        _enforced_locking   => $knot->attributes('enforced_locking'),
+        _violated_lock_warn => $knot->attributes('violated_lock_warn'),
     );
 
-    my $serializer = $knot->attributes('serializer');
-    
-    if ($serializer eq 'json') {
+    if ($knot->{_serializer} eq 'json') {
         $knot->{_data} = $knot->_decode($seg);
     }
     else {
@@ -1084,7 +1074,7 @@ sub _magic_tie {
 
     my $key;
 
-    if ($parent->{_key} == IPC_PRIVATE && $parent->attributes('serializer') ne 'json') {
+    if ($parent->{_key} == IPC_PRIVATE && $parent->{_serializer} ne 'json') {
         $key = IPC_PRIVATE;
     }
     else {

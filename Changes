@@ -51,6 +51,17 @@ Revision history for Perl extension IPC::Shareable.
     - Fixes #50; Added enforced locking, with optional warning
     - Correct five areas in clean/delete routines where segments may have been
       able to leak
+    - Cached _serializer, _enforced_locking, _violated_lock_warn: set once in
+      _tie(), accessed directly as knot->{_serializer} etc., instead of calling
+      attributes() on every encode/decode/write
+    - Removed redundant _global_register checks in STORE, FETCH, PUSH; _tie()
+      already registers unconditionally
+    - Add ref() check before _is_child(); skips the function call reftype()
+      entirely for plain scalar values in FETCH, CLEAR, and DELETE
+    - Add ref() check before _need_tie(); same pattern in all three STORE
+      branches
+    - _type_int numeric dispatch; string eq comparisons on every operation
+      replaced with == against integer constants in STORE, FETCH, and CLEAR
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
