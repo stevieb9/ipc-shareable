@@ -56,6 +56,7 @@ my $sv;
 #    is $sv, 200, "in parent: locked and updated SV to 200";
 #}
 
+# Advisory locking
 {
     my $k1 = tie my %h1, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1 };
     my $k2 = tie my %h2, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1 };
@@ -68,38 +69,60 @@ my $sv;
     # Correct pattern for modifying nested data while locked: use a top-level
     # STORE on the parent hash, NOT $h1{a}->{b} = 3.
     #
-    # $h1{a}->{b} = 3 while locked calls STORE on the child segment's knot, not
-    # on k1. k1's _was_changed flag is never set, so unlock() skips _encode and
-    # the modification is never written back to shared memory. Additionally,
-    # Storable preserves the IPC::Shareable tie across freeze/thaw, so after
-    # lock() decodes the segment _data->{a} is still a tied hash reference.
-    # If another knot writes to the same key while k1 is locked (without calling
-    # lock() itself -- see below), its _reset_segment removes the underlying
-    # child segment that k1's _data->{a} still points to, causing it to read as
-    # {}.
-    #
     # Using a top-level STORE ($h1{a} = ...) sets _was_changed = 1 on k1 and
     # properly replaces the child segment via _magic_tie / _reset_segment.
     $k1->lock;
 
     $h1{a} = {b => 3};   # top-level STORE: sets k1->{_was_changed} = 1
-    $h2{a} = {c => 10};
-
-    print Dumper \%h2;
     $k1->unlock;          # writes {a => {b => 3}} back to shared memory
 
     is_deeply {%h1}, {a => {b => 3}}, "h1 - locked STORE written back on unlock";
     is_deeply {%h2}, {a => {b => 3}}, "h2 - sees h1's change after unlock";
 
+    # Without enforced_locking, a knot that does NOT call lock() bypasses the
+    # semaphore and writes directly -- purely cooperative/advisory locking.
+    $k1->lock;
+    $h2{a} = {c => 10};  # k2 never locked: writes directly, no error
+    $k1->unlock;
 
-    print Dumper \%h1;
     print Dumper \%h2;
-    # IPC::Shareable uses cooperative (advisory) locking via SysV semaphores.
-    # A knot that does NOT call lock() bypasses the semaphore and writes
-    # directly, regardless of whether another knot holds the lock.
-    # For true mutual exclusion both k1 AND k2 must call lock()/unlock() around
-    # their critical sections. In a forked scenario, $k2->lock would block here
-    # until k1 releases the semaphore.
+    #is_deeply {%h2}, {a => {b => 3}}, "h2 - back to pre-unlock of h1 data";
+}
+
+# enforced_locking: k2 attempting a write while k1 holds LOCK_EX must croak
+{
+    my $k1 = tie my %h1, 'IPC::Shareable', {
+        key              => 'TEST2',
+        create           => 1,
+        destroy          => 1,
+        enforced_locking => 1,
+    };
+    my $k2 = tie my %h2, 'IPC::Shareable', {
+        key              => 'TEST2',
+        enforced_locking => 1,
+    };
+
+    $h1{a} = 1;
+    is $h1{a}, 1, "enforced_locking - initial value set";
+
+    $k1->lock;
+
+    # k1 (the lock holder) can still write freely
+    $h1{a} = 2;
+    is $h1{a}, 2, "enforced_locking - lock holder can write while locked";
+
+    # k2 must croak because k1 holds LOCK_EX and k2 has enforced_locking on
+#    eval { $h2{a} = 99 };
+#    like $@, qr/exclusively locked/, "enforced_locking - k2 STORE croaks while k1 holds LOCK_EX";
+
+    $h2{a} = 99;
+
+    $k1->unlock;
+
+    # after unlock, k2 can write freely again
+    is $h2{a}, 2, "enforced_locking - after k1 unlock, h2 set properly";
+    $h2{a} = 3;
+    is $h2{a}, 3, "enforced_locking - k2 can write after k1 unlocks";
 }
 IPC::Shareable::_end;
 

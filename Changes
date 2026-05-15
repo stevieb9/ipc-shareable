@@ -48,6 +48,7 @@ Revision history for Perl extension IPC::Shareable.
       into a single one
     - Added uuid(), sets an internal UUID for each tied object (primarily used
       for troubleshooting)
+    - Fixes #50; Added enforced locking, with optional warning
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

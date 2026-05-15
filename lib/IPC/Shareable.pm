@@ -93,18 +93,20 @@ my %semop_args = (
 );
 
 my %default_options = (
-    key        => IPC_PRIVATE,
-    create     => 0,
-    exclusive  => 0,
-    destroy    => 0,
-    mode       => 0666,
-    size       => SHM_BUFSIZ,
-    protected  => 0,
-    limit      => 1,
-    graceful   => 0,
-    warn       => 0,
-    tidy       => 1,
-    serializer => 'storable',
+    key                => IPC_PRIVATE,
+    create             => 0,
+    exclusive          => 0,
+    destroy            => 0,
+    mode               => 0666,
+    size               => SHM_BUFSIZ,
+    protected          => 0,
+    limit              => 1,
+    graceful           => 0,
+    warn               => 0,
+    tidy               => 1,
+    serializer         => 'storable',
+    enforced_locking   => 1,
+    violated_lock_warn => 0,
 );
 
 # Seed the random number generator
@@ -130,6 +132,8 @@ sub TIEHASH {
 }
 sub STORE {
     my $knot = shift;
+
+    return if ! _enforced_locking($knot);
 
     if (! exists $global_register{$knot->seg->id}) {
         $global_register{$knot->seg->id} = $knot;
@@ -233,6 +237,8 @@ sub FETCH {
 sub CLEAR {
     my $knot = shift;
 
+    return if ! _enforced_locking($knot);
+
     if ($knot->{_type} eq 'HASH') {
         $knot->{_data} = { };
     }
@@ -246,7 +252,8 @@ sub CLEAR {
 
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
-    } else {
+    }
+    else {
         if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
@@ -256,11 +263,14 @@ sub DELETE {
     my $knot = shift;
     my $key  = shift;
 
+    return if ! _enforced_locking($knot);
+
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     my $val = delete $knot->{_data}->{$key};
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
-    } else {
+    }
+    else {
         if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
@@ -300,6 +310,8 @@ sub EXTEND {
 sub PUSH {
     my $knot = shift;
 
+    return if ! _enforced_locking($knot);
+
     if (! exists $global_register{$knot->seg->id}) {
         $global_register{$knot->seg->id} = $knot;
     }
@@ -309,7 +321,8 @@ sub PUSH {
     push @{$knot->{_data}}, @_;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
-    } else {
+    }
+    else {
         if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         };
@@ -318,12 +331,15 @@ sub PUSH {
 sub POP {
     my $knot = shift;
 
+    return if ! _enforced_locking($knot);
+
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
 
     my $val = pop @{$knot->{_data}};
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
-    } else {
+    }
+    else {
         if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
@@ -333,11 +349,14 @@ sub POP {
 sub SHIFT {
     my $knot = shift;
 
+    return if ! _enforced_locking($knot);
+
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my $val = shift @{$knot->{_data}};
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
-    } else {
+    }
+    else {
         if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
@@ -347,11 +366,14 @@ sub SHIFT {
 sub UNSHIFT {
     my $knot = shift;
 
+    return if ! _enforced_locking($knot);
+
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my $val = unshift @{$knot->{_data}}, @_;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
-    } else {
+    }
+    else {
         if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
@@ -361,11 +383,14 @@ sub UNSHIFT {
 sub SPLICE {
     my($knot, $off, $n, @av) = @_;
 
+    return if ! _enforced_locking($knot);
+
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
     my @val = splice @{$knot->{_data}}, $off, $n, @av;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
-    } else {
+    }
+    else {
         if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
@@ -382,11 +407,14 @@ sub STORESIZE {
     my $knot = shift;
     my $n    = shift;
 
+    return if ! _enforced_locking($knot);
+
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     $#{$knot->{_data}} = $n - 1;
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
-    } else {
+    }
+    else {
         if (! defined $knot->_encode($knot->seg, $knot->{_data})){
             croak "Could not write to shared memory: $!";
         }
@@ -649,6 +677,35 @@ END {
 }
 
 # --- Private methods below
+
+sub _enforced_locking {
+    my ($knot) = @_;
+
+    return 1 unless $knot->attributes('enforced_locking');
+
+    # If this knot itself holds LOCK_EX it is the owner of the lock and is
+    # permitted to write.
+
+    return 1 if $knot->{_lock} & LOCK_EX;
+
+    # Semaphore index 2 is the write-lock counter; it is 1 when any other knot
+    # holds LOCK_EX (set via SEM_UNDO so it auto-releases on process exit).
+
+    if ($knot->sem->getval(2) > 0) {
+        my $uuid = $knot->uuid;
+        my $seg_id = $knot->seg->id;
+
+        if ($knot->attributes('violated_lock_warn')) {
+            my $warning = "Object with UUID $uuid attempted write to segment ID " .
+                "$seg_id which is exclusively locked (enforced locking enabled)";
+            warn $warning;
+        }
+
+        return 0;
+    }
+
+    return 1;
+}
 
 # Encoding/Decoding
 sub _encode {
@@ -1492,6 +1549,25 @@ false value, we'll C<croak()> if you send in a size larger than the total
 system RAM.
 
 Default: B<true>
+
+=head2 enforced_locking
+
+This attribute will allow you to enforce locks that you set, instead of them
+being simply advisory.
+
+Use with C<violated_lock_warn> to omit a warning when a lock collision has
+occurred.
+
+Default: B<true>
+
+=head2 violated_lock_warn
+
+When C<enforced_locking> is enabled, and this attribute is set to true, we will
+omit a warning when an exclusive lock collision has occurred. The warning will
+include the UUID of the object that caused the violation, and the segment ID
+that the violation occurred against.
+
+Default: B<false>
 
 =head2 destroy
 
