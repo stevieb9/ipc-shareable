@@ -62,6 +62,7 @@ Revision history for Perl extension IPC::Shareable.
     - Major POD enhancements/cleanup
     - Add new method sysv_info() which if the system provides it, retrieves all
       information related to the SYSV infrastructure (limits etc)
+    - Closes #45; We now accept a hex-based value as the key
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

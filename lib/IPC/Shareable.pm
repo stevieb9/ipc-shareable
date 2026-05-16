@@ -1238,10 +1238,24 @@ sub _shm_key {
     if ($key_str eq '') {
         $key = IPC_PRIVATE;
     }
+    elsif ($key_str =~ /^0x[0-9a-fA-F]+$/i) {
+        # User specified an explicit hex string key (e.g. '0xDEADBEEF'); use the
+        # bit pattern as-is so the segment key seen by ipcs(1) matches exactly.
+        $key = hex($key_str);
+        $used_ids{$key}++;
+        return $key;
+    }
     elsif ($key_str =~ /^\d+$/) {
+        # User specified an explicit decimal integer key; use it as-is.
+        # Note: 0xDEADBEEF without quotes is compiled by Perl to 3735928559,
+        # which arrives here as the string '3735928559' and is used directly.
         $key = $key_str;
+        $used_ids{$key}++;
+        return $key;
     }
     else {
+        # String key: compute a 32-bit CRC and apply overflow correction so the
+        # result fits in a signed 32-bit key_t.
         $key = crc32($key_str);
     }
 
@@ -1545,6 +1559,18 @@ that's to be tied to the variable.
 
 If this option is missing, we'll default to using C<IPC_PRIVATE>. This
 default key will not allow sharing of the variable between processes.
+
+The key can be specified as:
+
+=over 4
+
+=item * A text string (internally, a 32-bit CRC of the string is used as the key)
+
+=item * A hex string (e.g. C<'0xDEADBEEF'>), used as-is as the integer key
+
+=item * An integer (e.g. C<1234>), used as-is as the integer key
+
+=back
 
 Default: B<IPC_PRIVATE>
 

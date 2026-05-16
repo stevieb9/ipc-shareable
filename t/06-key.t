@@ -155,6 +155,60 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
         $k->clean_up_all;
     }
+
+    # large integers are used as-is (no overflow correction)
+    {
+        my $k = tie my $sv, 'IPC::Shareable', {key => 3735928559, create => 1, destroy => 1};
+        is $k->seg->key, 3735928559, "large decimal integer key used as-is (no overflow correction) ok";
+        $k->clean_up_all;
+    }
+}
+
+# hex keys
+{
+    # Stringified hex keys: the bit pattern is used directly (no overflow
+    # correction), so ipcs(1) will show exactly the hex value supplied.
+    my %key_hash = (
+        '0x1234'     => 0x1234,
+        '0xDEAD'     => 0xDEAD,
+        '0xdeadbeef' => 0xdeadbeef,
+        '0xDeAdBeEf' => 0xDeAdBeEf,
+    );
+
+    for my $hex_key (sort keys %key_hash) {
+        my $k = tie my $sv, 'IPC::Shareable', {key => $hex_key, create => 1, destroy => 1};
+
+        is $k->attributes('key'), $hex_key, "hex string key '$hex_key' stored as attribute ok";
+        is $k->seg->key, $key_hash{$hex_key}, "...and '$hex_key' maps to integer $key_hash{$hex_key} (no overflow correction) ok";
+
+        $k->clean_up_all;
+    }
+
+    # Case-insensitive: '0xDEADBEEF' and '0xdeadbeef' resolve to the same segment
+    {
+        tie my $a, 'IPC::Shareable', {key => '0xDEADBEEF', create => 1,  destroy => 0};
+        tie my $b, 'IPC::Shareable', {key => '0xdeadbeef', create => 0,  destroy => 1};
+
+        my $key_a = (tied $a)->seg->key;
+        my $key_b = (tied $b)->seg->key;
+        is $key_a, $key_b, "'0xDEADBEEF' and '0xdeadbeef' resolve to the same segment ok";
+
+        (tied $b)->clean_up_all;
+    }
+
+    # Bare Perl hex literal (0xDEADBEEF without quotes) compiles to the decimal
+    # integer 3735928559.  It takes the decimal-integer path and is also used
+    # as-is, so it resolves to the same segment as the quoted '0xDEADBEEF'.
+    {
+        tie my $a, 'IPC::Shareable', {key => '0xDEADBEEF', create => 1,  destroy => 0};
+        tie my $b, 'IPC::Shareable', {key =>  0xDEADBEEF,  create => 0,  destroy => 1};
+
+        my $key_a = (tied $a)->seg->key;
+        my $key_b = (tied $b)->seg->key;
+        is $key_a, $key_b, "quoted '0xDEADBEEF' and bare 0xDEADBEEF resolve to the same segment ok";
+
+        (tied $b)->clean_up_all;
+    }
 }
 
 # _shm_key_rand() collisions (in _mg_tie())
