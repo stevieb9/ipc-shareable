@@ -699,7 +699,7 @@ END {
 sub _write_permitted {
     my ($knot) = @_;
 
-    return 1 unless $knot->{_enforced_locking};
+    return 1 unless $knot->attributes('enforced_locking');
 
     # If this knot itself holds LOCK_EX it is the owner of the lock and is
     # permitted to write.
@@ -710,7 +710,7 @@ sub _write_permitted {
     # holds LOCK_EX (set via SEM_UNDO so it auto-releases on process exit).
 
     if ($knot->sem->getval(2) > 0) {
-        if ($knot->{_violated_lock_warn}) {
+        if ($knot->attributes('violated_lock_warn')) {
             my $uuid   = $knot->uuid;
             my $seg_id = $knot->seg->id;
             warn "Object with UUID $uuid attempted write to segment ID "
@@ -727,10 +727,12 @@ sub _write_permitted {
 sub _encode {
     my ($knot, $seg, $data) = @_;
 
-    if ($knot->{_serializer} eq 'storable') {
+    my $serializer = $knot->attributes('serializer');
+
+    if ($serializer eq 'storable') {
         return _freeze($seg, $data);
     }
-    elsif ($knot->{_serializer} eq 'json'){
+    elsif ($serializer eq 'json'){
         return _encode_json($seg, $data);
     }
 
@@ -739,10 +741,12 @@ sub _encode {
 sub _decode {
     my ($knot, $seg) = @_;
 
-    if ($knot->{_serializer} eq 'storable') {
+    my $serializer = $knot->attributes('serializer');
+
+    if ($serializer eq 'storable') {
         return _thaw($seg);
     }
-    elsif ($knot->{_serializer} eq 'json'){
+    elsif ($serializer eq 'json'){
         return _decode_json($seg, $knot);
     }
 
@@ -1035,12 +1039,11 @@ sub _tie {
         _type               => $type,
         _type_int           => $type eq 'HASH' ? TYPE_HASH : $type eq 'ARRAY' ? TYPE_ARRAY : TYPE_SCALAR,
         _was_changed        => 0,
-        _serializer         => $knot->attributes('serializer'),
-        _enforced_locking   => $knot->attributes('enforced_locking'),
-        _violated_lock_warn => $knot->attributes('violated_lock_warn'),
     );
 
-    if ($knot->{_serializer} eq 'json') {
+    my $serializer = $knot->attributes('serializer');
+
+    if ($serializer eq 'json') {
         $knot->{_data} = $knot->_decode($seg);
     }
     else {
@@ -1074,7 +1077,7 @@ sub _magic_tie {
 
     my $key;
 
-    if ($parent->{_key} == IPC_PRIVATE && $parent->{_serializer} ne 'json') {
+    if ($parent->{_key} == IPC_PRIVATE && $parent->attributes('serializer') ne 'json') {
         $key = IPC_PRIVATE;
     }
     else {

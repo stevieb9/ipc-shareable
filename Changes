@@ -51,9 +51,6 @@ Revision history for Perl extension IPC::Shareable.
     - Fixes #50; Added enforced locking, with optional warning
     - Correct five areas in clean/delete routines where segments may have been
       able to leak
-    - Cached _serializer, _enforced_locking, _violated_lock_warn: set once in
-      _tie(), accessed directly as knot->{_serializer} etc., instead of calling
-      attributes() on every encode/decode/write
     - Removed redundant _global_register checks in STORE, FETCH, PUSH; _tie()
       already registers unconditionally
     - Add ref() check before _is_child(); skips the function call reftype()
