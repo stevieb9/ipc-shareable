@@ -477,6 +477,31 @@ sub ipcs {
     chomp $count;
     return int($count);
 }
+sub sysv_info {
+    shift if ref $_[0]; # Allow for object or class method call
+
+    my %info;
+
+    if ($^O eq 'darwin') {
+        my $out = `sysctl kern.sysv 2>/dev/null`;
+        for my $line (split /\n/, $out) {
+            if ($line =~ /^kern\.sysv\.(\w+):\s*(\S+)/) {
+                $info{$1} = $2;
+            }
+        }
+    }
+    elsif ($^O eq 'linux') {
+        for my $key (qw(shmmax shmmin shmmni shmall)) {
+            my $file = "/proc/sys/kernel/$key";
+            if (open my $fh, '<', $file) {
+                chomp(my $val = <$fh>);
+                $info{$key} = $val;
+            }
+        }
+    }
+
+    return %info ? \%info : undef;
+}
 sub lock {
     my $knot = shift;
 
@@ -1415,6 +1440,10 @@ IPC::Shareable - Use shared memory backed variables across processes
     tie my @array,  'IPC::Shareable', OPTIONS;
     tie my $scalar, 'IPC::Shareable', OPTIONS;
 
+    # Get SYSV shared memory specifications of the system (if available)
+
+    my $href = IPC::Shareable::sysv_info();
+
     # Lock, make changes, unlock
 
     tied(VARIABLE)->lock;
@@ -1457,6 +1486,7 @@ IPC::Shareable - Use shared memory backed variables across processes
     # ...or get the knot at inception
 
     my $knot = tie my VARIABLE, 'IPC::Shareable', OPTIONS;
+    my $sysv_info_href = $knot->sysv_info;
 
 =head1 DESCRIPTION
 
@@ -1742,6 +1772,42 @@ on the system. This isn't precise; it simply does a C<wc -l> line count on your
 system's C<ipcs -m> call. It is guaranteed though to produce reliable results.
 
 Return: Integer
+
+=head2 sysv_info
+
+    my $sysv_info = IPC::Shareable->sysv_info;
+
+    print "Max segment size: $sysv_info->{shmmax}\n";
+    print "Max segments (system): $sysv_info->{shmmni}\n";
+
+Class method. Returns a hash reference containing the kernel's SysV shared
+memory configuration parameters for the current platform.
+
+Returns C<undef> if the platform is not supported or no data could be read.
+
+On macOS, reads from C<sysctl kern.sysv>. Example return value:
+
+    {
+        shmmax => 4194304,   # Maximum size of a single segment (bytes)
+        shmmin => 1,         # Minimum size of a single segment (bytes)
+        shmmni => 32,        # Maximum number of segments system-wide
+        shmseg => 8,         # Maximum number of segments per process
+        shmall => 1024,      # Maximum total shared memory (pages)
+    }
+
+On Linux, reads from C</proc/sys/kernel/>. Example return value:
+
+    {
+        shmmax => 18446744073692774399,  # Maximum size of a single segment (bytes)
+        shmmin => 1,                     # Minimum size of a single segment (bytes)
+        shmmni => 4096,                  # Maximum number of segments system-wide
+        shmall => 18446744073692774399,  # Maximum total shared memory (pages)
+    }
+
+Note: Linux has no per-process segment limit (C<shmseg>); only the system-wide
+C<shmmni> applies.
+
+Return: Hash reference, or C<undef> if the platform is not supported or no data could be read.
 
 =head2 lock($flags, $code)
 

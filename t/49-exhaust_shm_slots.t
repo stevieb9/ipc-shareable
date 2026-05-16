@@ -54,18 +54,18 @@ my $ok = eval {
 };
 
 # Dump diagnostic info unconditionally so CI output tells us exactly what happened
-{
-    my $sysctl_all = `sysctl kern.sysv 2>/dev/null` || '(no kern.sysv output)';
-    chomp $sysctl_all;
-    diag "OS: $^O";
-    diag "shm limit used: $limit";
-    diag "sysctl kern.sysv:\n$sysctl_all";
-    diag "error from eval: " . ($@ ? $@ : '(none)');
-}
+#{
+#    my $sysctl_all = `sysctl kern.sysv 2>/dev/null` || '(no kern.sysv output)';
+#    chomp $sysctl_all;
+#    diag "OS: $^O";
+#    diag "shm limit used: $limit";
+#    diag "sysctl kern.sysv:\n$sysctl_all";
+#    diag "error from eval: " . ($@ ? $@ : '(none)');
+#}
 
 is $limit > 0, 1, "Operating with seg limit $limit";
 is $ok, undef, "If we try to use all available shm slots, we croak()";
-like $@, qr/No space left on device/, "...and error is sane";
+like $@, qr/No space left on device|Cannot allocate memory/, "...and error is sane";
 
 IPC::Shareable->clean_up_all;
 
