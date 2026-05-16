@@ -1449,9 +1449,14 @@ IPC::Shareable - Use shared memory backed variables across processes
 
     IPC::Shareable->singleton('UNIQUE SCRIPT LOCK STRING');
 
-    # Get the actual IPC::Shareable tied object
+    # Get the actual IPC::Shareable tied object you can make method calls on
+    # instead of using the tied object like the examples above
 
     my $knot = tied(VARIABLE); # Dereference first if using a tied reference
+
+    # ...or get the knot at inception
+
+    my $knot = tie my VARIABLE, 'IPC::Shareable', OPTIONS;
 
 =head1 DESCRIPTION
 
