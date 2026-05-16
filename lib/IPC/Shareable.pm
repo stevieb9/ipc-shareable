@@ -279,6 +279,7 @@ sub DELETE {
     my $val = delete $knot->{_data}->{$key};
 
     # Remove the child segment if the deleted value was a nested tied ref
+
     if (ref($val) && (my $child = _is_child($val))) {
         $child->remove;
     }
@@ -505,6 +506,7 @@ sub lock {
     return 1 if ($knot->{_lock} & $flags);
 
     # If they have a different lock than they want, release it first
+
     $knot->unlock if ($knot->{_lock});
 
     my $sem = $knot->sem;
@@ -706,12 +708,13 @@ sub _write_permitted {
 
     return 1 if $knot->{_lock} & LOCK_EX;
 
+    my $sem = $knot->sem;
+
     # Semaphore index 2 is the write-lock counter; it is 1 when any other knot
     # holds LOCK_EX (set via SEM_UNDO so it auto-releases on process exit).
 
-    my $sem = $knot->sem;
-
     # Block if any process holds LOCK_EX
+
     if ($sem->getval(2) > 0) {
         if ($knot->attributes('violated_lock_warn')) {
             my $uuid   = $knot->uuid;
@@ -724,6 +727,7 @@ sub _write_permitted {
     }
 
     # Block if any process holds LOCK_SH (active readers present)
+
     if ($sem->getval(1) > 0) {
         if ($knot->attributes('violated_lock_warn')) {
             my $uuid   = $knot->uuid;
@@ -739,6 +743,7 @@ sub _write_permitted {
 }
 
 # Encoding/Decoding
+
 sub _encode {
     my ($knot, $seg, $data) = @_;
 
@@ -788,7 +793,9 @@ sub _encode_json_prepare {
 
     # Replace direct IPC::Shareable child segments with __ics__ markers.
     # All nested refs are tied children — no recursion needed; each child
-    # segment encodes its own children independently.
+    # segment encodes its own children independently. We have to do this because
+    # JSON can't store blessed objects
+
     if ($type eq 'HASH') {
         my %result;
         for my $key (keys %$data) {
@@ -851,6 +858,7 @@ sub _decode_json_restore {
     # Reuse existing tied child refs from previous decode where possible.
     # This avoids a shmget+semget system call pair for each child on every
     # decode cycle — only the first attach per segment incurs that cost.
+
     my $prev = $knot->{_data};
 
     if ($type eq 'HASH') {
@@ -916,7 +924,6 @@ sub _freeze {
     my $water = shift;
 
     my $ice = freeze $water;
-    # Could be a large string.  No need to copy it.  substr more efficient
     substr $ice, 0, 0, 'IPC::Shareable';
 
     if (length($ice) > $seg->size) {
@@ -1109,6 +1116,7 @@ sub _magic_tie {
 
     # XXX I wish I didn't have to take a copy of data here and copy it back in
     # XXX Also, have to peek inside potential objects to see their implementation
+
     my $child;
     my $type = Scalar::Util::reftype($val) || '';
 
@@ -1273,8 +1281,9 @@ sub _shm_key_rand_int {
     return int(rand(1_000_000));
 }
 sub _shm_flags {
-    # --- Parses the anonymous hash passed to constructors; returns a list
-    # --- of args suitable for passing to shmget
+    # Parses the anonymous hash passed to constructors; returns a list
+    # of args suitable for passing to shmget
+
     my ($knot) = @_;
 
     my $flags = 0;
