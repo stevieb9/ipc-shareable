@@ -472,7 +472,7 @@ sub attributes {
         return $knot->{attributes};
     }
 }
-sub ipcs {
+sub shm_count {
     my $count = `ipcs -m | grep "0x" | wc -l`;
     chomp $count;
     return int($count);
@@ -1756,7 +1756,7 @@ Instantiates and returns a reference to a hash backed by shared memory.
     # Call tied() on the dereferenced variable to access object methods
     # and information
 
-    tied(%$href)->ipcs;
+    tied(%$href)->shm_count;
 
 Parameters:
 
@@ -1794,7 +1794,7 @@ Default: B<false>
 B<Note>: See L<Script::Singleton|https://metacpan.org/pod/Script::Singleton>.
 That library implements C<singleton> for a script with a simple C<use> line.
 
-=head2 ipcs
+=head2 shm_count
 
 Returns the number of instantiated shared memory segments that currently exist
 on the system. This isn't precise; it simply does a C<wc -l> line count on your

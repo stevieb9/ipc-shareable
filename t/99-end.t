@@ -19,7 +19,7 @@ tie my %store, 'IPC::Shareable', {key => 'async_tests', destroy => 1};
 my $start_segs = $store{segs};
 IPC::Shareable::clean_up_all;
 
-my $segs = IPC::Shareable::ipcs();
+my $segs = IPC::Shareable::shm_count();
 
 is $segs, $start_segs, "All test segments cleaned up after test run";
 

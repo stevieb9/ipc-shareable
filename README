@@ -245,7 +245,7 @@ METHODS
 
     Default: false
 
- ipcs
+ shm_count
 
     Returns the number of instantiated shared memory segments that
     currently exist on the system.

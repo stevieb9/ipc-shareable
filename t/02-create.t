@@ -10,7 +10,7 @@ use Test::More;
 #    }
 #}
 
-my $segs_before = IPC::Shareable::ipcs();
+my $segs_before = IPC::Shareable::shm_count();
 warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 my $ok = eval {
@@ -23,7 +23,7 @@ like $@, qr/Could not acquire/, "...and error is sane.";
 
 IPC::Shareable::_end;
 
-my $segs_after = IPC::Shareable::ipcs();
+my $segs_after = IPC::Shareable::shm_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs, even those created in separate procs, cleaned up ok";
 

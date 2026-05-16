@@ -4,7 +4,7 @@ use strict;
 use IPC::Shareable qw(:lock);
 use Test::More;
 
-my $segs_before = IPC::Shareable::ipcs();
+my $segs_before = IPC::Shareable::shm_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 # --- LOCK_SH blocks writes from other knots (enforced_locking) ---
@@ -139,7 +139,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 IPC::Shareable::_end;
 
-my $segs_after = IPC::Shareable::ipcs();
+my $segs_after = IPC::Shareable::shm_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs cleaned up ok";
 
