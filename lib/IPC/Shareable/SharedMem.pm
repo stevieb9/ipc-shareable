@@ -183,23 +183,46 @@ sub stat {
     my $data = '';
     shmctl($self->id, IPC_STAT, $data) or return undef;
 
-    my @unpacked_data = unpack("LLLLSx[6]QllSx[2]qqq", $data);
+    my %values;
+
+    if ($^O eq 'linux') {
+        # Linux x86_64 shmid_ds / ipc64_perm layout:
+        #
+        # ipc64_perm (48 bytes total):
+        #   key(4) uid(4) gid(4) cuid(4) cgid(4) mode(4/uint)
+        #   seq(2) pad2(2) [4 bytes implicit align-pad]
+        #   unused1(8) unused2(8)
+        #
+        # shmid_ds (after ipc64_perm):
+        #   segsz(8) atime(8) dtime(8) ctime(8) cpid(4) lpid(4) nattch(8)
+        #
+        # Note: atime/dtime/ctime come BEFORE cpid/lpid on Linux,
+        # the reverse of macOS/BSD.
+
+        @values{qw(uid gid cuid cgid mode segsz atime dtime ctime cpid lpid nattch)}
+            = unpack('x[4] L L L L L x[24] Q q q q l l Q', $data);
+    }
+    else {
+        # macOS/BSD shmid_ds / ipc_perm layout:
+        #
+        # ipc_perm (24 bytes): uid(4) gid(4) cuid(4) cgid(4) mode(2/ushort) seq(2) key(4)
+        # shmid_ds: segsz(8) lpid(4) cpid(4) nattch(2/ushort) [pad 2] atime(8) dtime(8) ctime(8)
+        #
+        # Fields happen to match stat_list() order, so a linear unpack works.
+
+        @values{stat_list()} = unpack('L L L L S x[6] Q l l S x[2] q q q', $data);
+    }
+
     my @struct_initializers;
-
-    # print Dumper \@unpacked_data;
-
-    my $iter = 0;
     for (stat_list()) {
-        my $value = $unpacked_data[$iter];
+        my $value = $values{$_};
         if ($_ eq 'mode') {
-            # Make the mode octal so it's easier to read
             $value = $value & 0777;
             push @struct_initializers, $_ => sprintf("%#o", $value);
         }
         else {
             push @struct_initializers, $_ => $value;
         }
-            $iter++;
     }
 
     return IPC::Shareable::SharedMem::stat->new(@struct_initializers);
