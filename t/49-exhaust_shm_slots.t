@@ -8,8 +8,10 @@ use Test::More;
 # On macOS, kern.sysv.shmseg gives a per-process limit (typically 32).
 # On Linux, kernel.shmmni is a system-wide limit (typically 4096).
 # We can only run this test if the limit is low enough to exhaust safely.
+
+my $limit;
+
 {
-    my $limit;
 
     if ($^O eq 'darwin') {
         my $out = `sysctl kern.sysv.shmseg 2>/dev/null`;
@@ -21,7 +23,7 @@ use Test::More;
         }
     }
 
-    if (!defined $limit) {
+    if (! defined $limit) {
         plan skip_all => "Cannot determine shm segment limit on this platform ($^O)";
     }
     elsif ($limit > 500) {
@@ -43,7 +45,7 @@ my $knot = tie my %hv, $mod, {
 };
 
 my $ok = eval {
-    for my $i (1 .. 200) {
+    for my $i (1 .. $limit + 1) {
         # Each unique key creates one child segment.  No delete, so segments
         # accumulate until the kernel shm slot limit is reached.
         $hv{$i} = {val => $i};
