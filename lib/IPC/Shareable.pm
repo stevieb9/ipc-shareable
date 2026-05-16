@@ -1131,6 +1131,9 @@ sub _magic_tie {
         $key = _shm_key_rand();
     }
 
+    # The individual options in the hash override any pre-set options that are
+    # being inherited from the parent
+
     my %opts = (
         %{ $parent->attributes },
         key       => $key,

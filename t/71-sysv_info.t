@@ -15,14 +15,27 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         isnt $info, undef, "sysv_info() returns a value on $^O";
         is ref $info, 'HASH', "...and it's a hash ref";
 
-        for my $key (qw(shmmax shmmin shmmni shmall)) {
+        # shmmax, shmmni, shmall are always present on both platforms
+        for my $key (qw(shmmax shmmni shmall)) {
             ok exists $info->{$key}, "...key '$key' exists";
             like $info->{$key}, qr/^\d+$/, "...'$key' is an integer ($info->{$key})";
         }
 
         if ($^O eq 'darwin') {
-            ok exists $info->{shmseg}, "...key 'shmseg' exists on macOS";
-            like $info->{shmseg}, qr/^\d+$/, "...'shmseg' is an integer ($info->{shmseg})";
+            # shmmin and shmseg come from sysctl and are always present on macOS
+            for my $key (qw(shmmin shmseg)) {
+                ok exists $info->{$key}, "...key '$key' exists on macOS";
+                like $info->{$key}, qr/^\d+$/, "...'$key' is an integer ($info->{$key})";
+            }
+        }
+        elsif ($^O eq 'linux') {
+            # shmmin is a kernel compile-time constant; not always exposed via procfs
+            if (exists $info->{shmmin}) {
+                like $info->{shmmin}, qr/^\d+$/, "...'shmmin' is an integer if present ($info->{shmmin})";
+            }
+            else {
+                pass "...'shmmin' not available via procfs on this kernel (ok)";
+            }
         }
     }
     else {
@@ -40,7 +53,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         isnt $info, undef, "sysv_info() called as object method returns a value";
         is ref $info, 'HASH', "...and it's a hash ref";
 
-        for my $key (qw(shmmax shmmin shmmni shmall)) {
+        for my $key (qw(shmmax shmmni shmall)) {
             ok exists $info->{$key}, "...key '$key' exists";
         }
     }
