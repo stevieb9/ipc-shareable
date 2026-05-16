@@ -55,6 +55,7 @@ my $ok = eval {
 
 # print $@;
 
+is $limit > 0, 1, "Operating with seg limit $limit";
 is $ok, undef, "If we try to use all available shm slots, we croak()";
 like $@, qr/No space left on device/, "...and error is sane";
 
