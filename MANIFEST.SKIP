@@ -37,3 +37,4 @@ main$
 ^testing/
 ^benchmarks/
 ^.vscode/
+^_Inline/
