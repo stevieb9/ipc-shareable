@@ -59,6 +59,7 @@ Revision history for Perl extension IPC::Shareable.
       branches
     - _type_int numeric dispatch; string eq comparisons on every operation
       replaced with == against integer constants in STORE, FETCH, and CLEAR
+    - Major POD enhancements/cleanup
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

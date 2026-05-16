@@ -34,3 +34,6 @@ build/
 \.base$
 main$
 .github/
+^testing/
+^benchmarks/
+^.vscode/

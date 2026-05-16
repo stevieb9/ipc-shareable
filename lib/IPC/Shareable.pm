@@ -709,12 +709,27 @@ sub _write_permitted {
     # Semaphore index 2 is the write-lock counter; it is 1 when any other knot
     # holds LOCK_EX (set via SEM_UNDO so it auto-releases on process exit).
 
-    if ($knot->sem->getval(2) > 0) {
+    my $sem = $knot->sem;
+
+    # Block if any process holds LOCK_EX
+    if ($sem->getval(2) > 0) {
         if ($knot->attributes('violated_lock_warn')) {
             my $uuid   = $knot->uuid;
             my $seg_id = $knot->seg->id;
             warn "Object with UUID $uuid attempted write to segment ID "
                 . "$seg_id which is exclusively locked (enforced locking enabled)";
+        }
+
+        return 0;
+    }
+
+    # Block if any process holds LOCK_SH (active readers present)
+    if ($sem->getval(1) > 0) {
+        if ($knot->attributes('violated_lock_warn')) {
+            my $uuid   = $knot->uuid;
+            my $seg_id = $knot->seg->id;
+            warn "Object with UUID $uuid attempted write to segment ID "
+                . "$seg_id which has active readers (enforced locking enabled)";
         }
 
         return 0;
@@ -1387,26 +1402,35 @@ IPC::Shareable - Use shared memory backed variables across processes
 
     use IPC::Shareable qw(:lock);
 
-    my $href = IPC::Shareable->new(%options);
+    tie my %hash,   'IPC::Shareable', OPTIONS;
+    tie my @array,  'IPC::Shareable', OPTIONS;
+    tie my $scalar, 'IPC::Shareable', OPTIONS;
 
-    # ...or
-
-    tie SCALAR, 'IPC::Shareable', OPTIONS;
-    tie ARRAY,  'IPC::Shareable', OPTIONS;
-    tie HASH,   'IPC::Shareable', OPTIONS;
+    # Lock, make changes, unlock
 
     tied(VARIABLE)->lock;
+        # Do something with the variable
     tied(VARIABLE)->unlock;
+
+    # Non-blocking lock attempt
 
     tied(VARIABLE)->lock(LOCK_SH|LOCK_NB)
         or print "Resource unavailable\n";
 
-    tied(VARIABLE->lock(LOCK_EX, sub { print "hello!\n"; });
+    # Lock with a code reference, which will auto-unlock when the block finishes
+
+    tied(VARIABLE->lock(sub { print "hello!\n"; });
+
+    # Get the shared memory segment and semaphore objects directly
 
     my $segment   = tied(VARIABLE)->seg;
     my $semaphore = tied(VARIABLE)->sem;
 
+    # Remove the shared memory segment and semaphore directly
+
     tied(VARIABLE)->remove;
+
+    # Manual cleanup procedures
 
     IPC::Shareable::clean_up;
     IPC::Shareable::clean_up_all;
@@ -1432,20 +1456,20 @@ arrays, hashes of hashes, etc.
 
 B<Note>: When using nested data structures, each nested structure utilizes an
 additional shared memory segment. The entire structure is not squashed into a
-single segment.
+single segment. See L</DATA AND SEGMENT MAPPING> for details.
 
 The association between variables in distinct processes is provided by
 GLUE (aka "key").  This is any arbitrary string or integer that serves as a
 common identifier for data across process space.  Hence the statement:
 
-    tie my $scalar, 'IPC::Shareable', { key => 'GLUE STRING', create => 1 };
+    tie my %hash, 'IPC::Shareable', { key => 'GLUE STRING', create => 1 };
 
 ...in program one and the statement
 
-    tie my $variable, 'IPC::Shareable', { key => 'GLUE STRING' };
+    tie my %thing, 'IPC::Shareable', { key => 'GLUE STRING' };
 
-...in program two will create and bind C<$scalar> the shared memory in program
-one and bind it to C<$variable> in program two.
+...in program two will create and bind C<%hash> the shared memory in program
+one and bind it to C<%thing> in program two.
 
 There is no pre-set limit to the number of processes that can bind to
 data; nor is there a pre-set limit to the complexity of the underlying
@@ -1460,8 +1484,10 @@ Semaphore flags can be used for locking data between competing processes.
 
 =head1 OPTIONS
 
+a.k.a "attributes"
+
 Options are specified by passing a reference to a hash as the third argument to
-the C<tie()> function that enchants a variable.
+the C<tie()> function that enchants a variable. We also call these "Attributes"
 
 The following fields are recognized in the options hash:
 
@@ -1645,6 +1671,9 @@ Default values for options are:
 
 =head2 new
 
+This C<new()> call is not necessary and is a simple wrapper around C<tie()>. It
+is capable only of returning a tied hash reference object.
+
 Instantiates and returns a reference to a hash backed by shared memory.
 
     my $href = IPC::Shareable->new(key => "testing", create => 1);
@@ -1713,8 +1742,8 @@ lock.
     $code
 
 Optional, Code reference: If this parameter is sent in, and an exclusive lock
-is asked for, we will set the lock, execute the subroutine, and then unlock
-the segment.
+is asked for, we will set the lock, execute the subroutine, and then call
+C<unlock()> on the segment.
 
 Obtains a lock on the shared memory. C<$flags> specifies the type
 of lock to acquire.  If C<$flags> is not specified, an exclusive
@@ -1724,9 +1753,13 @@ the same as for the C<flock()> system call.
 Returns C<true> on success, and C<undef> on error. For non-blocking calls
 (see below), the method returns C<0> if it would have blocked.
 
+B<Note>: Although the C<$flags> and C<$code> parameters appear positional, you
+can send in C<$code> without sending in any C<$flags>. When this occurs,
+C<$flags> will automatically be set to C<LOCK_EX>.
+
 Obtain an exclusive lock like this:
 
-        tied(%var)->lock(LOCK_EX); # same as default
+        tied(%var)->lock(LOCK_EX); # Same as default
 
 Only one process can hold an exclusive lock on the shared memory at a given
 time.
@@ -1779,7 +1812,7 @@ See L</LOCKING> for further details.
 Called on either the tied variable or the tie object, returns the shared
 memory segment object currently in use.
 
-See L<Shareable::SharedMem> documentation for details.
+See L<IPC::Shareable::SharedMem> documentation for details.
 
 =head2 sem
 
@@ -1816,12 +1849,13 @@ segment and semaphore objects.
 
 =head1 LOCKING
 
-IPC::Shareable provides methods to implement application-level
-advisory locking of the shared data structures.  These methods are
-called C<lock()> and C<unlock()>. To use them you must first get the
-object underlying the tied variable, either by saving the return
-value of the original call to C<tie()> or by using the built-in C<tied()>
-function.
+IPC::Shareable provides methods to implement application-level advisory and
+enforced locking of the shared data structures.  These methods are C<lock()> and
+C<unlock()>. To use them you must first get the object underlying the tied
+variable, either by saving the return value of the original call to C<tie()> or
+by using the built-in C<tied()> function.
+
+=head2 Lock and unlock
 
 To lock and subsequently unlock a variable, do this:
 
@@ -1839,12 +1873,12 @@ or equivalently, if you've decided to throw away the return of C<tie()>:
     $hash{a} = 'foo';
     tied(%hash)->unlock;
 
-This will place an exclusive lock on the data of C<$scalar>.  You can
+This will place an exclusive lock on the data of C<%hash>.  You can
 also get shared locks or attempt to get a lock without blocking.
 
 L<IPC::Shareable> makes the constants C<LOCK_EX>, C<LOCK_SH>, C<LOCK_UN>, and
 C<LOCK_NB> exportable to your address space with the export tags C<:lock>,
-C<:flock>, or C<:all>.  The values should be the same as the standard C<flock>
+C<:flock>, or C<:all>. The values should be the same as the standard C<flock>
 option arguments.
 
     if (tied(%hash)->lock(LOCK_SH|LOCK_NB)){
@@ -1856,14 +1890,38 @@ option arguments.
 
 If no argument is provided to C<lock>, it defaults to C<LOCK_EX>.
 
-There are some pitfalls regarding locking and signals about which you
-should make yourself aware; these are discussed in L</NOTES>.
+=head2 Enforced write locking
+
+By default, the C<enforced_locking> is set to true, which means that if a tied
+variable sets a C<LOCK_EX>, all writes from all other processes will fail,
+regardless of whether the other processes opted in to check locking.
+
+=head3 violated_lock_warn Option
+
+Disabled by default, this is an attribute you set on object instantiation. If
+set to C<< true >> and another object has a C<LOCK_EX> in place during a write
+operation, a warning will be emitted by any process that attempts to write to
+a locked segment.
+
+=head3 Important notes
 
 Note that in the background, we perform lock optimization when reading and
 writing to the shared storage even if the advisory locks aren't being used.
 
 Using the advisory locks can speed up processes that are doing several writes/
 reads at the same time.
+
+When using C<lock()> to lock a variable, be careful to guard against
+signals.  Under normal circumstances, C<IPC::Shareable>'s C<END> method
+unlocks any locked variables when the process exits.  However, if an
+untrapped signal is received while a process holds a lock, C<END> will
+not be called.
+
+This is I<not> a deadlock risk: all semaphore lock operations in
+C<IPC::Shareable> use the C<SEM_UNDO> flag, which causes the kernel to
+automatically reverse any semaphore operations when the process exits,
+regardless of the cause of death (including C<SIGKILL> and hardware
+faults). Other processes waiting for the lock will be unblocked.
 
 =head1 DESTRUCTION
 
@@ -1886,6 +1944,24 @@ segments that are tied to the current process will be removed.
 
 B<NOTE>: If the segment was created with its L</protected> attribute set,
 it will not be removed in the C<END> block, even if C<destroy> is set.
+
+B<NOTE>: The C<END> block only runs on a I<clean> exit (normal program
+end, C<die>, or C<exit>). It does B<not> run for untrapped signals
+(C<SIGTERM>, C<SIGINT>, etc.) or for C<SIGKILL>. If your process may be
+terminated by a signal and you want C<destroy> cleanup to run, install
+signal handlers that call C<exit>:
+
+    $SIG{INT} = $SIG{TERM} = $SIG{HUP} = sub { exit };
+
+This causes the C<END> block to fire on those signals. C<SIGKILL> cannot
+be caught; any segments left behind by it can be recovered with
+C<IPC::Shareable-E<gt>clean_up_all>.
+
+B<NOTE>: Advisory locks (C<lock()>/C<unlock()>) are I<always> released
+automatically when a process dies, even on C<SIGKILL>, because the
+underlying semaphore operations use C<SEM_UNDO>. Lock release is
+therefore not a concern; only shared memory I<segment> data requires
+the signal handler precaution above.
 
 =head2 remove
 
@@ -1969,6 +2045,64 @@ option
 Calls to C<tie()> that try to implement L<IPC::Shareable> will return an
 instance of C<IPC::Shareable> on success, and C<undef> otherwise.
 
+=head1 DATA AND SEGMENT MAPPING
+
+For simple data (none of the values are references), a single segment is used
+throughout. However, with nested data, each value that is a reference is stored
+in its own, separate shared memory segment (the key is auto-generated).
+
+Consider a three-level hash:
+
+    $h{a}{b}{c} = 1;
+
+This creates three segments:
+
+    Root segment  (SysV key 0xABCD)
+      stored data: { a => <pointer to child key=11111> }
+                              |
+                              v
+              Child segment  (SysV key 11111)
+                stored data: { b => <pointer to grandchild key=22222> }
+                                          |
+                                          v
+                        Grandchild segment  (SysV key 22222)
+                          stored data: { c => 1 }
+
+Each segment only knows about its direct children. The chain is followed
+lazily, one level at a time, as you C<FETCH> down into the structure.
+
+When you replace a child with a new reference where the previous value was
+also a reference, a new segment is created and the new data is stored there.
+If C<tidy> is enabled (default), the old segment is automatically removed.
+
+When a value that is a reference is deleted from the data, the memory segment
+that held that data is automatically cleaned up and freed.
+
+=head2 Storable
+
+The child knot object (which holds _key, _type, etc.) is frozen in-place
+inside the parent's serialized byte blob. On thaw, the child knot is
+reconstructed from those bytes and re-attached to the existing child segment.
+
+=head2 JSON
+
+JSON can't serialize blessed objects, so each child pointer is written as an
+explicit marker:
+
+    { "__ics__" => { type => "HASH", key => 11111 } }
+
+The raw JSON in the root segment looks like:
+
+    {"a":{"__ics__":{"type":"HASH","key":11111}}}
+
+And the raw JSON in the child segment (key 11111) looks like:
+
+    {"b":{"__ics__":{"type":"HASH","key":22222}}}
+
+On decode, any __ics__ marker is spotted and a tie with create => 0 is used
+to re-attach to the existing child segment by that key -- no new segment is
+created, it simply reconnects.
+
 =head1 AUTHOR
 
 Benjamin Sugars <bsugars@canoe.ca>
@@ -1979,55 +2113,9 @@ Steve Bertrand <steveb@cpan.org>
 
 =head1 NOTES
 
-=head2 Footnotes from the above sections
-
-=over 4
-
-=item 1
-
-If the process has been smoked by an untrapped signal, the binding will remain
-in shared memory.  If you're cautious, you might try:
-
- $SIG{INT} = \&catch_int;
- sub catch_int {
-     die;
- }
- ...
- tie $variable, IPC::Shareable, { key => 'GLUE', create => 1, 'destroy' => 1 };
-
-which will at least clean up after your user hits CTRL-C because
-IPC::Shareable's END method will be called.  Or, maybe you'd like to
-leave the binding in shared memory, so subsequent process can recover
-the data...
-
-=back
-
 =head2 General Notes
 
 =over 4
-
-=item o
-
-When using C<lock()> to lock a variable, be careful to guard against
-signals.  Under normal circumstances, C<IPC::Shareable>'s C<END> method
-unlocks any locked variables when the process exits.  However, if an
-untrapped signal is received while a process holds an exclusive lock,
-C<END> will not be called and the lock may be maintained even though
-the process has exited.  If this scares you, you might be better off
-implementing your own locking methods.
-
-One advantage of using C<flock> on some known file instead of the
-locking implemented with semaphores in C<IPC::Shareable> is that when a
-process dies, it automatically releases any locks.  This only happens
-with C<IPC::Shareable> if the process dies gracefully.
-
-The alternative is to attempt to account for every possible calamitous ending
-for your process (robust signal handling in Perl is a source of much debate,
-though it usually works just fine) or to become familiar with your
-system's tools for removing shared memory and semaphores.  This
-concern should be balanced against the significant performance
-improvements you can gain for larger data structures by using the
-locking mechanism implemented in IPC::Shareable.
 
 =item o
 
