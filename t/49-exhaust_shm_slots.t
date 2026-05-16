@@ -45,7 +45,7 @@ my $knot = tie my %hv, $mod, {
 };
 
 my $ok = eval {
-    for my $i (1 .. $limit + 1) {
+    for my $i (1 .. $limit + 100) {
         # Each unique key creates one child segment.  No delete, so segments
         # accumulate until the kernel shm slot limit is reached.
         $hv{$i} = {val => $i};
