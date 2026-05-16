@@ -1606,7 +1606,7 @@ Default: B<true>
 This attribute will allow you to enforce locks that you set, instead of them
 being simply advisory.
 
-Use with C<violated_lock_warn> to omit a warning when a lock collision has
+Use with C<violated_lock_warn> to emit a warning when a lock collision has
 occurred.
 
 Default: B<true>
@@ -1614,7 +1614,7 @@ Default: B<true>
 =head2 violated_lock_warn
 
 When C<enforced_locking> is enabled, and this attribute is set to true, we will
-omit a warning when an exclusive lock collision has occurred. The warning will
+emit a warning when an exclusive lock collision has occurred. The warning will
 include the UUID of the object that caused the violation, and the segment ID
 that the violation occurred against.
 
@@ -1745,7 +1745,7 @@ Parameters:
     $flags
 
 Optional, Integer: See C<flock()> system call for lock flag combinations. If
-this parameter is omitted, we default to C<LOCK_EX>, an exclusive blocking
+this parameter is emitted, we default to C<LOCK_EX>, an exclusive blocking
 lock.
 
     $code
@@ -2104,9 +2104,14 @@ The raw JSON in the root segment looks like:
 
     {"a":{"__ics__":{"type":"HASH","key":11111}}}
 
-And the raw JSON in the child segment (key 11111) looks like:
+The raw JSON in the child segment (key 11111) looks like:
 
     {"b":{"__ics__":{"type":"HASH","key":22222}}}
+
+Finally, the value in the child is not a reference, so it's stored as literal
+data:
+
+    {"c": 1}
 
 On decode, any __ics__ marker is spotted and a tie with create => 0 is used
 to re-attach to the existing child segment by that key -- no new segment is
