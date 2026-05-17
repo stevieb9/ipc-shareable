@@ -38,3 +38,4 @@ main$
 ^benchmarks/
 ^.vscode/
 ^_Inline/
+agent.txt
