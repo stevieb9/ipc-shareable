@@ -187,22 +187,12 @@ sub FETCH {
     my $val;
 
     if ($knot->{_type_int} == TYPE_HASH) {
-        if (defined $data) {
-            my $key = shift;
-            $val = $data->{$key};
-        }
-        else {
-            return;
-        }
+        my $key = shift;
+        $val = $data->{$key};
     }
     elsif ($knot->{_type_int} == TYPE_ARRAY) {
-        if (defined $data) {
-            my $i = shift;
-            $val = $data->[$i];
-        }
-        else {
-            return;
-        }
+        my $i = shift;
+        $val = $data->[$i];
     }
     elsif ($knot->{_type_int} == TYPE_SCALAR) {
         if (defined $data) {

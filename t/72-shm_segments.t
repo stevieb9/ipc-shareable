@@ -228,4 +228,23 @@ my $segs_after = IPC::Shareable::shm_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "segment count restored to original after cleanup";
 
+# -----------------------------------------------------------------------
+# shm_segments() and orphans() called as object methods
+# -----------------------------------------------------------------------
+
+{
+    my $k = tie my %h, 'IPC::Shareable', { key => '0x1B0B0050', create => 1, destroy => 1 };
+    $h{x} = 1;
+
+    my $segs = $k->shm_segments;
+    is ref($segs), 'HASH', "shm_segments() as object method returns hash ref";
+    ok exists $segs->{'0x1b0b0050'}, "shm_segments() as object method shows our segment";
+
+    my @orphans = $k->orphans;
+    ok !grep({ $_ eq '0x1b0b0050' } @orphans),
+        "orphans() as object method excludes our registered segment";
+
+    IPC::Shareable->clean_up_all;
+}
+
 done_testing;

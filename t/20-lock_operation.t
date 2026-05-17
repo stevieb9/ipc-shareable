@@ -224,6 +224,89 @@ my $sv;
     is $a[0], 99, "LOCK_EX array ops: all changes written back on unlock";
 }
 
+# LOCK_SH: hash read ops skip _decode when already locked (EXISTS, FIRSTKEY)
+{
+    my $k = tie my %h, 'IPC::Shareable', { key => 'T6', create => 1, destroy => 1 };
+    $h{a} = 1;
+    $k->lock(IPC::Shareable::LOCK_SH);
+    ok  exists($h{a}), "LOCK_SH EXISTS: returns true for existing key (uses cached _data)";
+    ok !exists($h{z}), "LOCK_SH EXISTS: returns false for missing key (uses cached _data)";
+    my @keys = keys %h;
+    is scalar(@keys), 1, "LOCK_SH FIRSTKEY: keys() returns correct count while locked";
+    $k->unlock;
+}
+
+# LOCK_SH: array FETCHSIZE skips _decode when already locked
+{
+    my $k = tie my @a, 'IPC::Shareable', { key => 'T7', create => 1, destroy => 1};
+    @a = (1, 2, 3);
+    $k->lock(IPC::Shareable::LOCK_SH);
+    is scalar(@a), 3, "LOCK_SH FETCHSIZE: scalar(\@array) correct while locked (uses cached _data)";
+    $k->unlock;
+}
+
+# LOCK_EX + STORESIZE ($#array = N): _was_changed deferred write
+{
+    my $k = tie my @a, 'IPC::Shareable', { key => 'T8', create => 1, destroy => 1 };
+    @a = (1, 2, 3, 4, 5);
+    $k->lock(IPC::Shareable::LOCK_EX);
+    $#a = 1;
+    is $k->{_was_changed}, 1, "LOCK_EX STORESIZE: _was_changed set while locked";
+    $k->unlock;
+    is scalar(@a), 2, "LOCK_EX STORESIZE: array truncated after unlock";
+}
+
+# enforced_locking: array write ops blocked when another knot holds LOCK_EX
+{
+    my $k1 = tie my @a1, 'IPC::Shareable', {
+        key => 'T9', create => 1, destroy => 1, enforced_locking => 1 };
+    my $k2 = tie my @a2, 'IPC::Shareable', {
+        key => 'T9', enforced_locking => 1 };
+
+    @a1 = (1, 2, 3);
+    $k1->lock(IPC::Shareable::LOCK_EX);
+
+    push    @a2, 99;
+    is scalar(@a2), 3, "enforced_locking PUSH: blocked when k1 holds LOCK_EX";
+
+    pop     @a2;
+    is scalar(@a2), 3, "enforced_locking POP: blocked when k1 holds LOCK_EX";
+
+    shift   @a2;
+    is $a2[0], 1, "enforced_locking SHIFT: blocked when k1 holds LOCK_EX";
+
+    unshift @a2, 0;
+    is $a2[0], 1, "enforced_locking UNSHIFT: blocked when k1 holds LOCK_EX";
+
+    splice  @a2, 0, 1;
+    is scalar(@a2), 3, "enforced_locking SPLICE: blocked when k1 holds LOCK_EX";
+
+    $#a2 = 0;
+    is scalar(@a2), 3, "enforced_locking STORESIZE: blocked when k1 holds LOCK_EX";
+
+    $k1->unlock;
+}
+
+# enforced_locking: hash CLEAR and DELETE blocked when another knot holds LOCK_EX
+{
+    my $k1 = tie my %h1, 'IPC::Shareable', {
+        key => 'TA', create => 1, destroy => 1, enforced_locking => 1 };
+    my $k2 = tie my %h2, 'IPC::Shareable', {
+        key => 'TA', enforced_locking => 1 };
+
+    $h1{a} = 1;
+    $h1{b} = 2;
+    $k1->lock(IPC::Shareable::LOCK_EX);
+
+    delete $h2{a};
+    ok exists($h2{a}), "enforced_locking DELETE: blocked when k1 holds LOCK_EX";
+
+    %h2 = ();
+    is $h2{a}, 1, "enforced_locking CLEAR: blocked when k1 holds LOCK_EX";
+
+    $k1->unlock;
+}
+
 IPC::Shareable::_end;
 
 my $segs_after = IPC::Shareable::shm_count();
