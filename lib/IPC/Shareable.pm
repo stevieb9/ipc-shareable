@@ -866,11 +866,17 @@ sub _decode {
 
     my $serializer = $knot->attributes('serializer');
 
-    if ($serializer eq 'storable') {
-        return _thaw($seg);
-    }
+    my $data = $serializer eq 'storable'
+        ? _thaw($seg)
+        : _decode_json($seg, $knot);
 
-    return _decode_json($seg, $knot);
+    return $data if defined $data;
+
+    # Empty/never-written segment — return appropriate empty default so that
+    # aggregate tie methods (FETCHSIZE, PUSH, CLEAR, etc.) can deref safely.
+    return [] if $knot->{_type_int} == TYPE_ARRAY;
+    return {} if $knot->{_type_int} == TYPE_HASH;
+    return undef;
 }
 sub _encode_json {
     my $seg  = shift;

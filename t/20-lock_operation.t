@@ -85,7 +85,6 @@ my $sv;
     $h2{a} = {c => 10};  # k2 never locked: writes directly, no error
     $k1->unlock;
 
-    print Dumper \%h2;
     #is_deeply {%h2}, {a => {b => 3}}, "h2 - back to pre-unlock of h1 data";
 }
 

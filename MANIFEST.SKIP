@@ -39,3 +39,4 @@ main$
 ^.vscode/
 ^_Inline/
 agent.txt
+^cover_db/
