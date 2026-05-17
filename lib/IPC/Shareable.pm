@@ -471,7 +471,11 @@ sub shm_count {
     return int($count);
 }
 sub shm_segments {
-    shift if ref $_[0]; # Allow for object or class method call
+    shift if ref($_[0]) || (defined $_[0] && !ref($_[0]) && UNIVERSAL::isa($_[0], __PACKAGE__));
+
+    my ($filter_key) = @_;
+
+    my $filter_int = _key_str_to_int($filter_key) if defined $filter_key;
 
     my %segments;
 
@@ -517,6 +521,22 @@ sub shm_segments {
             local_process => (exists $process_register{$id} ? 1 : 0),
             orphaned      => (exists $global_register{$id}  ? 0 : 1),
         };
+    }
+
+    if (defined $filter_int) {
+        # Walk the segment tree starting from the root whose key matches
+        # $filter_int, collecting it and all its descendants.  Use integer
+        # comparison so that hex formatting differences (zero-padding, case)
+        # between ipcs(1) output and child_key_hex values don't matter.
+        my %int_to_hex = map { hex($_) => $_ } keys %segments;
+        my (%related, @queue);
+        push @queue, $filter_int;
+        while (my $k_int = shift @queue) {
+            my $k_hex = $int_to_hex{$k_int} // next;
+            next if $related{$k_hex}++;
+            push @queue, map { hex($_) } @{ $segments{$k_hex}{child_keys} };
+        }
+        %segments = map { $_ => $segments{$_} } keys %related;
     }
 
     return \%segments;
@@ -1328,6 +1348,19 @@ sub _need_tie {
 }
 
 # Segment operations
+sub _key_str_to_int {
+    # Convert any key format (hex string, decimal integer string, or arbitrary
+    # text) to a 32-bit integer using the same algorithm as _shm_key(), but
+    # without the %used_ids side effect. Safe to call any number of times.
+    my ($key_str) = @_;
+
+    return hex($key_str)    if $key_str =~ /^0x[0-9a-fA-F]+$/i;
+    return $key_str + 0     if $key_str =~ /^\d+$/;
+
+    my $int = crc32($key_str);
+    $int -= MAX_KEY_INT_SIZE if $int > MAX_KEY_INT_SIZE;
+    return $int;
+}
 sub _shm_key {
     # Generates a 32-bit CRC on the key string. The $key_str parameter is used
     # for testing only, for purposes of testing various key strings
@@ -1903,9 +1936,13 @@ system's C<ipcs -m> call. It is guaranteed though to produce reliable results.
 
 Return: Integer
 
-=head2 shm_segments
+=head2 shm_segments($key)
 
     my $ipc_shareable_segments = IPC::Shareable->shm_segments;
+
+    # Filtered to one variable's segments only
+    my $segs = IPC::Shareable->shm_segments('my_key');
+    my $segs = IPC::Shareable->shm_segments('0xDEADBEEF');
 
 Class/object method. Scans all existing shared memory segments on the system
 and returns a hash reference mapping the hex key string (e.g. C<'0xdeadbeef'>)
@@ -1914,6 +1951,14 @@ created by L<IPC::Shareable>.
 
 Segments created with C<IPC_PRIVATE> (key C<0x00000000>) are skipped because
 they cannot be looked up by key.
+
+Parameters:
+
+    $key
+
+Optional, String or Int: If sent in, we will restrict the result to only the
+segments related to the variable the C<$key> reflects. Without this parameter,
+all L<IPC::Shareable> segments on the system are returned.
 
 Return: Hash reference where each key is the SHM key in hex format.
 
