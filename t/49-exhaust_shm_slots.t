@@ -28,7 +28,7 @@ my $limit;
     }
     elsif ($limit > 500) {
         plan skip_all =>
-            "shm segment limit ($limit) is too high to exhaust safely in a test (macOS shmseg=32 expected)";
+            "shm segment limit ($limit) is too high to exhaust safely in a test";
     }
 }
 
