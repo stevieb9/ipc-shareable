@@ -50,6 +50,7 @@ t/63-sig_child_ignore.t
 t/65-clean_protected.t
 t/70-global_register.t
 t/71-sysv_info.t
+t/72-shm_segments.t
 t/80-SharedMem.t
 t/90-pod_coverage.t
 t/91-pod_linkcheck.t

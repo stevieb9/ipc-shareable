@@ -41,6 +41,10 @@ sub new {
 
     my $self = bless {}, $class;
 
+    if (defined $params{key} && $params{key} =~ /^0x[0-9a-fA-F]+$/i) {
+        $params{key} = hex($params{key});
+    }
+
     if (! defined $params{key} || $params{key} !~ /^\d+$/) {
         croak "new() requires a 'key' parameter with an integer value";
     }

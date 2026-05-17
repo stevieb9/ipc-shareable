@@ -15,6 +15,8 @@ use IPC::SysV qw(
     IPC_CREAT
     IPC_EXCL
     IPC_NOWAIT
+    IPC_RMID
+    IPC_STAT
     SEM_UNDO
 );
 use JSON qw(-convert_blessed_universally);
@@ -477,6 +479,62 @@ sub shm_count {
     chomp $count;
     return int($count);
 }
+sub shm_segments {
+    shift if ref $_[0]; # Allow for object or class method call
+
+    my %segments;
+
+    for my $line (`ipcs -m`) {
+        next unless $line =~ /(0x[0-9a-fA-F]+)/;
+        my $hex_key = $1;
+        my $key_int = hex($hex_key);
+
+        next if $key_int == 0;  # IPC_PRIVATE segments can't be found by key
+
+        # Attach to existing segment (size=0 means attach-only, no IPC_CREAT)
+        my $id = shmget($key_int, 0, 0);
+        next unless defined $id;
+
+        # Get segment size via IPC_STAT
+        my $stat_buf = '';
+        shmctl($id, IPC_STAT, $stat_buf) or next;
+
+        my ($segsz) = $^O eq 'linux'
+            ? unpack('x[48] Q', $stat_buf)
+            : unpack('x[24] Q', $stat_buf);
+
+        next unless $segsz;
+
+        my $data = '';
+        shmread($id, $data, 0, $segsz) or next;
+
+        # Strip trailing null bytes
+        $data =~ s/\x00+$//;
+
+        # Skip segments not owned by IPC::Shareable (all our segments
+        # are prefixed with the literal string 'IPC::Shareable')
+        next unless substr($data, 0, 14) eq 'IPC::Shareable';
+
+        my $json_part  = substr($data, 14);
+        my @child_keys = ($json_part =~ /"child_key_hex":"([^"]+)"/g);
+
+        $segments{$hex_key} = {
+            child_keys    => \@child_keys,
+            content       => $data,
+            local_process => (exists $process_register{$id} ? 1 : 0),
+            orphaned      => (exists $global_register{$id}  ? 0 : 1),
+        };
+    }
+
+    return \%segments;
+}
+sub orphans {
+    shift if ref $_[0]; # Allow for object or class method call
+
+    my $segs = shm_segments();
+
+    return grep { $segs->{$_}{orphaned} } keys %$segs;
+}
 sub sysv_info {
     shift if ref $_[0]; # Allow for object or class method call
 
@@ -633,9 +691,39 @@ sub clean_up_protected {
     }
 }
 sub remove {
-    my ($knot) = @_;
+    my ($knot, $key) = @_;
 
-    # Segment cleanup
+    # If a key is passed, remove that specific segment by key rather than
+    # via an existing tied object
+
+    if (defined $key) {
+        $key = $knot->_shm_key($key);
+        my $id = shmget($key, 0, 0);
+
+        if (! defined $id) {
+            warn "remove(): shmget failed for key $key: $!";
+            return;
+        }
+
+        if (! shmctl($id, IPC_RMID, 0)) {
+            warn "Couldn't remove shm segment $id: $!";
+        }
+        else {
+            delete $process_register{$id};
+            delete $global_register{$id};
+        }
+
+        # Remove the associated semaphore set (same key, attach-only with nsems=0)
+
+        my $sem = IPC::Semaphore->new($key, 0, 0);
+        if (defined $sem) {
+            $sem->remove or warn "Couldn't remove semaphore set for key $key: $!";
+        }
+
+        return;
+    }
+
+    # Standard object based removal
 
     my $seg = $knot->seg;
     my $id = $seg->id;
@@ -827,7 +915,7 @@ sub _encode_json_prepare {
             my $val   = $data->{$key};
             my $inner = ref($val) && _is_child($val);
             $result{$key} = $inner
-                ? { '__ics__' => { type => $inner->{_type}, key => $inner->{_key} } }
+                ? { '__ics__' => { type => $inner->{_type}, child_key => $inner->{_key}, child_key_hex => sprintf('0x%08x', $inner->{_key}) } }
                 : $val;
         }
         return \%result;
@@ -838,7 +926,7 @@ sub _encode_json_prepare {
             map {
                 my $inner = ref($_) && _is_child($_);
                 $inner
-                    ? { '__ics__' => { type => $inner->{_type}, key => $inner->{_key} } }
+                    ? { '__ics__' => { type => $inner->{_type}, child_key => $inner->{_key}, child_key_hex => sprintf('0x%08x', $inner->{_key}) } }
                     : $_
             } @$data
         ];
@@ -912,7 +1000,7 @@ sub _decode_json_resolve {
 
     if (defined $existing) {
         my $inner = ref($existing) && _is_child($existing);
-        return $existing if $inner && $inner->{_key} == $info->{key};
+        return $existing if $inner && $inner->{_key} == $info->{child_key};
     }
 
     return _decode_json_reattach($info, $knot);
@@ -922,7 +1010,7 @@ sub _decode_json_reattach {
 
     my %opts = (
         %{ $knot->attributes },
-        key       => $info->{key},
+        key       => $info->{child_key},
         exclusive => 0,
         create    => 0,
         magic     => 1,
@@ -1247,8 +1335,6 @@ sub _shm_key {
     }
     elsif ($key_str =~ /^\d+$/) {
         # User specified an explicit decimal integer key; use it as-is.
-        # Note: 0xDEADBEEF without quotes is compiled by Perl to 3735928559,
-        # which arrives here as the string '3735928559' and is used directly.
         $key = $key_str;
         $used_ids{$key}++;
         return $key;
@@ -1802,6 +1888,80 @@ system's C<ipcs -m> call. It is guaranteed though to produce reliable results.
 
 Return: Integer
 
+=head2 shm_segments
+
+    my $ipc_shareable_segments = IPC::Shareable->shm_segments;
+
+Class/object method. Scans all existing shared memory segments on the system
+and returns a hash reference mapping the hex key string (e.g. C<'0xdeadbeef'>)
+to the raw literal contents of that segment. Only loads segments that were
+created by L<IPC::Shareable>.
+
+Segments created with C<IPC_PRIVATE> (key C<0x00000000>) are skipped because
+they cannot be looked up by key.
+
+Return: Hash reference where each key is the SHM key in hex format.
+
+Example return:
+
+B<orphaned>: Was created by C<IPC::Shareable>, but is no longer associated with
+any process. Should be cleaned up.
+
+B<local_process>: C<1> if created by the same process this method is being run,
+and C<0> if not.
+
+B<content>: The actual raw content of the shared memory segment.
+
+B<child_keys>: Nested data structures each require their own segment. Keys
+within this array reference map to child segments.
+
+    {
+        '0x2abc0001' => {
+            orphaned        => 0,
+            local_process   => 1
+            content         => 'IPC::Shareable{"b":"hello","c":{"__ics__":{"child_key_hex":"0x000e1b1d","child_key":"924445","type":"HASH"}},"a":1,"d":{"__ics__":{"child_key_hex":"0x000097af","child_key":"38831","type":"HASH"}}}',
+            child_keys      => [
+                '0x000e1b1d',
+                '0x000097af'
+            ],
+        },
+        '0x000e1b1d' => {
+            orphaned        => 0,
+            local_process   => 1
+            content         => 'IPC::Shareable{"y":20,"x":10}',
+            child_keys      => [],
+        },
+        '0x000097af' => {
+            orphaned        => 0,
+            local_process   => 1
+            content         => 'IPC::Shareable{"p":"foo","q":"bar"}',
+            child_keys      => [],
+        }
+    }
+
+=head2 orphans
+
+    my @orphan_keys = IPC::Shareable->orphans;
+
+    # or
+
+    my @orphan_keys = $knot->orphans;
+
+Class/object method. Returns a list of hex key strings (e.g. C<'0xdeadbeef'>)
+for all shared memory segments that were created by L<IPC::Shareable> but are
+no longer associated with any process (i.e. orphaned). Orphaned segments are
+typically left over from processes that exited without cleaning up (read:
+crashed).
+
+Return: List of hex key strings.
+
+    my @orphans = IPC::Shareable->orphans;
+
+    for my $key (@orphans) {
+        print "Orphaned segment: $key\n";
+        IPC::Shareable->remove($key);
+    }
+
 =head2 sysv_info
 
     my $sysv_info = IPC::Shareable->sysv_info;
@@ -2072,13 +2232,31 @@ underlying semaphore operations use C<SEM_UNDO>. Lock release is
 therefore not a concern; only shared memory I<segment> data requires
 the signal handler precaution above.
 
-=head2 remove
+=head2 remove($key)
+
+Parameters:
+
+    $key
+
+Optional, see L</key> for valid values. Preferably, an integer or a hex string
+prefixed with C<0x>.
+
+B<Note>: If the C<$key> parameter is sent in, we will delete that segment only
+and return immediately thereafter.
 
     tied($var)->remove;
 
     # or
 
     $knot->remove;
+
+    # Remove a specific segment by key (can remove non C<IPC::Shareable>
+    segments). If key is sent in, the caller can be the module or the object.
+
+    IPC::Shareable->remove('0xdeadbeef');   # hex string
+    IPC::Shareable->remove(0xdeadbeef);     # hex integer
+    IPC::Shareable->remove(1234);           # integer
+    tied($var)->remove('Test');             # string
 
 Calling C<remove()> on the object underlying a C<tie()>d variable removes
 the associated shared memory segments.  The segment is removed
@@ -2198,15 +2376,15 @@ reconstructed from those bytes and re-attached to the existing child segment.
 JSON can't serialize blessed objects, so each child pointer is written as an
 explicit marker:
 
-    { "__ics__" => { type => "HASH", key => 11111 } }
+    { "__ics__" => { type => "HASH", child_key => 11111, child_key_hex => "0x00002b67" } }
 
 The raw JSON in the root segment looks like:
 
-    {"a":{"__ics__":{"type":"HASH","key":11111}}}
+    {"a":{"__ics__":{"type":"HASH","child_key":11111,"child_key_hex":"0x00002b67"}}}
 
 The raw JSON in the child segment (key 11111) looks like:
 
-    {"b":{"__ics__":{"type":"HASH","key":22222}}}
+    {"b":{"__ics__":{"type":"HASH","child_key":22222,"child_key_hex":"0x000056ce"}}}
 
 Finally, the value in the child is not a reference, so it's stored as literal
 data:
