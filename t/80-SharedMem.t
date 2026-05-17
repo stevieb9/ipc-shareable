@@ -179,6 +179,39 @@ my $mod = 'IPC::Shareable::SharedMem';
     is $seg->remove, 1, "seg removed ok";
 }
 
+# new() with a hex string key
+{
+    my $seg = $mod->new(key => '0x00001571', flags => IPC_CREAT);
+    is ref($seg), 'IPC::Shareable::SharedMem', "new() with hex string key creates object ok";
+    is $seg->key, hex('0x00001571'), "new() with hex key: integer key stored correctly";
+    is $seg->remove, 1, "seg removed ok";
+}
+
+# key() croak when called as setter after object is established
+{
+    my $seg = $mod->new(key => 5555, flags => IPC_CREAT);
+    my $ok = eval { $seg->key(9999); 1 };
+    is $ok, undef, "key() croaks when set after object established";
+    like $@, qr/after object is already established/, "...and error message is correct";
+    is $seg->key, 5555, "...and key is unchanged";
+    is $seg->remove, 1, "seg removed ok";
+}
+
+# stat() returns undef when the underlying segment has been removed
+{
+    my $seg = $mod->new(key => 5555, flags => IPC_CREAT);
+    $seg->remove;
+    my $stat = $seg->stat;
+    is $stat, undef, "stat() returns undef when segment has been removed";
+}
+
+# remove() returns 0 on second call (segment already gone)
+{
+    my $seg = $mod->new(key => 5555, flags => IPC_CREAT);
+    is $seg->remove, 1, "remove() returns 1 on first call";
+    is $seg->remove, 0, "remove() returns 0 on second call (segment already removed)";
+}
+
 # stat
 {
     my $seg = $mod->new(key => 5555, flags => IPC_CREAT, mode => 0644);

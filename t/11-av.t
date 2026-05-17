@@ -159,6 +159,12 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     IPC::Shareable->clean_up_all;
 }
 
+# FETCH from a never-written array segment returns undef (empty segment path)
+{
+    tie my @av, $mod, { key => 'av11e', create => 1, destroy => 1 };
+    is $av[0], undef, "FETCH on never-written array element returns undef ok";
+}
+
 IPC::Shareable::_end;
 
 my $segs_after = IPC::Shareable::shm_count();

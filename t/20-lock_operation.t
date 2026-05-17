@@ -167,6 +167,64 @@ my $sv;
     is $h2{a}, 3, "enforced_locking with warn - k2 can write after k1 unlocks";
 }
 
+# LOCK_EX + CLEAR on a hash: _was_changed deferred write
+{
+    my $k = tie my %h, 'IPC::Shareable', { key => 'T3', create => 1, destroy => 1 };
+    $h{a} = 1;
+    $h{b} = 2;
+    $k->lock(IPC::Shareable::LOCK_EX);
+    %h = ();
+    is $k->{_was_changed}, 1, "LOCK_EX CLEAR: _was_changed set while locked";
+    $k->unlock;
+    is keys(%h), 0, "LOCK_EX CLEAR: hash empty after unlock";
+}
+
+# LOCK_EX + DELETE on a hash: _was_changed deferred write
+{
+    my $k = tie my %h, 'IPC::Shareable', { key => 'T4', create => 1, destroy => 1 };
+    $h{x} = 10;
+    $h{y} = 20;
+    $k->lock(IPC::Shareable::LOCK_EX);
+    delete $h{x};
+    is $k->{_was_changed}, 1, "LOCK_EX DELETE: _was_changed set while locked";
+    $k->unlock;
+    is exists($h{x}), '', "LOCK_EX DELETE: key removed after unlock";
+    is $h{y}, 20,          "LOCK_EX DELETE: other key intact after unlock";
+}
+
+# LOCK_EX + array mutation ops: PUSH, POP, SHIFT, UNSHIFT, SPLICE
+{
+    my $k = tie my @a, 'IPC::Shareable', { key => 'T5', create => 1, destroy => 1 };
+    @a = (1, 2, 3);
+
+    $k->lock(IPC::Shareable::LOCK_EX);
+
+    push @a, 4;
+    is $k->{_was_changed}, 1, "LOCK_EX PUSH: _was_changed set";
+    $k->{_was_changed} = 0;
+
+    my $p = pop @a;
+    is $p, 4,               "LOCK_EX POP: returns correct value";
+    is $k->{_was_changed}, 1, "LOCK_EX POP: _was_changed set";
+    $k->{_was_changed} = 0;
+
+    my $s = shift @a;
+    is $s, 1,               "LOCK_EX SHIFT: returns correct value";
+    is $k->{_was_changed}, 1, "LOCK_EX SHIFT: _was_changed set";
+    $k->{_was_changed} = 0;
+
+    unshift @a, 9;
+    is $k->{_was_changed}, 1, "LOCK_EX UNSHIFT: _was_changed set";
+    $k->{_was_changed} = 0;
+
+    my @gone = splice @a, 0, 1, 99;
+    is $gone[0], 9,          "LOCK_EX SPLICE: spliced-out value correct";
+    is $k->{_was_changed}, 1, "LOCK_EX SPLICE: _was_changed set";
+
+    $k->unlock;
+    is $a[0], 99, "LOCK_EX array ops: all changes written back on unlock";
+}
+
 IPC::Shareable::_end;
 
 my $segs_after = IPC::Shareable::shm_count();

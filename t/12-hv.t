@@ -74,12 +74,29 @@ my $mod = 'IPC::Shareable';
 
     is exists($hv{there}), '', "delete removes hash key and value";
 
-    # --- CLEAR
+    # --- DELETE a key whose value is a nested tied child segment
+    # Exercises the $child->remove path in DELETE
+    $hv{nested} = { inner => 42 };
+    is ref($hv{nested}), 'HASH', "nested child segment created ok";
+    is $hv{nested}{inner}, 42,   "nested child segment value ok";
+
+    my $child_segs_before = IPC::Shareable::shm_count();
+    delete $hv{nested};
+    my $child_segs_after = IPC::Shareable::shm_count();
+    is exists($hv{nested}), '', "delete of child-segment key removes it ok";
+    is $child_segs_after, $child_segs_before - 1, "DELETE child: child segment removed from system ok";
+
+    # --- CLEAR a hash that contains a nested tied child segment
+    # Exercises the $child->remove path in CLEAR
+    $hv{keep}   = 'plain';
+    $hv{nested} = { inner => 99 };
+    is $hv{nested}{inner}, 99, "nested child for CLEAR test set ok";
+
+    my $clear_segs_before = IPC::Shareable::shm_count();
     %hv = ();
-
-    is keys(%hv), 0, "clearing a hash works ok";
-    #is exists($hv{__ipc}), 1, "__ipc__ key still exists";
-
+    my $clear_segs_after = IPC::Shareable::shm_count();
+    is keys(%hv), 0, "clearing a hash with child segments works ok";
+    is $clear_segs_after, $clear_segs_before - 1, "CLEAR: child segment removed from system ok";
 
     IPC::Shareable->clean_up_all;
 
@@ -144,11 +161,27 @@ my $mod = 'IPC::Shareable';
 
     is exists($hv{there}), '', "json: delete removes hash key and value";
 
-    # --- CLEAR
-    %hv = ();
+    # --- DELETE a key whose value is a nested tied child segment
+    $hv{nested} = { inner => 42 };
+    is ref($hv{nested}), 'HASH', "json: nested child segment created ok";
+    is $hv{nested}{inner}, 42,   "json: nested child segment value ok";
 
-    is keys(%hv), 0, "json: clearing a hash works ok";
-    #is exists($hv{__ipc}), 1, "__ipc__ key still exists";
+    my $child_segs_before = IPC::Shareable::shm_count();
+    delete $hv{nested};
+    my $child_segs_after = IPC::Shareable::shm_count();
+    is exists($hv{nested}), '', "json: delete of child-segment key removes it ok";
+    is $child_segs_after, $child_segs_before - 1, "json: DELETE child: child segment removed from system ok";
+
+    # --- CLEAR a hash that contains nested tied child segments
+    $hv{keep}   = 'plain';
+    $hv{nested} = { inner => 99 };
+    is $hv{nested}{inner}, 99, "json: nested child for CLEAR test set ok";
+
+    my $clear_segs_before = IPC::Shareable::shm_count();
+    %hv = ();
+    my $clear_segs_after = IPC::Shareable::shm_count();
+    is keys(%hv), 0, "json: clearing a hash with child segments works ok";
+    is $clear_segs_after, $clear_segs_before - 1, "json: CLEAR: child segment removed from system ok";
 
     IPC::Shareable->clean_up_all;
 

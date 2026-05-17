@@ -1,6 +1,6 @@
 IPC::Shareable — Agent Context File
 =====================================
-Last updated: 2026-05-16 (session 3)
+Last updated: 2026-05-16 (session 5)
 Current version: 1.14 (UNRELEASED)
 Platform: macOS (primary dev), also CI-tested on 64-bit and 32-bit Linux
 Perl: 5.00503 minimum required
@@ -241,10 +241,7 @@ File                  Tests  Notes
 93-manifest.t                MANIFEST check (RELEASE_TESTING)
 99-end.t                     Final leak check
 
-Total test count: ~846 (as of 2026-05-16 session 3)
-Note: count is non-deterministic by ±1 because t/16-ref.t's storable block
-  generates 10 random letters from 'a'-'z' into a hash — duplicates reduce
-  the number of assertions. The json block uses fixed keys and is stable.
+Total test count: ~889 (as of 2026-05-16 session 5)
 
 Running tests:
   prove -l t/*.t           Sequential (safe — avoid -j, see below)
@@ -318,12 +315,65 @@ RECENT CHANGES (v1.14 development, this session and prior)
     _decode_json_restore could never be 'SCALAR' or 'REF'. Removed cleanly.
     All 846 tests still pass.
 
+13. Unreachable defensive code removed from Shareable.pm (session 4)
+    Removed four dead code paths:
+    - STORE: `else { croak "Variables of type ... not supported" }` after
+      TYPE_HASH/ARRAY/SCALAR chain (type is always one of those three)
+    - FETCH: same pattern
+    - CLEAR: `else { croak "Attempt to clear non-aggregate" }` (scalars have
+      no CLEAR tie method, so this was always HASH or ARRAY)
+    - _encode()/_decode(): trailing `return undef` fallthrough after
+      storable/json branches (serializer is always one of those two)
+    Also simplified _encode/_decode: removed the `elsif` and used direct
+    fallthrough to `return _encode_json(...)` / `return _decode_json(...)`.
+
+14. Coverage-driven test additions (session 4)
+    t/10-sv.t: FETCH on never-written scalar segment returns undef
+    t/11-av.t: FETCH on never-written array element returns undef
+    t/12-hv.t: DELETE of a hash key whose value is a child segment (both
+      storable and json) verifies $child->remove fires and segment count drops.
+      CLEAR of a hash containing a child segment verifies same.
+    t/20-lock_operation.t: LOCK_EX + CLEAR, LOCK_EX + DELETE (hash), and
+      LOCK_EX + PUSH/POP/SHIFT/UNSHIFT/SPLICE (array) — all verify
+      _was_changed is set while locked and changes are written back on unlock.
+    t/21-lock_coderef.t: lock() with non-coderef $code param croaks;
+      lock() with coderef that dies re-throws and knot is unlocked.
+
+15. SharedMem.pm: remove() uninit-value warning fixed (session 5)
+    shmctl() returns undef (not 0) on failure. The comparison
+    `$os_return_value eq '0 but true'` emitted "Use of uninitialized value"
+    when called on an already-removed segment. Added `defined $os_return_value`
+    guard before the string/numeric comparisons.
+
+16. SharedMem coverage-driven test additions (session 5)
+    t/80-SharedMem.t:
+    - new() with hex string key ('0x00001571') — tests the hex->int conversion
+      branch in new() (lines 45-46)
+    - key() croak after object established — tests lines 99-100
+    - stat() on a removed segment returns undef — tests the shmctl-fails path
+      (line 189)
+    - remove() called twice: first returns 1, second returns 0 — tests the
+      else { return 0 } branch (line 287)
+
+    Coverage improvements (session 4 baseline → session 5):
+      Shareable.pm:   stmt 88.1→89.4 (+1.3) branch 73.8→77.0 (+3.2) cond 66.1→68.5 (+2.4)
+      SharedMem.pm:   stmt 95.4→97.7 (+2.3) branch 84.6→92.3 (+7.7) cond 77.7→88.8 (+11.1)
+      Total:          stmt 89.4→90.9 (+1.5) branch 74.7→78.4 (+3.7) cond 67.5→71.0 (+3.5)
+
 -----------------------------------------------------------------------
 KNOWN GAPS / FUTURE WORK
 -----------------------------------------------------------------------
-- shm_segments() only sees IPC_PRIVATE-key segments if we have the shmid;
-  IPC_PRIVATE (key=0) segments are skipped (can't shmget by key=0).
-- sysv_info() only covers darwin and linux; BSD/other systems return undef.
+- OS-level write failure paths (`croak "Could not write to shared memory"`)
+  across STORE, CLEAR, DELETE, PUSH, POP, SHIFT, UNSHIFT, SPLICE, STORESIZE,
+  lock/unlock — require shmwrite() to fail, not practically testable.
+- remove() failure paths (shmctl/semaphore removal failures) — same; require
+  OS-level faults.
+- SharedMem.pm: `if ($^O eq 'linux')` stat struct unpack paths (64-bit and
+  32-bit variants) — never run on macOS. Tested in CI on Linux containers.
+- SharedMem.pm: `new()` branch where shmget fails and $! is not set (or $!
+  doesn't match File exists/Permission denied) — pathological OS condition.
+- Shareable.pm: sysv_info() Linux branch — same, platform-specific.
+- shm_segments() 32-bit Linux longsize branch — same.
 - Benchmark results are in benchmarks/bench_results.txt.
 
 -----------------------------------------------------------------------

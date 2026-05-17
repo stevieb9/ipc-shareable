@@ -160,9 +160,6 @@ sub STORE {
         _magic_tie($knot, $val) if ref($val) && $knot->_need_tie($val);
         $knot->{_data} = \$val;
     }
-    else {
-        croak "Variables of type $knot->{_type} not supported";
-    }
 
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
@@ -215,9 +212,6 @@ sub FETCH {
             return;
         }
     }
-    else {
-        croak "Variables of type $knot->{_type} not supported";
-    }
 
     if (ref($val) && (my $inner = _is_child($val))) {
         # Register the inner knot so clean_up_all() can find it even when it
@@ -257,10 +251,6 @@ sub CLEAR {
             }
         }
         $knot->{_data} = [ ];
-    }
-
-    else {
-        croak "Attempt to clear non-aggegrate";
     }
 
     if ($knot->{_lock} & LOCK_EX) {
@@ -868,11 +858,8 @@ sub _encode {
     if ($serializer eq 'storable') {
         return _freeze($seg, $data);
     }
-    elsif ($serializer eq 'json'){
-        return _encode_json($seg, $data);
-    }
 
-    return undef;
+    return _encode_json($seg, $data);
 }
 sub _decode {
     my ($knot, $seg) = @_;
@@ -882,11 +869,8 @@ sub _decode {
     if ($serializer eq 'storable') {
         return _thaw($seg);
     }
-    elsif ($serializer eq 'json'){
-        return _decode_json($seg, $knot);
-    }
 
-    return undef;
+    return _decode_json($seg, $knot);
 }
 sub _encode_json {
     my $seg  = shift;

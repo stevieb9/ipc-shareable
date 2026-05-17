@@ -280,7 +280,7 @@ sub remove {
     my ($self) = @_;
     my $os_return_value = shmctl($self->id, IPC_RMID, 0);
 
-    if ($os_return_value eq '0 but true' || $os_return_value == 1) {
+    if (defined $os_return_value && ($os_return_value eq '0 but true' || $os_return_value == 1)) {
         return 1;
     }
     else {

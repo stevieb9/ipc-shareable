@@ -33,6 +33,12 @@ for my $mod (qw/HASH SCALAR ARRAY/){
     is $sv, $mod.'foo', "SCALAR regression store/fetch ok";
 }
 
+# FETCH from a never-written scalar segment returns undef (empty segment path)
+{
+    tie my $sv, 'IPC::Shareable', { key => 'sv10e', create => 1, destroy => 1 };
+    is $sv, undef, "FETCH on never-written scalar returns undef ok";
+}
+
 IPC::Shareable::_end;
 
 my $segs_after = IPC::Shareable::shm_count();

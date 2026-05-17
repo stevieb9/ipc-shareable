@@ -56,6 +56,20 @@ my $knot = tie my %hv, $mod, {
 
 }
 
+# Non-coderef passed as $code param: must croak
+{
+    eval { $knot->lock(LOCK_EX, 'not_a_coderef') };
+    like $@, qr/must be a code ref/, "lock() croaks when non-coderef passed as \$code";
+    $knot->unlock if $knot->{_lock};
+}
+
+# Coderef that throws: lock() re-throws and knot is unlocked
+{
+    eval { $knot->lock(LOCK_EX, sub { die "boom\n" }) };
+    is $@, "boom\n", "lock() re-throws exception from coderef";
+    is $knot->{_lock}, 0, "...and knot is unlocked after coderef die";
+}
+
 IPC::Shareable->clean_up_all;
 
 is %hv, '', "hash deleted after clean_up()";
