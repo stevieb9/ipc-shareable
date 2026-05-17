@@ -146,6 +146,8 @@ Revision history for Perl extension IPC::Shareable.
     - Added orphans(); Returns a list of SHM keys of segments created by this
       distribution, but are not associated with any known process
     - Closes #39; remove()
+    - Updated CI so we get a test run on an i386 Ubuntu container to test 32-bit
+      platforms
 
 1.05    2021-07-16
     - Bump prereq version of Test::SharedFork to 0.35

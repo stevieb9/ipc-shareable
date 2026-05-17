@@ -54,8 +54,8 @@ jobs:
       - name: Run tests inside i386 container
         uses: addnab/docker-run-action@v3
         with:
-          image: i386/ubuntu:22.04
-          options: -v ${{ github.workspace }}:/workspace
+          image: ubuntu:22.04
+          options: --platform linux/386 -v ${{ github.workspace }}:/workspace
           run: |
             apt-get update -q
             apt-get install -y -q perl cpanminus make gcc
