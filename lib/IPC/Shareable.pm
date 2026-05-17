@@ -1019,12 +1019,6 @@ sub _decode_json_restore {
             );
         }
     }
-    elsif ($type eq 'SCALAR' || $type eq 'REF') {
-        my $val = $$data;
-        return unless ref($val) eq 'HASH' && exists $val->{'__ics__'};
-        my $prev_val = (defined $prev && ref($prev)) ? $$prev : undef;
-        $$data = _decode_json_resolve($val->{'__ics__'}, $prev_val, $knot);
-    }
 }
 sub _decode_json_resolve {
     my ($info, $existing, $knot) = @_;

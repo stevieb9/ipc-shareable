@@ -165,6 +165,34 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         "json: crazy deep nested struct ok";
 
     IPC::Shareable->clean_up_all;
+
+    # scalar child segment: json scalar-tie holding a ref to a pre-tied child scalar.
+    # Exercises _encode_json_prepare SCALAR/REF branch (writes __ics__ marker) and
+    # _decode_json TYPE_SCALAR + __ics__ branch (reattaches child on decode).
+    # The "cold re-attach" sub-test verifies _decode_json_resolve/_decode_json_reattach
+    # work correctly when there is no prior _data cache (new tie to the same key).
+
+    {
+        tie my $sv,    'IPC::Shareable', { key => '16svp', serializer => 'json', create => 1, destroy => 0 };
+        tie my $child, 'IPC::Shareable', { key => '16svc', serializer => 'json', create => 1, destroy => 0 };
+
+        $child = 'hello';
+        $sv    = \$child;
+
+        is ref($sv), 'SCALAR', "json: scalar-tie can hold a ref to a child scalar segment";
+        is $$sv,     'hello',  "json: child scalar value readable through parent ref";
+
+        $$sv = 'world';
+        is $$sv, 'world', "json: child scalar writable through parent ref";
+
+        # Cold re-attach: new tie to the same parent key, no prior _data cache.
+        # _decode_json must reattach the child scalar segment from the __ics__ marker.
+        tie my $sv2, 'IPC::Shareable', { key => '16svp', serializer => 'json', create => 0, destroy => 0 };
+        is ref($sv2), 'SCALAR', "json: cold re-attach of scalar child: parent holds scalar ref";
+        is $$sv2,     'world',  "json: cold re-attach of scalar child: correct value via re-attached child";
+
+        IPC::Shareable->clean_up_all;
+    }
 }
 
 IPC::Shareable::_end;
