@@ -1917,7 +1917,7 @@ they cannot be looked up by key.
 
 Return: Hash reference where each key is the SHM key in hex format.
 
-Example return:
+Field descriptions:
 
 B<orphaned>: Was created by C<IPC::Shareable>, but is no longer associated with
 any process. Should be cleaned up.
@@ -1929,6 +1929,28 @@ B<content>: The actual raw content of the shared memory segment.
 
 B<child_keys>: Nested data structures each require their own segment. Keys
 within this array reference map to child segments.
+
+Here's an example data structure, and what the return value of C<shm_segments>
+would look like for it using the JSON serializer. Note that the top-level
+structure is a hash, and it contains two nested hashes, which are each stored in
+their own segments.
+
+    # Actual data
+
+    {
+        a => 1,
+        b => 'hello',
+        c => {
+            x => 10,
+            y => 20,
+        },
+        d => {
+            p => 'foo',
+            q => 'bar',
+        },
+    }
+
+    # Call return
 
     {
         '0x2abc0001' => {
