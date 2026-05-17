@@ -1932,8 +1932,9 @@ within this array reference map to child segments.
 
 Here's an example data structure, and what the return value of C<shm_segments>
 would look like for it using the JSON serializer. Note that the top-level
-structure is a hash, and it contains two nested hashes, which are each stored in
-their own segments.
+structure is a hash, and it contains two nested hashes (keys 'c; and 'd'), which
+are each stored in their own segments. It also has two scalar values (keys 'a'
+and 'b'), which are stored in the top-level segment.
 
     # Actual data
 
@@ -1950,13 +1951,31 @@ their own segments.
         },
     }
 
-    # Call return
+    # Call return (JSON content strings will be on one line; separated for
+    # clarity)
 
     {
         '0x2abc0001' => {
             orphaned        => 0,
             local_process   => 1
-            content         => 'IPC::Shareable{"b":"hello","c":{"__ics__":{"child_key_hex":"0x000e1b1d","child_key":"924445","type":"HASH"}},"a":1,"d":{"__ics__":{"child_key_hex":"0x000097af","child_key":"38831","type":"HASH"}}}',
+            content         => 'IPC::Shareable{
+                "a": 1,
+                "b": "hello",
+                "c": {
+                    "__ics__": {
+                        "child_key_hex": "0x000e1b1d",
+                        "child_key":     "924445",
+                        "type":          "HASH"
+                    }
+                },
+                "d": {
+                    "__ics__": {
+                        "child_key_hex": "0x000097af",
+                        "child_key":     "38831",
+                        "type":          "HASH"
+                    }
+                }
+            }',
             child_keys      => [
                 '0x000e1b1d',
                 '0x000097af'
