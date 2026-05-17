@@ -211,6 +211,15 @@ sub stat {
                 = unpack('x[4] L L L L L x[12] L L x[4] L x[4] L x[4] l l L', $data);
         }
     }
+    elsif ($^O eq 'freebsd' && $Config{longsize} == 8) {
+        # 64-bit FreeBSD: ipc_perm is 32 bytes.
+        # ipc_perm: cuid(4) cgid(4) uid(4) gid(4) mode(2) _seq(2) pad(4) _key(8)
+        # shmid_ds: segsz(8) lpid(4) cpid(4) nattch(8) atime(8) dtime(8) ctime(8)
+        # (key_t = long = 8 bytes on FreeBSD 64-bit, with 4 bytes of alignment padding)
+
+        @values{qw(cuid cgid uid gid mode segsz lpid cpid nattch atime dtime ctime)}
+            = unpack('L L L L S x[14] Q l l Q q q q', $data);
+    }
     else {
         # macOS/BSD shmid_ds / ipc_perm layout:
         #
