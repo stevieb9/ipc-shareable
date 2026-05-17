@@ -19,10 +19,22 @@ my $pc = Pod::Coverage->new(
     private => [qr/^shlock$/, qr/^shunlock$/, qr/[A-Z]/, qr/^_/],
 );
 
-is $pc->coverage, 1, "pod coverage ok";
+is $pc->coverage, 1, "IPC::Shareable pod coverage ok";
 
 if ($pc->uncovered){
-    warn "Uncovered:\n\t", join( ", ", $pc->uncovered ), "\n";
+    warn "IPC::Shareable uncovered:\n\t", join( ", ", $pc->uncovered ), "\n";
+}
+
+my $pc_shm = Pod::Coverage->new(
+    package => 'IPC::Shareable::SharedMem',
+    pod_from => 'lib/IPC/Shareable/SharedMem.pm',
+    private  => [qr/^_/],
+);
+
+is $pc_shm->coverage, 1, "IPC::Shareable::SharedMem pod coverage ok";
+
+if ($pc_shm->uncovered){
+    warn "IPC::Shareable::SharedMem uncovered:\n\t", join( ", ", $pc_shm->uncovered ), "\n";
 }
 
 done_testing;
