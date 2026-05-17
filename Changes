@@ -76,6 +76,9 @@ Revision history for Perl extension IPC::Shareable.
     - Fix issue when using JSON serializer where it wasn't properly handling
       scalar references properly (eg. creating a tie with a hashref)
     - Enhanced much of the test suite to test both Storable and JSON serializers
+    - Much work in order to add provisions so that shm counting and tracking
+      works on FreeBSD
+    - Add FreeBSD VM config and unit test runner in ci/ dir
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
