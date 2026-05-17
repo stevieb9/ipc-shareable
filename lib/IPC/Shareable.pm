@@ -2485,7 +2485,7 @@ data:
 
     {"c": 1}
 
-On decode, any C<__ics__> marker is spotted and a tie with C<< create => 0>> is
+On decode, any C<__ics__> marker is spotted and a tie with C<create =Egt 0> is
 used to re-attach to the existing child segment by that key; no new segment is
 created, it simply reconnects.
 
