@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use Carp qw(carp croak confess);
+use Config;
 use Data::Dumper;
 use IPC::SysV qw(IPC_RMID IPC_STAT);
 
@@ -190,21 +191,25 @@ sub stat {
     my %values;
 
     if ($^O eq 'linux') {
-        # Linux x86_64 shmid_ds / ipc64_perm layout:
-        #
-        # ipc64_perm (48 bytes total):
-        #   key(4) uid(4) gid(4) cuid(4) cgid(4) mode(4/uint)
-        #   seq(2) pad2(2) [4 bytes implicit align-pad]
-        #   unused1(8) unused2(8)
-        #
-        # shmid_ds (after ipc64_perm):
-        #   segsz(8) atime(8) dtime(8) ctime(8) cpid(4) lpid(4) nattch(8)
-        #
-        # Note: atime/dtime/ctime come BEFORE cpid/lpid on Linux,
-        # the reverse of macOS/BSD.
+        if ($Config{longsize} == 8) {
+            # 64-bit Linux: ipc64_perm is 48 bytes.
+            #   ipc64_perm: key(4) uid(4) gid(4) cuid(4) cgid(4) mode(4)
+            #               seq(2) pad2(2) [4-byte align-pad] unused1(8) unused2(8)
+            # shmid_ds: segsz(8) atime(8) dtime(8) ctime(8) cpid(4) lpid(4) nattch(8)
 
-        @values{qw(uid gid cuid cgid mode segsz atime dtime ctime cpid lpid nattch)}
-            = unpack('x[4] L L L L L x[24] Q q q q l l Q', $data);
+            @values{qw(uid gid cuid cgid mode segsz atime dtime ctime cpid lpid nattch)}
+                = unpack('x[4] L L L L L x[24] Q q q q l l Q', $data);
+        }
+        else {
+            # 32-bit Linux: ipc64_perm is 36 bytes (unsigned long = 4 bytes).
+            #   ipc64_perm: key(4) uid(4) gid(4) cuid(4) cgid(4) mode(4)
+            #               seq(2) pad2(2) unused1(4) unused2(4)
+            # shmid_ds: segsz(4) atime(4) atime_nsec(4) dtime(4) dtime_nsec(4)
+            #           ctime(4) ctime_nsec(4) cpid(4) lpid(4) nattch(4)
+
+            @values{qw(uid gid cuid cgid mode segsz atime dtime ctime cpid lpid nattch)}
+                = unpack('x[4] L L L L L x[12] L L x[4] L x[4] L x[4] l l L', $data);
+        }
     }
     else {
         # macOS/BSD shmid_ds / ipc_perm layout:

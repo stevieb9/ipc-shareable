@@ -41,3 +41,25 @@ jobs:
         run: |
           cpanm -n Devel::Cover::Report::Coveralls
           cover -test -report Coveralls
+
+  build-i386:
+    runs-on: ubuntu-latest
+    name: Perl (system) on ubuntu i386
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up QEMU for i386
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: i386
+      - name: Run tests inside i386 container
+        uses: addnab/docker-run-action@v3
+        with:
+          image: i386/ubuntu:22.04
+          options: -v ${{ github.workspace }}:/workspace
+          run: |
+            apt-get update -q
+            apt-get install -y -q perl cpanminus make gcc
+            cd /workspace
+            cpanm ExtUtils::MakeMaker
+            cpanm --installdeps .
+            CI_TESTING=1 prove -lv t

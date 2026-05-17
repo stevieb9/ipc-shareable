@@ -6,6 +6,7 @@ use strict;
 require 5.00503;
 
 use Carp qw(croak confess carp);
+use Config;
 use Data::Dumper;
 use Digest::MD5 qw(md5_hex);
 use IPC::Semaphore;
@@ -499,9 +500,11 @@ sub shm_segments {
         my $stat_buf = '';
         shmctl($id, IPC_STAT, $stat_buf) or next;
 
-        my ($segsz) = $^O eq 'linux'
-            ? unpack('x[48] Q', $stat_buf)
-            : unpack('x[24] Q', $stat_buf);
+        my ($segsz) = $^O ne 'linux'
+            ? unpack('x[24] Q', $stat_buf)           # macOS/BSD
+            : $Config{longsize} == 8
+                ? unpack('x[48] Q', $stat_buf)       # 64-bit Linux
+                : unpack('x[36] L', $stat_buf);      # 32-bit Linux
 
         next unless $segsz;
 
