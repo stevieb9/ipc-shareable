@@ -1,0 +1,44 @@
+# Lima VM config for FreeBSD 14.3 aarch64
+# Matches the CPAN smoker platform that reported struct unpack failures
+# (14.1 is no longer mirrored; 14.3 has identical struct layout).
+#
+# Setup (one-time):
+#   limactl create --name freebsd-ipc ci/freebsd-lima.yaml
+#   limactl start freebsd-ipc
+#
+# Run tests:
+#   ./ci/freebsd-test.sh
+#
+# Interactive shell:
+#   limactl shell freebsd-ipc
+#
+# Stop / delete:
+#   limactl stop freebsd-ipc
+#   limactl delete freebsd-ipc
+
+vmType: qemu
+os: FreeBSD
+arch: aarch64
+
+user:
+  name: freebsd
+
+images:
+  - location: "https://download.freebsd.org/releases/VM-IMAGES/14.3-RELEASE/aarch64/Latest/FreeBSD-14.3-RELEASE-arm64-aarch64-BASIC-CLOUDINIT-ufs.qcow2.xz"
+    arch: aarch64
+
+cpus: 2
+memory: "2GiB"
+disk: "20GiB"
+
+mounts:
+  - location: "~/repos/ipc-shareable"
+    mountPoint: /ipc-shareable
+    writable: false
+
+provision:
+  - mode: system
+    script: |
+      #!/bin/sh
+      set -e
+      pkg install -y perl5 p5-App-cpanminus gmake p5-ExtUtils-MakeMaker

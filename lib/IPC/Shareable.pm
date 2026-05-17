@@ -456,9 +456,16 @@ sub attributes {
     }
 }
 sub shm_count {
-    my $count = `ipcs -m | grep "0x" | wc -l`;
-    chomp $count;
-    return int($count);
+    my $count = 0;
+
+    for my $line (`ipcs -m`) {
+        # Shared-memory rows are prefixed with "m" on BSD/macOS/Linux ipcs.
+        # Parse the table directly so this works when keys are decimal
+        # (FreeBSD) or hex (Linux/macOS).
+        $count++ if $line =~ /^\s*m\s+\d+\s+\S+/;
+    }
+
+    return $count;
 }
 sub shm_segments {
     shift if ref($_[0]) || (defined $_[0] && !ref($_[0]) && UNIVERSAL::isa($_[0], __PACKAGE__));
@@ -470,9 +477,16 @@ sub shm_segments {
     my %segments;
 
     for my $line (`ipcs -m`) {
-        next unless $line =~ /(0x[0-9a-fA-F]+)/;
-        my $hex_key = $1;
-        my $key_int = hex($hex_key);
+        next unless $line =~ /^\s*m\s+\d+\s+(\S+)/;
+
+        my $raw_key = $1;
+        my $key_int = $raw_key =~ /^0x[0-9a-fA-F]+$/
+            ? hex($raw_key)
+            : $raw_key =~ /^\d+$/
+                ? int($raw_key)
+                : next;
+
+        my $hex_key = sprintf('0x%08x', $key_int);
 
         next if $key_int == 0;  # IPC_PRIVATE segments can't be found by key
 
