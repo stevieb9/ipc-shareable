@@ -6,76 +6,131 @@ use IPC::Shareable;
 use Test::More;
 use Test::SharedFork;
 
-#BEGIN {
-#    if (! $ENV{CI_TESTING}) {
-#        plan skip_all => "Not on a legit CI platform...";
-#    }
-#}
-
 my $segs_before = IPC::Shareable::shm_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
-my $t  = 1;
-my $ok = 1;
+# serializer: storable
+{
+    my $awake = 0;
+    local $SIG{ALRM} = sub { $awake = 1 };
 
-my $awake = 0;
-local $SIG{ALRM} = sub { $awake = 1 };
+    my($av, $hv);
 
-my($av, $hv);
+    my $pid = fork;
+    defined $pid or die "Cannot fork : $!";
 
-my $pid = fork;
-defined $pid or die "Cannot fork : $!";
+    if ($pid == 0) {
+        # child
 
-if ($pid == 0) {
-    # child
+        sleep unless $awake;
 
-    sleep unless $awake;
+        tie $hv, 'IPC::Shareable', 'hash1', { destroy => 0 };
+        tie $av, 'IPC::Shareable', 'arry1', { destroy => 0 };
 
-    tie $hv, 'IPC::Shareable', 'hash1', { destroy => 0 };
-    tie $av, 'IPC::Shareable', 'arry1', { destroy => 0 };
+        is $hv, 'baz', "storable: child: HV is 'baz' ok";
+        is $av, 'bong', "storable: child: AV is 'bong' ok";
 
-    is $hv, 'baz', "child: HV is 'baz' ok";
-    is $av, 'bong', "child: AV is 'bong' ok";
+        $hv = { };
+        $av = [ ];
 
-    $hv = { };
-    $av = [ ];
+        $av->[1]->[2] = 'beep';
+        $av->[2]->[3] = 'bang';
 
-    $av->[1]->[2] = 'beep';
-    $av->[2]->[3] = 'bang';
+        is $av->[1]->[2], 'beep', "storable: child: nested AV 1 has 'beep' ok";
+        is $av->[2]->[3], 'bang', "storable: child: nested AV 2 has 'bang' ok";
 
-    is $av->[1]->[2], 'beep', "child: nested AV 1 has 'beep' ok";
-    is $av->[2]->[3], 'bang', "child: nested AV 2 has 'bang' ok";
+        $hv->{blip}->{blarp} = 'blurp';
+        $hv->{flip}->{flop}  = 'flurp';
 
-    $hv->{blip}->{blarp} = 'blurp';
-    $hv->{flip}->{flop}  = 'flurp';
+        is $hv->{blip}->{blarp}, 'blurp', "storable: child: nested HV 1 is 'blurp' ok";
+        is $hv->{flip}->{flop}, 'flurp', "storable: child: nested HV 2 is 'flurp' ok";
 
-    is $hv->{blip}->{blarp}, 'blurp', "child: nested HV 1 is 'blurp' ok";
-    is $hv->{flip}->{flop}, 'flurp', "child: nested HV 2 is 'flurp' ok";
+        exit;
+    } else {
+        # parent
 
+        tie $hv, 'IPC::Shareable', 'hash1', { create => 1, destroy => 1 };
+        tie $av, 'IPC::Shareable', 'arry1', { create => 1, destroy => 1 };
 
-    exit;
-} else {
-    # parent
+        $hv = 'baz';
+        $av = 'bong';
 
-    tie $hv, 'IPC::Shareable', 'hash1', { create => 1, destroy => 1 };
-    tie $av, 'IPC::Shareable', 'arry1', { create => 1, destroy => 1 };
+        kill ALRM => $pid;
+        waitpid($pid, 0);
 
-    $hv = 'baz';
-    $av = 'bong';
+        is $hv->{blip}->{blarp}, 'blurp', "storable: parent: nested HV 1 is 'blurp' ok";
+        is $hv->{flip}->{flop}, 'flurp', "storable: parent: nested HV 2 is 'flurp' ok";
 
-    kill ALRM => $pid;
-    waitpid($pid, 0);
+        is $av->[1]->[2], 'beep', "storable: parent: nested AV 1 has 'beep' ok";
+        is $av->[2]->[3], 'bang', "storable: parent: nested AV 2 has 'bang' ok";
 
-    is $hv->{blip}->{blarp}, 'blurp', "parent: nested HV 1 is 'blurp' ok";
-    is $hv->{flip}->{flop}, 'flurp', "parent: nested HV 2 is 'flurp' ok";
+        IPC::Shareable->clean_up_all;
 
-    is $av->[1]->[2], 'beep', "parent: nested AV 1 has 'beep' ok";
-    is $av->[2]->[3], 'bang', "parent: nested AV 2 has 'bang' ok";
+        is defined $av, '', "storable: AV cleaned after clean_up_all()";
+        is defined $hv, '', "storable: HV cleaned after clean_up_all()";
+    }
+}
 
-    IPC::Shareable->clean_up_all;
+# serializer: json
+{
+    my $awake = 0;
+    local $SIG{ALRM} = sub { $awake = 1 };
 
-    is defined $av, '', "AV cleaned after clean_up_all()";
-    is defined $hv, '', "HV cleaned after clean_up_all()";
+    my($av, $hv);
+
+    my $pid = fork;
+    defined $pid or die "Cannot fork : $!";
+
+    if ($pid == 0) {
+        # child
+
+        sleep unless $awake;
+
+        tie $hv, 'IPC::Shareable', 'hash1j', { destroy => 0, serializer => 'json' };
+        tie $av, 'IPC::Shareable', 'arry1j', { destroy => 0, serializer => 'json' };
+
+        is $hv, 'baz', "json: child: HV is 'baz' ok";
+        is $av, 'bong', "json: child: AV is 'bong' ok";
+
+        $hv = { };
+        $av = [ ];
+
+        $av->[1]->[2] = 'beep';
+        $av->[2]->[3] = 'bang';
+
+        is $av->[1]->[2], 'beep', "json: child: nested AV 1 has 'beep' ok";
+        is $av->[2]->[3], 'bang', "json: child: nested AV 2 has 'bang' ok";
+
+        $hv->{blip}->{blarp} = 'blurp';
+        $hv->{flip}->{flop}  = 'flurp';
+
+        is $hv->{blip}->{blarp}, 'blurp', "json: child: nested HV 1 is 'blurp' ok";
+        is $hv->{flip}->{flop}, 'flurp', "json: child: nested HV 2 is 'flurp' ok";
+
+        exit;
+    } else {
+        # parent
+
+        tie $hv, 'IPC::Shareable', 'hash1j', { create => 1, destroy => 1, serializer => 'json' };
+        tie $av, 'IPC::Shareable', 'arry1j', { create => 1, destroy => 1, serializer => 'json' };
+
+        $hv = 'baz';
+        $av = 'bong';
+
+        kill ALRM => $pid;
+        waitpid($pid, 0);
+
+        is $hv->{blip}->{blarp}, 'blurp', "json: parent: nested HV 1 is 'blurp' ok";
+        is $hv->{flip}->{flop}, 'flurp', "json: parent: nested HV 2 is 'flurp' ok";
+
+        is $av->[1]->[2], 'beep', "json: parent: nested AV 1 has 'beep' ok";
+        is $av->[2]->[3], 'bang', "json: parent: nested AV 2 has 'bang' ok";
+
+        IPC::Shareable->clean_up_all;
+
+        is defined $av, '', "json: AV cleaned after clean_up_all()";
+        is defined $hv, '', "json: HV cleaned after clean_up_all()";
+    }
 }
 
 IPC::Shareable::_end;

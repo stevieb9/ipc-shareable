@@ -73,6 +73,10 @@ Revision history for Perl extension IPC::Shareable.
       distribution
     - Updated CI so we get a test run on an i386 Ubuntu container to test
       32-bit platforms
+    - Fix issue when using JSON serializer where it wasn't properly handling
+      scalar references properly (eg. creating a tie with a hashref)
+    - Enhanced much of the test suite to test both Storable and JSON serializers
+    -
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

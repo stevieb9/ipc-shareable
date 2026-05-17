@@ -935,6 +935,14 @@ sub _encode_json_prepare {
         ];
     }
 
+    if ($type eq 'SCALAR' || $type eq 'REF') {
+        my $val   = $$data;
+        my $inner = ref($val) && _is_child($val);
+        return $inner
+            ? { '__ics__' => { type => $inner->{_type}, child_key => $inner->{_key}, child_key_hex => sprintf('0x%08x', $inner->{_key}) } }
+            : { '__sv__' => $val };
+    }
+
     return $data;
 }
 sub _decode_json {
@@ -960,6 +968,20 @@ sub _decode_json {
         }
 
         _decode_json_restore($data, $knot) if defined $knot && index($json, '"__ics__"') >= 0;
+
+        # Unwrap scalar-tie values encoded as { '__sv__' => val } or { '__ics__' => {...} }
+        if (defined $knot && $knot->{_type_int} == TYPE_SCALAR && ref($data) eq 'HASH') {
+            if (exists $data->{'__ics__'}) {
+                my $prev     = $knot->{_data};
+                my $prev_val = (defined $prev && ref($prev)) ? $$prev : undef;
+                my $resolved = _decode_json_resolve($data->{'__ics__'}, $prev_val, $knot);
+                return \$resolved;
+            }
+            if (exists $data->{'__sv__'}) {
+                my $val = $data->{'__sv__'};
+                return \$val;
+            }
+        }
 
         return $data;
     } else {
@@ -996,6 +1018,12 @@ sub _decode_json_restore {
                 $knot,
             );
         }
+    }
+    elsif ($type eq 'SCALAR' || $type eq 'REF') {
+        my $val = $$data;
+        return unless ref($val) eq 'HASH' && exists $val->{'__ics__'};
+        my $prev_val = (defined $prev && ref($prev)) ? $$prev : undef;
+        $$data = _decode_json_resolve($val->{'__ics__'}, $prev_val, $knot);
     }
 }
 sub _decode_json_resolve {
