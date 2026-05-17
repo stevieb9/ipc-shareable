@@ -2371,7 +2371,8 @@ This creates three segments:
                           stored data: { c => 1 }
 
 Each segment only knows about its direct children. The chain is followed
-lazily, one level at a time, as you C<FETCH> down into the structure.
+lazily, one level at a time, as you C<FETCH> down into the structure. (See the
+L</shm_segments> documentation to gather this structure within code).
 
 When you replace a child with a new reference where the previous value was
 also a reference, a new segment is created and the new data is stored there.
