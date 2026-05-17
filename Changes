@@ -49,6 +49,34 @@ Revision history for Perl extension IPC::Shareable.
     - Added uuid(), sets an internal UUID for each tied object (primarily used
       for troubleshooting)
     - Fixes #50; Added enforced locking, with optional warning
+    - Correct five areas in clean/delete routines where segments may have been
+      able to leak
+    - Removed redundant _global_register checks in STORE, FETCH, PUSH; _tie()
+      already registers unconditionally
+    - Add ref() check before _is_child(); skips the function call reftype()
+      entirely for plain scalar values in FETCH, CLEAR, and DELETE
+    - Add ref() check before _need_tie(); same pattern in all three STORE
+      branches
+    - _type_int numeric dispatch; string eq comparisons on every operation
+      replaced with == against integer constants in STORE, FETCH, and CLEAR
+    - Major POD enhancements/cleanup
+     - Renamed ipcs() to shm_count() as it's far more explanitory
+    - Add new method sysv_info() which if the system provides it, retrieves all
+      information related to the SYSV infrastructure (limits etc)
+    - Closes #45; We now accept a hex-based value as the key
+    - Added shm_segments(); fetches raw data about all segments that had been
+      created by this distribution
+    - Added orphans(); returns an aref of all segment keys (in hex string
+      format) for segments we've created but are no longer registered by us
+    - Closes #39; remove() now accepts a key, and can remove the segment and
+      semaphores related to that key, even if it isn't related to this
+      distribution
+    - Updated CI so we get a test run on an i386 Ubuntu container to test
+      32-bit platforms
+    - Fix issue when using JSON serializer where it wasn't properly handling
+      scalar references properly (eg. creating a tie with a hashref)
+    - Enhanced much of the test suite to test both Storable and JSON serializers
+    -
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

@@ -1,0 +1,337 @@
+IPC::Shareable — Agent Context File
+=====================================
+Last updated: 2026-05-16 (session 3)
+Current version: 1.14 (UNRELEASED)
+Platform: macOS (primary dev), also CI-tested on 64-bit and 32-bit Linux
+Perl: 5.00503 minimum required
+
+Purpose of this file
+---------------------
+Gives an AI coding assistant full context about this distribution without
+needing to re-explore the codebase from scratch, saving tokens.
+
+-----------------------------------------------------------------------
+DISTRIBUTION OVERVIEW
+-----------------------------------------------------------------------
+IPC::Shareable is a Perl tie interface to SysV shared memory. It allows
+scalars, arrays, and hashes to be shared between processes using the
+standard tie() interface. Nested data structures are supported by
+creating additional child shared memory segments automatically.
+
+Key deps: IPC::SysV, IPC::Semaphore, Storable, JSON, Scalar::Util,
+          String::CRC32, Digest::MD5, IPC::Shareable::SharedMem (bundled)
+
+-----------------------------------------------------------------------
+REPOSITORY LAYOUT
+-----------------------------------------------------------------------
+lib/IPC/Shareable.pm            Main module — all tie logic, serialize/
+                                deserialize, locking, key generation
+lib/IPC/Shareable/SharedMem.pm  Low-level shared memory segment object
+t/                              Test suite (Test::More + Test::SharedFork)
+benchmarks/                     Benchmark scripts (not part of test suite)
+testing/                        Ad-hoc manual test scripts (scratch)
+docs/                           System config notes (not installed)
+scripts/flush_ipc.sh            Cleans all segments/semaphores for current user
+
+-----------------------------------------------------------------------
+ARCHITECTURE
+-----------------------------------------------------------------------
+
+Tie internals
+  - TIESCALAR/TIEHASH/TIEARRAY are the constructors.
+  - The internal object ($knot) holds:
+      _shm       => IPC::Shareable::SharedMem object (the segment)
+      _sem       => IPC::Semaphore object
+      _data      => In-memory cache of last read value
+      _type      => 'HASH' | 'ARRAY' | 'SCALAR'  (string)
+      _type_int  => TYPE_HASH(0) | TYPE_ARRAY(1) | TYPE_SCALAR(2)  (integer constant)
+      _key       => integer SysV key
+      attributes => hashref of creation params
+
+Scalar tie internals (IMPORTANT)
+  - TIESCALAR STORE always does: $knot->{_data} = \$val
+  - So _data is ALWAYS a reference to the value (reftype = 'SCALAR' or 'REF')
+  - reftype == 'SCALAR': plain scalar value stored
+  - reftype == 'REF':    value is itself a reference (e.g. \$ref, [...], {...})
+
+Nested structures
+  - Each nested ref (arrayref/hashref/scalarref) gets its own child segment.
+  - Child segments are tracked in %global_register and %process_register.
+  - The tie magic is set on the referenced value via _magic_tie().
+
+Keys
+  - User provides a 'key' string (glue); internally converted to a CRC32 int.
+  - Hex keys (e.g. '0x1234abcd') are accepted and converted with hex().
+  - MAX_KEY_INT_SIZE (0x80000000) cap applied to avoid 32-bit/double issues.
+
+-----------------------------------------------------------------------
+SERIALIZERS
+-----------------------------------------------------------------------
+Two serializers are supported, selected per-tie with serializer => '...':
+
+  storable  (default)
+    Uses Storable::freeze / Storable::thaw.
+    Format: 'IPC::Shareable' prefix + frozen bytes.
+    Handles all Perl data including blessed refs transparently.
+
+  json
+    Uses JSON::encode_json / JSON::decode_json.
+    Format: 'IPC::Shareable' prefix + JSON bytes.
+    Cannot encode blessed refs directly — child segment references are
+    replaced with __ics__ marker objects before encoding.
+
+JSON child-segment markers (written to shared memory):
+  { "__ics__": { "type": "HASH"|"ARRAY"|"SCALAR",
+                 "child_key": <int>,
+                 "child_key_hex": "0x..." } }
+
+JSON scalar-tie wrapper (written to shared memory):
+  { "__sv__": <value> }
+  Used because TIESCALAR always stores \$val, so the top-level data
+  passed to encode_json is always a scalar-ref. This wrapper makes it
+  a JSON object so decode_json can return it, then it is unwrapped.
+
+-----------------------------------------------------------------------
+JSON ENCODE/DECODE PIPELINE  (lib/IPC/Shareable.pm)
+-----------------------------------------------------------------------
+
+_encode_json_prepare($data)          [line ~905]
+  Converts in-memory data to JSON-safe structure BEFORE encode_json.
+  - HASH:   replaces child segment values with __ics__ markers.
+  - ARRAY:  same, for each element.
+  - SCALAR/REF: wraps in { __sv__ => val } or __ics__ marker if child.
+  Returns the transformed structure (does NOT recurse into non-child values).
+
+_decode_json($seg, $knot)            [line ~948]
+  Reads raw bytes from segment, strips 'IPC::Shareable' tag, decode_json.
+  Calls _decode_json_restore() to re-attach child segments in the decoded data.
+  For TYPE_SCALAR knots: unwraps { __sv__ => val } -> \$val,
+                         or { __ics__ => ... } -> reattached child ref.
+  Returns data in the same form as Storable would: hashref, arrayref, or \$val.
+
+_decode_json_restore($data, $knot)   [line ~991]
+  Mutates $data in place, replacing __ics__ marker hashrefs with live
+  tied child references (reusing existing ones from _data cache if key matches).
+  Handles HASH parent, ARRAY parent, and SCALAR/REF parent.
+  Uses _decode_json_resolve() for each child.
+
+_decode_json_resolve($info, $existing, $knot)  [line ~1029]
+  If $existing is already a live child with matching key, returns it (cache hit).
+  Otherwise calls _decode_json_reattach().
+
+_decode_json_reattach($info, $knot)  [line ~1039]
+  Creates a new tie() to re-attach to the child segment by key.
+  Handles type HASH, ARRAY, SCALAR.
+  Uses parent's attributes (serializer, size, etc.) for the child tie.
+
+-----------------------------------------------------------------------
+PUBLIC API  (IPC::Shareable)
+-----------------------------------------------------------------------
+
+Class/object methods:
+  shm_count()          Count of all SysV shared memory segments on system
+  shm_segments()       Hashref of all IPC::Shareable segments keyed by hex key.
+                         Each entry: { child_keys, content, local_process, orphaned }
+  orphans()            List of hex keys for orphaned segments (created by us,
+                         not in global_register)
+  sysv_info()          Hashref of SysV kernel parameters (darwin: sysctl,
+                         linux: /proc/sys/kernel)
+  attributes($attr)    Get all tie attributes, or one by name
+  seg()                Returns the SharedMem object for this tie
+  sem()                Returns the IPC::Semaphore object for this tie
+  uuid()               Returns MD5-based UUID for this tie instance
+  singleton($glue, $warn)  Implements Script::Singleton-style single-instance
+  lock($flags, $code)  Acquire lock (LOCK_SH/LOCK_EX/LOCK_NB/LOCK_UN).
+                         Optional coderef: locks, runs, unlocks.
+  unlock()             Release lock
+  clean_up()           Remove all segments/semaphores for this process
+  clean_up_all()       Remove all segments/semaphores for all processes
+  clean_up_protected() Remove only non-protected segments
+  remove()             Remove this tie's segment+semaphore
+  remove($key)         Remove an arbitrary segment by key (string or int)
+
+Tie creation parameters (passed as hashref to tie()):
+  key         => glue string or 0x... hex  (required)
+  create      => 0|1    create if not exists
+  exclusive   => 0|1    fail if already exists
+  destroy     => 0|1    auto-remove on untie/DESTROY
+  size        => bytes  per-segment size (default 65536)
+  mode        => octal  permissions (default 0666)
+  serializer  => 'storable'|'json'
+  tidy        => 0|1    (default 1) clean up child segments on CLEAR
+  graceful    => 0|1    don't croak on exclusive collision, return undef $$
+  warn        => 0|1    warn instead of croak on lock conflicts
+  magic       => 0|1    (internal) used for child segment re-attach
+
+Exported constants (use IPC::Shareable qw(:lock)):
+  LOCK_SH LOCK_EX LOCK_NB LOCK_UN
+
+-----------------------------------------------------------------------
+IPC::Shareable::SharedMem API
+-----------------------------------------------------------------------
+Constructor: new(%params)  — key (int or 0x hex), size, flags, mode, type
+Methods:
+  id()         shmid integer
+  key()        integer key
+  key_hex()    '0x%08x' formatted key
+  flags()      SysV flags used
+  mode()       permissions
+  size()       segment size in bytes
+  type()       tie type string ('HASH'|'ARRAY'|'SCALAR')
+  data()       raw shmread content with null bytes stripped
+  stat()       IPC::Shareable::SharedMem::stat struct (uid/gid/mode/segsz/
+               lpid/cpid/nattch/atime/dtime/ctime/etc)
+  stats()      hashref of all stat fields
+  stat_list()  list of stat field names
+  shmread($buf, $pos, $size)
+  shmwrite($data)
+  remove()     shmctl IPC_RMID; returns 1 on success or '0 but true',
+               0 on failure
+
+-----------------------------------------------------------------------
+TEST SUITE OVERVIEW  (t/)
+-----------------------------------------------------------------------
+All tests run unconditionally (no CI_TESTING flag needed as of 1.14).
+All test files end with a leak check (compare seg/sem counts before/after).
+Fork tests use Test::SharedFork.
+
+File                  Tests  Notes
+00-base.t               ~5   Module loads, constants, basic sanity
+02-create.t                  Segment creation options (create/exclusive)
+03-new.t                     Object creation
+04-new_tied_obj.t            tie() interface
+06-key.t                     Key handling, hex keys
+10-sv.t                      Tied scalars (storable)
+11-av.t                ~61   Tied arrays — storable + JSON blocks,
+                             nested arrayrefs and hashrefs, deep nesting
+12-hv.t                      Tied hashes (storable)
+14-attributes.t              Attribute access
+16-ref.t              ~185   Scalar tied to refs — storable + JSON,
+                             \$scalar, arrayrefs, hashrefs, nested structs
+18-fork_ipc.t           ~5   Fork + shared hash — storable + JSON
+20-lock_operation.t          lock() / unlock()
+22-lock_semaphore.t          Semaphore locking
+24-clean.t                   clean_up() / clean_up_all()
+26-ipcav.t                   Array IPC across processes
+28-ipchv.t             ~17   Locked fork hash (ALRM signaling) — storable + JSON
+30-ipcref.t            ~25   Fork with nested refs child->parent — storable + JSON
+32-obj.t                     Object (blessed ref) storage
+36-ipcobj.t                  Object IPC across processes
+38-lsync.t                   Lock sync
+40-tied.t                    Tied object access
+42-seg_sem.t                 Segment + semaphore pairing
+44-nested_segs_tidy.t        Nested segment cleanup (tidy=1)
+45-nested_segs_untidy.t      Nested segment cleanup (tidy=0)
+47-seg_size.t                Size limits
+48-size_exceeded.t           Croak on size exceeded
+49-exhaust_shm_slots.t       Exhaust shared memory slots
+52-graceful.t                graceful => 1 mode
+54-singleton.t               singleton() basic
+55-singleton_warn.t          singleton() with warn
+56-singleton_class.t         singleton() class method form
+60-exceptions.t              Croak/warn paths
+62-fork_dup_rand_keys.t      Duplicate random key handling in forks
+63-sig_child_ignore.t        SIGCHLD => IGNORE interaction
+65-clean_protected.t         clean_up_protected()
+80-SharedMem.t               IPC::Shareable::SharedMem unit tests
+90-pod_coverage.t            POD coverage — IPC::Shareable AND
+                             IPC::Shareable::SharedMem (RELEASE_TESTING)
+91-pod_linkcheck.t           POD link check (RELEASE_TESTING)
+92-pod.t                     POD syntax (RELEASE_TESTING)
+93-manifest.t                MANIFEST check (RELEASE_TESTING)
+99-end.t                     Final leak check
+
+Total test count: ~846 (as of 2026-05-16 session 3)
+Note: count is non-deterministic by ±1 because t/16-ref.t's storable block
+  generates 10 random letters from 'a'-'z' into a hash — duplicates reduce
+  the number of assertions. The json block uses fixed keys and is stable.
+
+Running tests:
+  prove -l t/*.t           Sequential (safe — avoid -j, see below)
+  RELEASE_TESTING=1 prove -l t/*.t   Includes author tests
+
+WARNING: Do NOT use prove -j (parallel) — many tests share SysV key
+  namespaces and will collide, causing spurious failures.
+
+-----------------------------------------------------------------------
+RECENT CHANGES (v1.14 development, this session and prior)
+-----------------------------------------------------------------------
+
+1. shm_segments() added
+   Returns hashref of all IPC::Shareable segments visible via `ipcs -m`.
+   Each entry includes child_keys, raw content, local_process flag, orphaned flag.
+   Handles macOS/64-bit Linux/32-bit Linux shmctl stat struct differences.
+
+2. orphans() added
+   Returns list of hex keys for segments created by IPC::Shareable that are
+   not currently in the global_register (i.e., leaked/orphaned segments).
+
+3. remove($key) extended
+   Now accepts an optional key argument (string or int) to remove an arbitrary
+   segment + semaphore by key, even if not tied to this object.
+
+4. 32-bit Linux fix in shm_segments()
+   shmctl stat unpack() was always using 'Q' (64-bit). Added $Config{longsize}
+   check: 64-bit uses 'x[48] Q', 32-bit uses 'x[36] L'.
+
+5. JSON scalar-tie encode bug fixed  (_encode_json_prepare)
+   TIESCALAR STORE always sets _data = \$val (a scalar-ref). The old
+   _encode_json_prepare only handled HASH and ARRAY, so passing a scalar-ref
+   to encode_json would crash or produce wrong output. Fixed by adding a
+   SCALAR/REF branch that wraps the value in { '__sv__' => $val }, or
+   emits an __ics__ marker if the value is a child segment.
+
+6. JSON scalar-tie decode fixed  (_decode_json)
+   After encode fix, needed corresponding unwrap in _decode_json. After
+   decode_json returns a hashref, for TYPE_SCALAR knots we now check for
+   { __sv__ => val } and return \$val, or { __ics__ => ... } and return
+   a reattached child ref.
+
+7. _decode_json_restore SCALAR/REF branch added
+   _decode_json_restore previously only handled HASH and ARRAY parent
+   contexts when restoring __ics__ child references. Added SCALAR/REF
+   branch for completeness and symmetry (handles the case where a
+   scalar-tied value holds a child-segment reference).
+
+8. Test suite dual-serializer coverage added
+   t/11-av.t, t/16-ref.t, t/18-fork_ipc.t, t/28-ipchv.t, t/30-ipcref.t
+   all now have JSON serializer test blocks in addition to storable.
+   Total test count: 842 (as of 2026-05-16).
+
+9. t/90-pod_coverage.t extended
+   Now checks POD coverage for both IPC::Shareable and
+   IPC::Shareable::SharedMem (two separate Pod::Coverage checks).
+
+10. ipcs() renamed to shm_count()
+    More descriptive name. The old ipcs() name is gone.
+
+11. t/16-ref.t: scalar child segment test added (session 2)
+    New sub-block tests a json scalar-tie holding a reference to a pre-existing
+    tied child scalar. Verifies encode (__ics__ marker via _encode_json_prepare
+    SCALAR/REF branch), decode (TYPE_SCALAR + __ics__ block in _decode_json),
+    write-through, and cold re-attach (second tie to same parent key, no cache).
+    Uses keys '16svp' / '16svc'.
+
+12. _decode_json_restore SCALAR/REF dead branch removed (session 3)
+    The SCALAR/REF branch added in session 1 was dead code: decode_json() always
+    returns a hashref or arrayref, never a scalar-ref, so reftype($data) in
+    _decode_json_restore could never be 'SCALAR' or 'REF'. Removed cleanly.
+    All 846 tests still pass.
+
+-----------------------------------------------------------------------
+KNOWN GAPS / FUTURE WORK
+-----------------------------------------------------------------------
+- shm_segments() only sees IPC_PRIVATE-key segments if we have the shmid;
+  IPC_PRIVATE (key=0) segments are skipped (can't shmget by key=0).
+- sysv_info() only covers darwin and linux; BSD/other systems return undef.
+- Benchmark results are in benchmarks/bench_results.txt.
+
+-----------------------------------------------------------------------
+DEVELOPMENT NOTES
+-----------------------------------------------------------------------
+- DEBUGGING mode: set SHAREABLE_DEBUG=1 in environment for verbose output.
+- flush_ipc.sh: run to wipe all segments/semaphores when tests leave debris.
+- The Changes file is in traditional Perl changelog format.
+- MYMETA.json/yml are generated by Makefile.PL (not hand-edited).
+- The blib/ directory is the build output; don't edit files there.
+- lib/ is the source of truth.

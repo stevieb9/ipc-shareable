@@ -34,3 +34,8 @@ build/
 \.base$
 main$
 .github/
+^testing/
+^benchmarks/
+^.vscode/
+^_Inline/
+agent.txt

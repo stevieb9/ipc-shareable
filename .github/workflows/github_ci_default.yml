@@ -37,6 +37,29 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI_TESTING: 1
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         run: |
           cpanm -n Devel::Cover::Report::Coveralls
           cover -test -report Coveralls
+
+  build-i386:
+    runs-on: ubuntu-latest
+    name: Perl (system) on ubuntu i386
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up QEMU for i386
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: i386
+      - name: Run tests inside i386 container
+        uses: addnab/docker-run-action@v3
+        with:
+          image: debian:bookworm
+          options: --platform linux/386 -v ${{ github.workspace }}:/workspace
+          run: |
+            apt-get update -q
+            apt-get install -y -q perl cpanminus make gcc
+            cd /workspace
+            cpanm ExtUtils::MakeMaker
+            cpanm --installdeps .
+            CI_TESTING=1 prove -lv t

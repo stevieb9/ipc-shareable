@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use Carp qw(carp croak confess);
+use Config;
 use Data::Dumper;
 use IPC::SysV qw(IPC_RMID IPC_STAT);
 
@@ -40,6 +41,10 @@ sub new {
     my ($class, %params) = @_;
 
     my $self = bless {}, $class;
+
+    if (defined $params{key} && $params{key} =~ /^0x[0-9a-fA-F]+$/i) {
+        $params{key} = hex($params{key});
+    }
 
     if (! defined $params{key} || $params{key} !~ /^\d+$/) {
         croak "new() requires a 'key' parameter with an integer value";
@@ -183,23 +188,50 @@ sub stat {
     my $data = '';
     shmctl($self->id, IPC_STAT, $data) or return undef;
 
-    my @unpacked_data = unpack("LLLLSx[6]QllSx[2]qqq", $data);
+    my %values;
+
+    if ($^O eq 'linux') {
+        if ($Config{longsize} == 8) {
+            # 64-bit Linux: ipc64_perm is 48 bytes.
+            #   ipc64_perm: key(4) uid(4) gid(4) cuid(4) cgid(4) mode(4)
+            #               seq(2) pad2(2) [4-byte align-pad] unused1(8) unused2(8)
+            # shmid_ds: segsz(8) atime(8) dtime(8) ctime(8) cpid(4) lpid(4) nattch(8)
+
+            @values{qw(uid gid cuid cgid mode segsz atime dtime ctime cpid lpid nattch)}
+                = unpack('x[4] L L L L L x[24] Q q q q l l Q', $data);
+        }
+        else {
+            # 32-bit Linux: ipc64_perm is 36 bytes (unsigned long = 4 bytes).
+            #   ipc64_perm: key(4) uid(4) gid(4) cuid(4) cgid(4) mode(4)
+            #               seq(2) pad2(2) unused1(4) unused2(4)
+            # shmid_ds: segsz(4) atime(4) atime_nsec(4) dtime(4) dtime_nsec(4)
+            #           ctime(4) ctime_nsec(4) cpid(4) lpid(4) nattch(4)
+
+            @values{qw(uid gid cuid cgid mode segsz atime dtime ctime cpid lpid nattch)}
+                = unpack('x[4] L L L L L x[12] L L x[4] L x[4] L x[4] l l L', $data);
+        }
+    }
+    else {
+        # macOS/BSD shmid_ds / ipc_perm layout:
+        #
+        # ipc_perm (24 bytes): uid(4) gid(4) cuid(4) cgid(4) mode(2/ushort) seq(2) key(4)
+        # shmid_ds: segsz(8) lpid(4) cpid(4) nattch(2/ushort) [pad 2] atime(8) dtime(8) ctime(8)
+        #
+        # Fields happen to match stat_list() order, so a linear unpack works.
+
+        @values{stat_list()} = unpack('L L L L S x[6] Q l l S x[2] q q q', $data);
+    }
+
     my @struct_initializers;
-
-    # print Dumper \@unpacked_data;
-
-    my $iter = 0;
     for (stat_list()) {
-        my $value = $unpacked_data[$iter];
+        my $value = $values{$_};
         if ($_ eq 'mode') {
-            # Make the mode octal so it's easier to read
             $value = $value & 0777;
             push @struct_initializers, $_ => sprintf("%#o", $value);
         }
         else {
             push @struct_initializers, $_ => $value;
         }
-            $iter++;
     }
 
     return IPC::Shareable::SharedMem::stat->new(@struct_initializers);

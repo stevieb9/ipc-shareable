@@ -6,13 +6,7 @@ use IPC::Shareable;
 use Test::More;
 use Test::SharedFork;
 
-#BEGIN {
-#    if (! $ENV{CI_TESTING}) {
-#        plan skip_all => "Not on a legit CI platform...";
-#    }
-#}
-
-my $segs_before = IPC::Shareable::ipcs();
+my $segs_before = IPC::Shareable::shm_count();
 warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 #plan tests => 8;
@@ -87,18 +81,88 @@ if ($pid == 0) {
     waitpid($pid, 0);
 
     for (qw(fee fie foe fum)) {
-        is $hv{$_}, $pid, "parent: HV $_ has val $pid";
+        is $hv{$_}, $pid, "storable: parent: HV $_ has val $pid";
     }
 
     for (qw(eenie meenie minie moe)) {
-        is $hv{$_}, $$, "parent: HV $_ has val $$";
+        is $hv{$_}, $$, "storable: parent: HV $_ has val $$";
+    }
+}
+
+# serializer: json — only run from the parent (original child has no explicit exit)
+if ($pid != 0) {
+    my $awake2 = 0;
+    local $SIG{ALRM} = sub { $awake2 = 1 };
+
+    my $pid2 = fork;
+    defined $pid2 or die "Cannot fork: $!";
+
+    if ($pid2 == 0) {
+        # child
+
+        sleep unless $awake2;
+        $awake2 = 0;
+
+        my $ipch2 = tie my %hv, 'IPC::Shareable', "testj", {
+            create     => 'yes',
+            exclusive  => 0,
+            mode       => 0644,
+            destroy    => 0,
+            serializer => 'json',
+        };
+
+        for (qw(fee fie foe fum)) {
+            $ipch2->shlock();
+            $hv{$_} = $$;
+            $ipch2->shunlock();
+        }
+
+        sleep unless $awake2;
+
+        my $parent = getppid;
+        $parent == 1 and die "Parent process has unexpectedly gone away";
+
+        exit;
+    } else {
+        # parent
+
+        my $ipch2 = tie my %hv, 'IPC::Shareable', "testj", {
+            create     => 1,
+            exclusive  => 0,
+            mode       => 0666,
+            size       => 1024*512,
+            destroy    => 'yes',
+            serializer => 'json',
+        };
+
+        %hv = ();
+
+        kill ALRM => $pid2;
+        sleep 1;
+
+        for (qw(eenie meenie minie moe)) {
+            $ipch2->shlock();
+            $hv{$_} = $$;
+            $ipch2->shunlock();
+        }
+
+        kill ALRM => $pid2;
+        waitpid($pid2, 0);
+
+        for (qw(fee fie foe fum)) {
+            is $hv{$_}, $pid2, "json: parent: HV $_ has val $pid2";
+        }
+
+        for (qw(eenie meenie minie moe)) {
+            is $hv{$_}, $$, "json: parent: HV $_ has val $$";
+        }
     }
 }
 
 IPC::Shareable::_end;
 
 if ($pid != 0) {
-    my $segs_after = IPC::Shareable::ipcs();
+    my $segs_after = IPC::Shareable::shm_count();
     warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
     is $segs_after, $segs_before, "All segs, even those created in separate procs, cleaned up ok";
     done_testing();

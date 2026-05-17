@@ -11,7 +11,7 @@ BEGIN {
     use_ok('IPC::Shareable');
 };
 
-my $segs_before = IPC::Shareable::ipcs();
+my $segs_before = IPC::Shareable::shm_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 print "Starting with $segs_before segments\n";
@@ -33,7 +33,7 @@ $store{segs} = $segs_before;
 
 IPC::Shareable::_end;
 
-warn "Segs After: " . IPC::Shareable::ipcs() . "\n" if $ENV{PRINT_SEGS};
-is IPC::Shareable::ipcs(), $segs_before + 1, "No segs left after test suite run ok";
+warn "Segs After: " . IPC::Shareable::shm_count() . "\n" if $ENV{PRINT_SEGS};
+is IPC::Shareable::shm_count(), $segs_before + 1, "No segs left after test suite run ok";
 
 done_testing();

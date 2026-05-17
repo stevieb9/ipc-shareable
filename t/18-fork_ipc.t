@@ -6,52 +6,87 @@ use IPC::Shareable;
 use Test::More;
 use Test::SharedFork;
 
-#BEGIN {
-#    if (! $ENV{CI_TESTING}) {
-#        plan skip_all => "Not on a legit CI platform...";
-#    }
-#}
-
-my $segs_before = IPC::Shareable::ipcs();
+my $segs_before = IPC::Shareable::shm_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
-my $awake = 0;
-local $SIG{ALRM} = sub { $awake = 1 };
+# serializer: storable
+{
+    my $awake = 0;
+    local $SIG{ALRM} = sub { $awake = 1 };
 
-my $pid = fork;
-defined $pid or die "Cannot fork: $!";
+    my $pid = fork;
+    defined $pid or die "Cannot fork: $!";
 
-if ($pid == 0) {
-    # child
+    if ($pid == 0) {
+        # child
 
-    sleep unless $awake;
+        sleep unless $awake;
 
-    tie my %h, 'IPC::Shareable', { key => 'testing25', destroy => 0 };
-    $h{a} = 'foo';
-    exit;
-} else {
-    # parent
+        tie my %h, 'IPC::Shareable', { key => 'testing25', destroy => 0 };
+        $h{a} = 'foo';
+        exit;
+    } else {
+        # parent
 
-    tie my %h, 'IPC::Shareable', {
-        key     => 'testing25',
-        create  => 1,
-        destroy => 1,
-    };
+        tie my %h, 'IPC::Shareable', {
+            key     => 'testing25',
+            create  => 1,
+            destroy => 1,
+        };
 
-    $h{a} = 'bar';
-    is $h{a}, 'bar', "in parent: parent set HV to 'bar' ok";
+        $h{a} = 'bar';
+        is $h{a}, 'bar', "storable: in parent: parent set HV to 'bar' ok";
 
-    kill ALRM => $pid;
-    waitpid($pid, 0);
+        kill ALRM => $pid;
+        waitpid($pid, 0);
 
-    is $h{a}, 'foo', "in parent: child set HV to 'foo' ok";
+        is $h{a}, 'foo', "storable: in parent: child set HV to 'foo' ok";
 
-    IPC::Shareable->clean_up_all;
+        IPC::Shareable->clean_up_all;
+    }
+}
+
+# serializer: json
+{
+    my $awake = 0;
+    local $SIG{ALRM} = sub { $awake = 1 };
+
+    my $pid = fork;
+    defined $pid or die "Cannot fork: $!";
+
+    if ($pid == 0) {
+        # child
+
+        sleep unless $awake;
+
+        tie my %h, 'IPC::Shareable', { key => 'testing25j', destroy => 0, serializer => 'json' };
+        $h{a} = 'foo';
+        exit;
+    } else {
+        # parent
+
+        tie my %h, 'IPC::Shareable', {
+            key        => 'testing25j',
+            create     => 1,
+            destroy    => 1,
+            serializer => 'json',
+        };
+
+        $h{a} = 'bar';
+        is $h{a}, 'bar', "json: in parent: parent set HV to 'bar' ok";
+
+        kill ALRM => $pid;
+        waitpid($pid, 0);
+
+        is $h{a}, 'foo', "json: in parent: child set HV to 'foo' ok";
+
+        IPC::Shareable->clean_up_all;
+    }
 }
 
 IPC::Shareable::_end;
 
-my $segs_after = IPC::Shareable::ipcs();
+my $segs_after = IPC::Shareable::shm_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs cleaned up ok";
 
