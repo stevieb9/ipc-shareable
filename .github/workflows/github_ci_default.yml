@@ -42,6 +42,26 @@ jobs:
           cpanm -n Devel::Cover::Report::Coveralls
           cover -test -report Coveralls
 
+  build-freebsd:
+    runs-on: ubuntu-latest
+    name: Perl (system) on FreeBSD 14.3 aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests on FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.3"
+          arch: aarch64
+          usesh: true
+          prepare: |
+            pkg install -y perl5 p5-App-cpanminus gmake
+          run: |
+            cpanm ExtUtils::MakeMaker
+            cpanm --installdeps .
+            perl Makefile.PL
+            make
+            CI_TESTING=1 prove -lv t
+  
   build-i386:
     runs-on: ubuntu-latest
     name: Perl (system) on ubuntu i386
@@ -62,24 +82,4 @@ jobs:
             cd /workspace
             cpanm ExtUtils::MakeMaker
             cpanm --installdeps .
-            CI_TESTING=1 prove -lv t
-
-  build-freebsd:
-    runs-on: ubuntu-latest
-    name: Perl (system) on FreeBSD 14.1 aarch64
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run tests on FreeBSD
-        uses: vmactions/freebsd-vm@v1
-        with:
-          release: "14.1"
-          arch: aarch64
-          usesh: true
-          prepare: |
-            pkg install -y perl5 p5-App-cpanminus gmake
-          run: |
-            cpanm ExtUtils::MakeMaker
-            cpanm --installdeps .
-            perl Makefile.PL
-            make
             CI_TESTING=1 prove -lv t
