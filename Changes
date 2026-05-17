@@ -60,6 +60,7 @@ Revision history for Perl extension IPC::Shareable.
     - _type_int numeric dispatch; string eq comparisons on every operation
       replaced with == against integer constants in STORE, FETCH, and CLEAR
     - Major POD enhancements/cleanup
+     - Renamed ipcs() to shm_count() as it's far more explanitory
     - Add new method sysv_info() which if the system provides it, retrieves all
       information related to the SYSV infrastructure (limits etc)
     - Closes #45; We now accept a hex-based value as the key
@@ -70,6 +71,8 @@ Revision history for Perl extension IPC::Shareable.
     - Closes #39; remove() now accepts a key, and can remove the segment and
       semaphores related to that key, even if it isn't related to this
       distribution
+    - Updated CI so we get a test run on an i386 Ubuntu container to test
+      32-bit platforms
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
@@ -140,14 +143,6 @@ Revision history for Perl extension IPC::Shareable.
       on differing OSs
     - Renamed t/67-out_of_memory.t as the tests are related to exhausting SHM
       slots, not RAM
-    - Renamed ipcs() to shm_count() as it's far more explanitory
-    - Added shm_segments(); Gathers information about all SHM segments on the
-      system that are related to the distribution
-    - Added orphans(); Returns a list of SHM keys of segments created by this
-      distribution, but are not associated with any known process
-    - Closes #39; remove()
-    - Updated CI so we get a test run on an i386 Ubuntu container to test 32-bit
-      platforms
 
 1.05    2021-07-16
     - Bump prereq version of Test::SharedFork to 0.35
