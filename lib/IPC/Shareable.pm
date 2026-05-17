@@ -459,10 +459,10 @@ sub shm_count {
     my $count = 0;
 
     for my $line (`ipcs -m`) {
-        # Shared-memory rows are prefixed with "m" on BSD/macOS/Linux ipcs.
-        # Parse the table directly so this works when keys are decimal
-        # (FreeBSD) or hex (Linux/macOS).
+        # BSD/macOS format: m <shmid> <key> ...
+        # Linux format:     <key> <shmid> ...
         $count++ if $line =~ /^\s*m\s+\d+\s+\S+/;
+        $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
     }
 
     return $count;
@@ -477,9 +477,20 @@ sub shm_segments {
     my %segments;
 
     for my $line (`ipcs -m`) {
-        next unless $line =~ /^\s*m\s+\d+\s+(\S+)/;
+        my ($id, $raw_key);
 
-        my $raw_key = $1;
+        # BSD/macOS format: m <shmid> <key> ...
+        if ($line =~ /^\s*m\s+(\d+)\s+(\S+)/) {
+            ($id, $raw_key) = ($1, $2);
+        }
+        # Linux format: <key> <shmid> ...
+        elsif ($line =~ /^\s*(\S+)\s+(\d+)\s+\S+/) {
+            ($raw_key, $id) = ($1, $2);
+        }
+        else {
+            next;
+        }
+
         my $key_int = $raw_key =~ /^0x[0-9a-fA-F]+$/
             ? hex($raw_key)
             : $raw_key =~ /^\d+$/
@@ -489,10 +500,6 @@ sub shm_segments {
         my $hex_key = sprintf('0x%08x', $key_int);
 
         next if $key_int == 0;  # IPC_PRIVATE segments can't be found by key
-
-        # Attach to existing segment (size=0 means attach-only, no IPC_CREAT)
-        my $id = shmget($key_int, 0, 0);
-        next unless defined $id;
 
         # Get segment size via IPC_STAT
         my $stat_buf = '';
