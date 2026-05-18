@@ -31,8 +31,8 @@ use Async::Event::Interval;
     tie my %shared_data, 'IPC::Shareable', {
         key     => 'fork rand dup keys',
         create  => 1,
-        destroy => 1
-            serializer => 'storable',
+        destroy => 1,
+        serializer => 'storable',
     };
 
     my $event_one = Async::Event::Interval->new(0, sub {$shared_data{$$}{called}++});
