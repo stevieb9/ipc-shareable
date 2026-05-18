@@ -25,22 +25,28 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION = '1.14_04';
+our $VERSION = '1.14_05';
 
 use constant {
+    # Locking
+
     LOCK_SH               => 1,
     LOCK_EX               => 2,
     LOCK_NB               => 4,
     LOCK_UN               => 8,
 
-    DEBUGGING             => ($ENV{SHAREABLE_DEBUG} or 0),
+    # SHM parameters
 
     SHM_BUFSIZ            => 65536,
-    SEM_MARKER            => 0,
-    SEM_PROTECTED         => 3,
+    SHMMAX_BYTES          => 1073741824, # 1 GB
     SHM_EXISTS            => 1,
 
-    SHMMAX_BYTES          => 1073741824, # 1 GB
+    # Semaphore slots
+
+    SEM_MARKER            => 0,
+    SEM_READERS           => 1,
+    SEM_WRITERS           => 2,
+    SEM_PROTECTED         => 3,
 
     # Perl sends in a double as opposed to an integer to shmat(), and on some
     # systems, this causes the IPC system to round down to the maximum integer
@@ -48,7 +54,11 @@ use constant {
 
     MAX_KEY_INT_SIZE      => 0x80000000,
 
-    EXCLUSIVE_CHECK_LIMIT => 10, # Number of times we'll check for existing segs
+    # Number of times we'll check for existing segs
+
+    EXCLUSIVE_CHECK_LIMIT => 10,
+
+    # Struct types
 
     TYPE_HASH             => 0,
     TYPE_ARRAY            => 1,
@@ -69,34 +79,34 @@ Exporter::export_ok_tags('all', 'lock', 'flock');
 my %semop_args = (
     (LOCK_EX),
     [
-        1, 0, 0,                        # wait for readers to finish
-        2, 0, 0,                        # wait for writers to finish
-        2, 1, SEM_UNDO,                 # assert write lock
+        SEM_READERS, 0, 0,                        # Wait for readers to finish
+        SEM_WRITERS, 0, 0,                        # Wait for writers to finish
+        SEM_WRITERS, 1, SEM_UNDO,                 # Assert write lock
     ],
     (LOCK_EX|LOCK_NB),
     [
-        1, 0, IPC_NOWAIT,               # wait for readers to finish
-        2, 0, IPC_NOWAIT,               # wait for writers to finish
-        2, 1, (SEM_UNDO | IPC_NOWAIT),  # assert write lock
+        SEM_READERS, 0, IPC_NOWAIT,               # Wait for readers to finish
+        SEM_WRITERS, 0, IPC_NOWAIT,               # Wait for writers to finish
+        SEM_WRITERS, 1, (SEM_UNDO | IPC_NOWAIT),  # Assert write lock
     ],
     (LOCK_EX|LOCK_UN),
     [
-        2, -1, (SEM_UNDO | IPC_NOWAIT),
+        SEM_WRITERS, -1, (SEM_UNDO | IPC_NOWAIT),
     ],
 
     (LOCK_SH),
     [
-        2, 0, 0,                        # wait for writers to finish
-        1, 1, SEM_UNDO,                 # assert shared read lock
+        SEM_WRITERS, 0, 0,                        # Wait for writers to finish
+        SEM_READERS, 1, SEM_UNDO,                 # Assert shared read lock
     ],
     (LOCK_SH|LOCK_NB),
     [
-        2, 0, IPC_NOWAIT,               # wait for writers to finish
-        1, 1, (SEM_UNDO | IPC_NOWAIT),  # assert shared read lock
+        SEM_WRITERS, 0, IPC_NOWAIT,               # Wait for writers to finish
+        SEM_READERS, 1, (SEM_UNDO | IPC_NOWAIT),  # Assert shared read lock
     ],
     (LOCK_SH|LOCK_UN),
     [
-        1, -1, (SEM_UNDO | IPC_NOWAIT), # remove shared read lock
+        SEM_READERS, -1, (SEM_UNDO | IPC_NOWAIT), # Remove shared read lock
     ],
 );
 
@@ -727,16 +737,16 @@ sub seg_map {
         if (defined $sem) {
             my $sem_id    = $sem->id                    // '?';
             my $marker    = $sem->getval(SEM_MARKER)    // '?';
-            my $readers   = $sem->getval(1)             // '?';
-            my $writers   = $sem->getval(2)             // '?';
+            my $readers   = $sem->getval(SEM_READERS)   // '?';
+            my $writers   = $sem->getval(SEM_WRITERS)   // '?';
             my $protected = $sem->getval(SEM_PROTECTED) // '?';
             # Continuation indent: one tab (8 spaces) from the left margin
             my $cont = ' ' x 8;
             $sem_str = join("\n",
                 "sem_id: $sem_id",
                 "${cont}1: SEM_MARKER=$marker",
-                "${cont}2: readers=$readers",
-                "${cont}3: writers=$writers",
+                "${cont}2: READERS=$readers",
+                "${cont}3: WRITERS=$writers",
                 "${cont}4: PROTECTED=$protected",
             );
         }
@@ -1065,7 +1075,7 @@ sub _write_permitted {
 
     # Block if any process holds LOCK_EX
 
-    if ($sem->getval(2) > 0) {
+    if ($sem->getval(SEM_WRITERS) > 0) {
         if ($knot->attributes('violated_lock_warn')) {
             my $uuid   = $knot->uuid;
             my $seg_id = $knot->seg->id;
@@ -1078,7 +1088,7 @@ sub _write_permitted {
 
     # Block if any process holds LOCK_SH (active readers present)
 
-    if ($sem->getval(1) > 0) {
+    if ($sem->getval(SEM_READERS) > 0) {
         if ($knot->attributes('violated_lock_warn')) {
             my $uuid   = $knot->uuid;
             my $seg_id = $knot->seg->id;
@@ -2328,12 +2338,20 @@ Example output:
     ==========================
 
     [known, owner]  key: 0x0000cafe  seg_id: 12345678
-      Semaphores: sem_id: 98765       SEM_MARKER=1   readers=0   writers=0   PROTECTED=42
+      Semaphores: sem_id: 98765
+              1: SEM_MARKER=1
+              2: READERS=0
+              3: WRITERS=0
+              4: PROTECTED=42
       Children:   0x0001beef
       Content:    { nested => <child: 0x0001beef> }
 
       [known, owner]  key: 0x0001beef  seg_id: 23456789
-        Semaphores: sem_id: 98766       SEM_MARKER=1   readers=0   writers=0   PROTECTED=42
+        Semaphores: sem_id: 98766
+                1: SEM_MARKER=1
+                2: READERS=0
+                3: WRITERS=0
+                4: PROTECTED=42
         Children:   (none)
         Content:    { x => "1", y => "2" }
 

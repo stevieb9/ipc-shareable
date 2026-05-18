@@ -82,10 +82,12 @@ Revision history for Perl extension IPC::Shareable.
     - Add FreeBSD VM config and unit test runner in ci/ dir
     - Removed the archaic _debug() and _trace functions
     - Enhanced 'protected' segments; we now use a semaphore to mark a segment as
-      protected, and all processes that load this segment will inherit the
-      protected status
+      protected (SEM_PROTECTED), and all processes that load this segment will
+      inherit the protected status
     - Add sem_map(); outputs a text representation of the segment/semaphore
       mappings
+    - Added consistent naming for all four semaphores: SEM_EXISTS, SEM_READERS,
+      SEM_WRITERS, and SEM_PROTECTED
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
