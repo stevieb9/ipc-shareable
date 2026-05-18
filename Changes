@@ -81,6 +81,9 @@ Revision history for Perl extension IPC::Shareable.
       works on FreeBSD
     - Add FreeBSD VM config and unit test runner in ci/ dir
     - Removed the archaic _debug() and _trace functions
+    - Enhanced 'protected' segments; we now use a semaphore to mark a segment as
+      protected, and all processes that load this segment will inherit the
+      protected status
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

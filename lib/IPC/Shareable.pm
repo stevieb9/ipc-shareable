@@ -37,6 +37,7 @@ use constant {
 
     SHM_BUFSIZ            => 65536,
     SEM_MARKER            => 0,
+    SEM_PROTECTED         => 3,
     SHM_EXISTS            => 1,
 
     SHMMAX_BYTES          => 1073741824, # 1 GB
@@ -1203,7 +1204,13 @@ sub _tie {
         }
     }
 
-    my $sem = IPC::Semaphore->new($key, 3, $seg->flags);
+    # Try to attach to an existing semaphore set first using nsems=0, which
+    # avoids EINVAL on macOS/BSD when the existing set has fewer slots than
+    # the requested count. If the set does not exist yet, fall through to
+    # create a new 4-slot set (SEM_MARKER=0, SEM_PROTECTED=1, shared/write
+    # lock counters=2/3).
+    my $sem = IPC::Semaphore->new($key, 0, $seg->flags & 0777)
+           // IPC::Semaphore->new($key, 4, $seg->flags);
 
     if (! defined $sem){
         croak "Could not create semaphore set: $!\n";
@@ -1248,9 +1255,19 @@ sub _tie {
 
         $process_register{$knot->seg->id} ||= $knot;
 
+        $sem->setval(SEM_PROTECTED, $knot->attributes('protected'));
+
         if (! $sem->setval(SEM_MARKER, SHM_EXISTS)){
             croak "Couldn't set semaphore during object creation: $!";
         }
+    }
+    else {
+        # Segment already existed — restore the protected attribute from the
+        # semaphore so that clean_up_all() in this process correctly skips it
+        # even when the caller did not explicitly pass protected => N.
+        my $stored_protected = $sem->getval(SEM_PROTECTED);
+        $knot->{attributes}{protected} = $stored_protected
+            if defined $stored_protected && $stored_protected != 0;
     }
 
     $sem->op(@{ $semop_args{(LOCK_SH|LOCK_UN)} });
@@ -1759,13 +1776,23 @@ Default: C<IPC::Shareable::SHM_BUFSIZ()> (ie. B<65536>)
 If set, the C<clean_up()> and C<clean_up_all()> routines will not remove the
 segments or semaphores related to the tied object.
 
-Set this to a specific integer so we can pass the value to any child objects
-created under the main one.
+Set this to a non-zero integer. The integer is persisted in the segment's
+associated semaphore set, so any process that later attaches to the same
+segment via C<< create => 0 >> will automatically have this attribute restored
+— it does not need to pass C<< protected >> explicitly. This means
+C<clean_up_all()> in that process will also honour the protection.
+
+The integer acts as a group key: all segments (including nested children)
+created under the same protected parent share the same value, so a single call
+to C<clean_up_protected($key)> removes the entire group.
 
 To clean up protected objects, call
 C<< (tied %object)->clean_up_protected(integer) >>, where 'integer' is the
 value you set the C<protected> option to. You can call this cleanup routine in
 the script you created the segment, or anywhere else, at any time.
+
+The protect key is limited to values accepted by the system's semaphore
+implementation (typically 0–32767; 0 means unprotected).
 
 Default: B<0>
 
@@ -2395,13 +2422,19 @@ When setting L</protected>, you specified a lock key integer. When calling this
 method, you must send that integer in as a parameter so we know which segments
 to clean up.
 
+Because the protect key is stored in the segment's semaphore set, any process
+that attached to the segment (even without passing C<< protected >> on tie)
+will have had its in-process attribute populated automatically. You can
+therefore call C<clean_up_protected()> from any process that has attached to
+the segment, not only from the one that created it.
+
     my $protect_key = 93432;
 
     IPC::Shareable->clean_up_protected($protect_key);
 
     # or
 
-    tied($var)->clean_up_protected($protect_key;
+    tied($var)->clean_up_protected($protect_key);
 
     # or
 
@@ -2411,7 +2444,7 @@ Parameters:
 
     $protect_key
 
-Mandatory, Integer: The integer protect key you assigned wit the C<protected>
+Mandatory, Integer: The integer protect key you assigned with the C<protected>
 option
 
 =head1 RETURN VALUES
