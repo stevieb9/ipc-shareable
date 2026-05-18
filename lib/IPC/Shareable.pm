@@ -730,9 +730,14 @@ sub seg_map {
             my $readers   = $sem->getval(1)             // '?';
             my $writers   = $sem->getval(2)             // '?';
             my $protected = $sem->getval(SEM_PROTECTED) // '?';
-            $sem_str = sprintf(
-                'sem_id: %-10s  SEM_MARKER=%-2s  readers=%-2s  writers=%-2s  PROTECTED=%s',
-                $sem_id, $marker, $readers, $writers, $protected
+            # Continuation indent: one tab (8 spaces) from the left margin
+            my $cont = ' ' x 8;
+            $sem_str = join("\n",
+                "sem_id: $sem_id",
+                "${cont}1: SEM_MARKER=$marker",
+                "${cont}2: readers=$readers",
+                "${cont}3: writers=$writers",
+                "${cont}4: PROTECTED=$protected",
             );
         }
         else {
@@ -2861,53 +2866,3 @@ Thanks to all those with comments or bug fixes, especially
 
 L<perltie>, L<Storable>, C<shmget>, C<ipcs>, C<ipcrm> and other SysV IPC manual
 pages.
-
-=head1 SEGMENTS
-
-    tie my %h, 'IPC::Shareable', { key => 'mykey', protected => 42 };
-    $h{nested} = { x => 1 };
-
-    ╔══════════════════════════════════════════════════════════════════╗
-    ║  PROCESS HEAP                                                    ║
-    ║                                                                  ║
-    ║  %global_register   { seg_id_A => $knot_A,                       ║
-    ║                       seg_id_B => $knot_B }                      ║
-    ║                                                                  ║
-    ║  %process_register  { seg_id_A => $knot_A }   (owner only)       ║
-    ║                                                                  ║
-    ║  $knot_A  { attributes => { key=>'mykey', protected=>42, ... },  ║
-    ║             _shm => SharedMem(seg_id_A),                         ║
-    ║             _sem => Semaphore(key_A),                            ║
-    ║             _data => { nested => \(child ref) } }                ║
-    ║                                                                  ║
-    ║  $knot_B  { attributes => { key=>rand_key, protected=>42, ... }, ║
-    ║             _shm => SharedMem(seg_id_B),                         ║
-    ║             _sem => Semaphore(key_B),                            ║
-    ║             _data => { x => 1 } }                                ║
-    ╚══════════════════════════════════════════════════════════════════╝
-             │                          │
-             ▼                          ▼
-    ╔═════════════════╗       ╔═════════════════╗
-    ║  SHM segment A  ║       ║  SHM segment B  ║
-    ║  key: 0x…mykey  ║       ║  key: 0x…rand   ║
-    ║                 ║       ║                 ║
-    ║  "IPC::Shareable║       ║  "IPC::Shareable║
-    ║   <serialized>  ║       ║   <serialized>  ║
-    ║   { nested =>   ║       ║   { x => 1 }   "║
-    ║     key_B_ref } ║       ╚═════════════════╝
-    ╚═════════════════╝                │
-             │                         │
-             ▼                         ▼
-    ╔═════════════════════╗   ╔═════════════════════╗
-    ║  Semaphore set A    ║   ║  Semaphore set B    ║
-    ║  (same key as shm)  ║   ║  (same key as shm)  ║
-    ║                     ║   ║                     ║
-    ║  slot 0  SEM_MARKER ║   ║  slot 0  SEM_MARKER ║
-    ║          = 1        ║   ║          = 1        ║
-    ║  slot 1  readers    ║   ║  slot 1  readers    ║
-    ║          = 0        ║   ║          = 0        ║
-    ║  slot 2  writers    ║   ║  slot 2  writers    ║
-    ║          = 0        ║   ║          = 0        ║
-    ║  slot 3  PROTECTED  ║   ║  slot 3  PROTECTED  ║
-    ║          = 42       ║   ║          = 42       ║
-    ╚═════════════════════╝   ╚═════════════════════╝

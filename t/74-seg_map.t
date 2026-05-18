@@ -26,10 +26,10 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     like $map, qr/key:\s+0x/,                  "single seg: key line present ok";
     like $map, qr/seg_id:\s+\d+/,              "single seg: seg_id present ok";
     like $map, qr/sem_id:\s+\d+/,              "single seg: sem_id present ok";
-    like $map, qr/SEM_MARKER=1/,               "single seg: SEM_MARKER=1 ok";
-    like $map, qr/readers=0/,                  "single seg: readers=0 ok";
-    like $map, qr/writers=0/,                  "single seg: writers=0 ok";
-    like $map, qr/PROTECTED=0/,                "single seg: PROTECTED=0 ok";
+    like $map, qr/1: SEM_MARKER=1/,            "single seg: slot 1 SEM_MARKER=1 ok";
+    like $map, qr/2: readers=0/,               "single seg: slot 2 readers=0 ok";
+    like $map, qr/3: writers=0/,               "single seg: slot 3 writers=0 ok";
+    like $map, qr/4: PROTECTED=0/,             "single seg: slot 4 PROTECTED=0 ok";
     like $map, qr/Children:\s+\(none\)/,       "single seg: no children ok";
     like $map, qr/Content:\s+"hello"/,         "single seg: Content shows scalar value ok";
 
