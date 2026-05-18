@@ -8,9 +8,10 @@ use IPC::Shareable;
 say "Before: " . IPC::Shareable::ipcs;
 
 my $h = IPC::Shareable->new(
-    key => 'blah',
-    create => 1,
-    destroy => 1
+    key        => 'blah',
+    create     => 1,
+    destroy    => 1,
+    serializer => 'storable',
 );
 
 $h->{one}{two} = 'hello, world!';

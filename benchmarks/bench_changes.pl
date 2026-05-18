@@ -58,9 +58,10 @@ sub work {
     my $base_data = default();
 
     tie my %hash, $pkg, {
-        key => 'hash',
-        create => 1,
-        destroy => 1,
+        key        => 'hash',
+        create     => 1,
+        destroy    => 1,
+        serializer => 'storable',
     };
 
     %hash = %$base_data;

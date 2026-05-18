@@ -24,8 +24,8 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
         sleep unless $awake;
 
-        tie $hv, 'IPC::Shareable', 'hash1', { destroy => 0 };
-        tie $av, 'IPC::Shareable', 'arry1', { destroy => 0 };
+        tie $hv, 'IPC::Shareable', 'hash1', { destroy => 0 , serializer => 'storable' };
+        tie $av, 'IPC::Shareable', 'arry1', { destroy => 0 , serializer => 'storable' };
 
         is $hv, 'baz', "storable: child: HV is 'baz' ok";
         is $av, 'bong', "storable: child: AV is 'bong' ok";
@@ -49,8 +49,8 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     } else {
         # parent
 
-        tie $hv, 'IPC::Shareable', 'hash1', { create => 1, destroy => 1 };
-        tie $av, 'IPC::Shareable', 'arry1', { create => 1, destroy => 1 };
+        tie $hv, 'IPC::Shareable', 'hash1', { create => 1, destroy => 1 , serializer => 'storable' };
+        tie $av, 'IPC::Shareable', 'arry1', { create => 1, destroy => 1 , serializer => 'storable' };
 
         $hv = 'baz';
         $av = 'bong';

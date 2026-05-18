@@ -22,7 +22,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 # -----------------------------------------------------------------------
 
 {
-    tie my %h, 'IPC::Shareable', { key => '0x1B0B0001', create => 1, destroy => 1 };
+    tie my %h, 'IPC::Shareable', { key => '0x1B0B0001', create => 1, destroy => 1 , serializer => 'storable' };
     $h{test} = 'hello';
 
     my $segs = IPC::Shareable->shm_segments;
@@ -35,7 +35,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         "...segment content starts with 'IPC::Shareable' tag";
 
     is $segs->{'0x1b0b0001'}{local_process}, 1, "...local_process flag is set for this process's segment";
-    is $segs->{'0x1b0b0001'}{orphaned},      0, "...orphaned is 0 for a segment owned by this process";
+    is $segs->{'0x1b0b0001'}{known},         1, "...known is 1 for a segment tied in this process";
 }
 
 # -----------------------------------------------------------------------
@@ -68,10 +68,10 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 {
     my $count_before = scalar keys %{ IPC::Shareable->shm_segments };
 
-    tie my $sv, 'IPC::Shareable', { key => '0x1B0B0010', create => 1, destroy => 1 };
+    tie my $sv, 'IPC::Shareable', { key => '0x1B0B0010', create => 1, destroy => 1 , serializer => 'storable' };
     $sv = 'scalar value';
 
-    tie my %hv, 'IPC::Shareable', { key => '0x1B0B0020', create => 1, destroy => 1 };
+    tie my %hv, 'IPC::Shareable', { key => '0x1B0B0020', create => 1, destroy => 1 , serializer => 'storable' };
     $hv{x} = 1;
 
     my $segs = IPC::Shareable->shm_segments;
@@ -92,7 +92,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 # -----------------------------------------------------------------------
 
 {
-    tie my %h, 'IPC::Shareable', { key => '0x1B0B0030', create => 1, destroy => 1 };
+    tie my %h, 'IPC::Shareable', { key => '0x1B0B0030', create => 1, destroy => 1 , serializer => 'storable' };
     $h{v} = 1;
 
     my $segs = IPC::Shareable->shm_segments;
@@ -104,9 +104,9 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         !exists $segs->{$_}{child_keys}    ||
         !exists $segs->{$_}{content}       ||
         !exists $segs->{$_}{local_process} ||
-        !exists $segs->{$_}{orphaned}
+        !exists $segs->{$_}{known}
     } keys %$segs;
-    is scalar(@missing_flags), 0, "all entries have child_keys/content/local_process/orphaned keys";
+    is scalar(@missing_flags), 0, "all entries have child_keys/content/local_process/known keys";
 
     is_deeply $segs->{'0x1b0b0030'}{child_keys}, [], "child_keys is empty arrayref for segment with no children";
 }
@@ -132,7 +132,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 }
 
 # -----------------------------------------------------------------------
-# shm_segments() - orphaned => 1 for an IPC::Shareable-tagged segment
+# shm_segments() - known => 0 for an IPC::Shareable-tagged segment
 # that is not in any register (simulates a leftover from a dead process)
 # -----------------------------------------------------------------------
 
@@ -141,9 +141,9 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     my $orphan_hex = sprintf '0x%08x', $orphan_key;
 
     # Create a segment manually and write the IPC::Shareable tag prefix,
-    # but never register it — so it will appear orphaned.
+    # but never register it — so it will appear as known => 0.
     my $id = shmget($orphan_key, 128, IPC_CREAT | 0666);
-    ok defined($id), "created orphan-simulating segment with shmget() ok";
+    ok defined($id), "created unregistered-simulating segment with shmget() ok";
 
     my $tag = 'IPC::Shareable' . 'fake_orphan_data';
     shmwrite($id, $tag, 0, 128);
@@ -151,16 +151,16 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     my $segs = IPC::Shareable->shm_segments;
 
     ok exists $segs->{$orphan_hex},
-        "orphaned segment appears in shm_segments() output";
+        "unregistered segment appears in shm_segments() output";
 
-    is $segs->{$orphan_hex}{orphaned},      1, "...orphaned is 1 for unregistered segment";
+    is $segs->{$orphan_hex}{known},          0, "...known is 0 for unregistered segment";
     is $segs->{$orphan_hex}{local_process}, 0, "...local_process is 0 for unregistered segment";
 
-    # orphans() method
-    my @orphans = IPC::Shareable->orphans;
-    ok scalar(@orphans) >= 1, "orphans() returns at least one entry";
-    ok grep({ $_ eq $orphan_hex } @orphans), "orphans() includes the orphaned segment key";
-    ok !grep({ $_ eq '0x1b0b0001' } @orphans), "orphans() excludes a registered segment";
+    # unknown_segments() method
+    my @unknown = IPC::Shareable->unknown_segments;
+    ok scalar(@unknown) >= 1, "unknown_segments() returns at least one entry";
+    ok grep({ $_ eq $orphan_hex } @unknown), "unknown_segments() includes the unregistered segment key";
+    ok !grep({ $_ eq '0x1b0b0001' } @unknown), "unknown_segments() excludes a registered segment";
 
     shmctl($id, IPC_RMID, 0);
 }
@@ -227,5 +227,70 @@ IPC::Shareable::_end;
 my $segs_after = IPC::Shareable::shm_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "segment count restored to original after cleanup";
+
+# -----------------------------------------------------------------------
+# shm_segments() and unknown_segments() called as object methods
+# -----------------------------------------------------------------------
+
+{
+    my $k = tie my %h, 'IPC::Shareable', { key => '0x1B0B0050', create => 1, destroy => 1 , serializer => 'storable' };
+    $h{x} = 1;
+
+    my $segs = $k->shm_segments;
+    is ref($segs), 'HASH', "shm_segments() as object method returns hash ref";
+    ok exists $segs->{'0x1b0b0050'}, "shm_segments() as object method shows our segment";
+
+    my @unknown = $k->unknown_segments;
+    ok !grep({ $_ eq '0x1b0b0050' } @unknown),
+        "unknown_segments() as object method excludes our registered segment";
+
+    IPC::Shareable->clean_up_all;
+}
+
+# -----------------------------------------------------------------------
+# shm_segments($filter_key) - filter to a specific segment tree
+# -----------------------------------------------------------------------
+
+{
+    # Create two unrelated segments plus a parent-with-child (JSON serializer
+    # creates child segments for nested refs).
+    tie my %parent, 'IPC::Shareable', {
+        key        => '0x1B0B0060',
+        create     => 1,
+        destroy    => 1,
+        serializer => 'json',
+    };
+    tie my %other, 'IPC::Shareable', {
+        key    => '0x1B0B0070',
+        create => 1,
+        destroy => 1,
+            serializer => 'storable',
+    };
+
+    $parent{child} = { nested => 1 };   # creates a child segment
+    $other{x}      = 1;
+
+    # Filter to just the parent key — should include parent and its child,
+    # but not the unrelated segment.
+    my $filtered = IPC::Shareable->shm_segments('0x1B0B0060');
+
+    is ref($filtered), 'HASH',
+        "shm_segments(filter) returns a hash ref";
+
+    ok exists $filtered->{'0x1b0b0060'},
+        "shm_segments(filter) includes the requested segment";
+
+    ok !exists $filtered->{'0x1b0b0070'},
+        "shm_segments(filter) excludes unrelated segment";
+
+    # Filter to a key that doesn't exist — should return an empty hash.
+    my $empty = IPC::Shareable->shm_segments('0x1B0BFFFF');
+    is ref($empty), 'HASH',
+        "shm_segments(nonexistent filter) still returns a hash ref";
+    is scalar(keys %$empty), 0,
+        "shm_segments(nonexistent filter) returns empty hash";
+
+    IPC::Shareable->clean_up_all;
+}
 
 done_testing;

@@ -5,6 +5,7 @@ use Carp;
 use Data::Dumper;
 use IPC::Shareable;
 use IPC::Shareable::SharedMem;
+use Mock::Sub;
 use Test::More;
 use Test::SharedFork;
 
@@ -33,14 +34,14 @@ sub shm_cleaned {
 
 # create not sent in
 {
-    my $ret = eval { my $s = tie(my $sv, 'IPC::Shareable', 'child_sv', { destroy => 0 }); 1; };
+    my $ret = eval { my $s = tie(my $sv, 'IPC::Shareable', 'child_sv', { destroy => 0 , serializer => 'storable' }); 1; };
     is $ret, undef, "We croak if a key is specified, create is not called and no segment exists";
     like $@, qr/ERROR: Could not acquire/, "...and error message is sane";
 }
 
 # remove() (default IPC_PRIVATE)
 {
-    my $s = tie my $sv, 'IPC::Shareable', { destroy => 0 };
+    my $s = tie my $sv, 'IPC::Shareable', { destroy => 0 , serializer => 'storable' };
     $sv = 'foobar';
     is $sv, 'foobar', "Default (IPC_PRIVATE) SV set and value is 'foobar'";
 
@@ -65,7 +66,7 @@ sub shm_cleaned {
 
 # remove()
 {
-    my $s = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 0 };
+    my $s = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 0 , serializer => 'storable' };
     $sv = 'foobar';
     is $sv, 'foobar', "SV set and value is 'foobar'";
 
@@ -90,7 +91,7 @@ sub shm_cleaned {
 
 # clean_up()
 {
-    my $s = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 0 };
+    my $s = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 0 , serializer => 'storable' };
     $sv = 'foobar';
     is $sv, 'foobar', "SV set and value is 'foobar'";
 
@@ -115,7 +116,7 @@ sub shm_cleaned {
 
 # clean_up_all()
 {
-    my $s = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 0 };
+    my $s = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 0 , serializer => 'storable' };
     $sv = 'foobar';
     is $sv, 'foobar', "SV set and value is 'foobar'";
 
@@ -153,7 +154,7 @@ my ($z, $y, $x, $w);
 
         sleep unless $awake;
 
-        my $s = tie(my $sv, 'IPC::Shareable', 'kids', { destroy => 0 });
+        my $s = tie(my $sv, 'IPC::Shareable', 'kids', { destroy => 0 , serializer => 'storable' });
         $sv = 'baz';
 
         is $sv, 'baz', "SV initialized and set to 'baz' ok";
@@ -178,7 +179,7 @@ my ($z, $y, $x, $w);
     else {
         # parent
 
-        my $s = tie(my $sv, 'IPC::Shareable', 'kids', { create => 1, destroy => 0 });
+        my $s = tie(my $sv, 'IPC::Shareable', 'kids', { create => 1, destroy => 0 , serializer => 'storable' });
 
         kill ALRM => $pid;
         my $id = $s->seg->id;
@@ -201,5 +202,44 @@ IPC::Shareable::_end;
 my $segs_after = IPC::Shareable::shm_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs cleaned up ok";
+
+# remove($key) warns when shmget fails for a non-existent key
+{
+    my $warnings = [];
+    local $SIG{__WARN__} = sub { push @$warnings, @_ };
+
+    IPC::Shareable->remove('0x1B0BFFFE');  # key never created
+
+    is scalar(@$warnings), 1,
+        "remove(non-existent key): emits exactly one warning";
+    like $warnings->[0], qr/shmget failed/,
+        "remove(non-existent key): warning mentions shmget failed";
+}
+
+# remove() (object form) warns when sem->remove fails
+{
+    # destroy => 0: the shm segment is already gone after $k->remove, so no
+    # double-remove on scope exit.  The semaphore leaks (mock prevents cleanup)
+    # but shm_count() only counts shm segments so the final count check is fine.
+    my $k = tie my %h, 'IPC::Shareable', { key => 'TE', create => 1, destroy => 0 , serializer => 'storable' };
+    $h{a} = 1;
+
+    my @seen_warnings;
+    local $SIG{__WARN__} = sub { push @seen_warnings, @_ };
+
+    {
+        my $mock = Mock::Sub->new;
+        my $sem_mock = $mock->mock('IPC::Semaphore::remove', return_value => undef);
+        $k->remove;
+    }
+
+    # undef return from sem->remove also triggers two 'uninitialized value'
+    # warnings (from != and ne comparisons), so filter to the one we care about.
+    my @sem_warns = grep { /Couldn't remove semaphore set/ } @seen_warnings;
+    is scalar(@sem_warns), 1,
+        "remove() object form: emits a 'Couldn't remove semaphore set' warning when sem->remove fails";
+    like $sem_warns[0], qr/Couldn't remove semaphore set/,
+        "remove() object form: warning message is correct";
+}
 
 done_testing();

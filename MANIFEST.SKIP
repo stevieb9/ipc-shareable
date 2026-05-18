@@ -40,3 +40,4 @@ main$
 ^_Inline/
 agent.txt
 ^cover_db/
+^ci/

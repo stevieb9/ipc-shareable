@@ -8,7 +8,7 @@ use Config;
 use Data::Dumper;
 use IPC::SysV qw(IPC_RMID IPC_STAT);
 
-our $VERSION = '1.14';
+our $VERSION = '1.14_05';
 
 use constant {
     DEFAULT_SEG_SIZE    => 1024,
@@ -210,6 +210,15 @@ sub stat {
             @values{qw(uid gid cuid cgid mode segsz atime dtime ctime cpid lpid nattch)}
                 = unpack('x[4] L L L L L x[12] L L x[4] L x[4] L x[4] l l L', $data);
         }
+    }
+    elsif ($^O eq 'freebsd' && $Config{longsize} == 8) {
+        # 64-bit FreeBSD: ipc_perm is 32 bytes.
+        # ipc_perm: cuid(4) cgid(4) uid(4) gid(4) mode(2) _seq(2) pad(4) _key(8)
+        # shmid_ds: segsz(8) lpid(4) cpid(4) nattch(8) atime(8) dtime(8) ctime(8)
+        # (key_t = long = 8 bytes on FreeBSD 64-bit, with 4 bytes of alignment padding)
+
+        @values{qw(cuid cgid uid gid mode segsz lpid cpid nattch atime dtime ctime)}
+            = unpack('L L L L S x[14] Q l l Q q q q', $data);
     }
     else {
         # macOS/BSD shmid_ds / ipc_perm layout:

@@ -1,6 +1,7 @@
 use warnings;
 use strict;
 
+use File::Temp qw(tempdir);
 use IPC::Shareable;
 use Test::More;
 
@@ -45,7 +46,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 # sysv_info() - object method
 {
-    my $knot = tie my %hv, 'IPC::Shareable', { create => 1, destroy => 1 };
+    my $knot = tie my %hv, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
 
     my $info = $knot->sysv_info;
 
@@ -66,7 +67,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 # sysv_info() - class method and object method return identical data
 {
-    my $knot = tie my %hv, 'IPC::Shareable', { create => 1, destroy => 1 };
+    my $knot = tie my %hv, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
 
     if ($^O eq 'darwin' || $^O eq 'linux') {
         my $class_info  = IPC::Shareable->sysv_info;
@@ -82,5 +83,35 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 my $segs_after = IPC::Shareable::shm_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs cleaned up ok";
+
+# -----------------------------------------------------------------------
+# Linux branch - mocked via _proc_dir and local $^O
+# -----------------------------------------------------------------------
+
+{
+    my $tmpdir = tempdir(CLEANUP => 1);
+
+    for my $key (qw(shmmax shmmin shmmni shmall)) {
+        open my $fh, '>', "$tmpdir/$key" or die "Cannot create $tmpdir/$key: $!";
+        print $fh "65536\n";
+        close $fh;
+    }
+
+    my $info;
+    {
+        local $^O = 'linux';
+        $info = IPC::Shareable->sysv_info(_proc_dir => $tmpdir);
+    }
+
+    isnt $info, undef,
+        "linux branch (mocked): sysv_info() returns a defined value";
+    is ref($info), 'HASH',
+        "linux branch (mocked): return value is a hash ref";
+
+    for my $key (qw(shmmax shmmin shmmni shmall)) {
+        is $info->{$key}, '65536',
+            "linux branch (mocked): '$key' reads value from fake proc file";
+    }
+}
 
 done_testing();

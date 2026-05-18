@@ -52,7 +52,7 @@ if ($pid == 0) {
 
     sleep unless $awake;
 
-    tie my $d, 'IPC::Shareable', 'obj', { destroy => 0 };
+    tie my $d, 'IPC::Shareable', 'obj', { destroy => 0 , serializer => 'storable' };
 #    is ref($d), 'Dummy', "child: shared var has object ok";
 
 #    is $d->first(), 'foobar', "child: shared obj first() returns ok";
@@ -68,7 +68,7 @@ if ($pid == 0) {
 } else {
     # parent
 
-    my $s = tie my $d, 'IPC::Shareable', 'obj', { create => 1, destroy => 1 };
+    my $s = tie my $d, 'IPC::Shareable', 'obj', { create => 1, destroy => 1 , serializer => 'storable' };
 
 #    my $id = $s->{_shm}->{_id};
 

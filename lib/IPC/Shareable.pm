@@ -25,21 +25,28 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION = '1.14';
+our $VERSION = '1.14_05';
 
 use constant {
+    # Locking
+
     LOCK_SH               => 1,
     LOCK_EX               => 2,
     LOCK_NB               => 4,
     LOCK_UN               => 8,
 
-    DEBUGGING             => ($ENV{SHAREABLE_DEBUG} or 0),
+    # SHM parameters
 
     SHM_BUFSIZ            => 65536,
-    SEM_MARKER            => 0,
+    SHMMAX_BYTES          => 1073741824, # 1 GB
     SHM_EXISTS            => 1,
 
-    SHMMAX_BYTES          => 1073741824, # 1 GB
+    # Semaphore slots
+
+    SEM_MARKER            => 0,
+    SEM_READERS           => 1,
+    SEM_WRITERS           => 2,
+    SEM_PROTECTED         => 3,
 
     # Perl sends in a double as opposed to an integer to shmat(), and on some
     # systems, this causes the IPC system to round down to the maximum integer
@@ -47,7 +54,11 @@ use constant {
 
     MAX_KEY_INT_SIZE      => 0x80000000,
 
-    EXCLUSIVE_CHECK_LIMIT => 10, # Number of times we'll check for existing segs
+    # Number of times we'll check for existing segs
+
+    EXCLUSIVE_CHECK_LIMIT => 10,
+
+    # Struct types
 
     TYPE_HASH             => 0,
     TYPE_ARRAY            => 1,
@@ -56,7 +67,7 @@ use constant {
 
 require Exporter;
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(LOCK_EX LOCK_SH LOCK_NB LOCK_UN);
+our @EXPORT_OK = qw(LOCK_EX LOCK_SH LOCK_NB LOCK_UN SEM_MARKER SEM_READERS SEM_WRITERS SEM_PROTECTED);
 our %EXPORT_TAGS = (
     all     => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
     lock    => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
@@ -64,38 +75,38 @@ our %EXPORT_TAGS = (
 );
 Exporter::export_ok_tags('all', 'lock', 'flock');
 
-# Locking scheme copied from IPC::ShareLite -- ltl
+# Locking scheme copied from IPC::ShareLite
+
 my %semop_args = (
     (LOCK_EX),
     [
-        1, 0, 0,                        # wait for readers to finish
-        2, 0, 0,                        # wait for writers to finish
-        2, 1, SEM_UNDO,                 # assert write lock
+        SEM_READERS, 0, 0,                        # Wait for readers to finish
+        SEM_WRITERS, 0, 0,                        # Wait for writers to finish
+        SEM_WRITERS, 1, SEM_UNDO,                 # Assert write lock
     ],
     (LOCK_EX|LOCK_NB),
     [
-        1, 0, IPC_NOWAIT,               # wait for readers to finish
-        2, 0, IPC_NOWAIT,               # wait for writers to finish
-        2, 1, (SEM_UNDO | IPC_NOWAIT),  # assert write lock
+        SEM_READERS, 0, IPC_NOWAIT,               # Wait for readers to finish
+        SEM_WRITERS, 0, IPC_NOWAIT,               # Wait for writers to finish
+        SEM_WRITERS, 1, (SEM_UNDO | IPC_NOWAIT),  # Assert write lock
     ],
     (LOCK_EX|LOCK_UN),
     [
-        2, -1, (SEM_UNDO | IPC_NOWAIT),
+        SEM_WRITERS, -1, (SEM_UNDO | IPC_NOWAIT),
     ],
-
     (LOCK_SH),
     [
-        2, 0, 0,                        # wait for writers to finish
-        1, 1, SEM_UNDO,                 # assert shared read lock
+        SEM_WRITERS, 0, 0,                        # Wait for writers to finish
+        SEM_READERS, 1, SEM_UNDO,                 # Assert shared read lock
     ],
     (LOCK_SH|LOCK_NB),
     [
-        2, 0, IPC_NOWAIT,               # wait for writers to finish
-        1, 1, (SEM_UNDO | IPC_NOWAIT),  # assert shared read lock
+        SEM_WRITERS, 0, IPC_NOWAIT,               # Wait for writers to finish
+        SEM_READERS, 1, (SEM_UNDO | IPC_NOWAIT),  # Assert shared read lock
     ],
     (LOCK_SH|LOCK_UN),
     [
-        1, -1, (SEM_UNDO | IPC_NOWAIT), # remove shared read lock
+        SEM_READERS, -1, (SEM_UNDO | IPC_NOWAIT), # Remove shared read lock
     ],
 );
 
@@ -111,7 +122,7 @@ my %default_options = (
     graceful           => 0,
     warn               => 0,
     tidy               => 1,
-    serializer         => 'storable',
+    serializer         => 'json',
     enforced_locking   => 1,
     violated_lock_warn => 0,
 );
@@ -187,22 +198,12 @@ sub FETCH {
     my $val;
 
     if ($knot->{_type_int} == TYPE_HASH) {
-        if (defined $data) {
-            my $key = shift;
-            $val = $data->{$key};
-        }
-        else {
-            return;
-        }
+        my $key = shift;
+        $val = $data->{$key};
     }
     elsif ($knot->{_type_int} == TYPE_ARRAY) {
-        if (defined $data) {
-            my $i = shift;
-            $val = $data->[$i];
-        }
-        else {
-            return;
-        }
+        my $i = shift;
+        $val = $data->[$i];
     }
     elsif ($knot->{_type_int} == TYPE_SCALAR) {
         if (defined $data) {
@@ -466,35 +467,62 @@ sub attributes {
     }
 }
 sub shm_count {
-    my $count = `ipcs -m | grep "0x" | wc -l`;
-    chomp $count;
-    return int($count);
+    my $count = 0;
+
+    for my $line (`ipcs -m`) {
+        # BSD/macOS format: m <shmid> <key> ...
+        # Linux format:     <key> <shmid> ...
+        $count++ if $line =~ /^\s*m\s+\d+\s+\S+/;
+        $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
+    }
+
+    return $count;
 }
 sub shm_segments {
-    shift if ref $_[0]; # Allow for object or class method call
+    shift if ref($_[0]) || (defined $_[0] && !ref($_[0]) && UNIVERSAL::isa($_[0], __PACKAGE__));
+
+    my ($filter_key) = @_;
+
+    my $filter_int = _key_str_to_int($filter_key) if defined $filter_key;
 
     my %segments;
 
     for my $line (`ipcs -m`) {
-        next unless $line =~ /(0x[0-9a-fA-F]+)/;
-        my $hex_key = $1;
-        my $key_int = hex($hex_key);
+        my ($id, $raw_key);
+
+        # BSD/macOS format: m <shmid> <key> ...
+        if ($line =~ /^\s*m\s+(\d+)\s+(\S+)/) {
+            ($id, $raw_key) = ($1, $2);
+        }
+        # Linux format: <key> <shmid> ...
+        elsif ($line =~ /^\s*(\S+)\s+(\d+)\s+\S+/) {
+            ($raw_key, $id) = ($1, $2);
+        }
+        else {
+            next;
+        }
+
+        my $key_int = $raw_key =~ /^0x[0-9a-fA-F]+$/
+            ? hex($raw_key)
+            : $raw_key =~ /^\d+$/
+                ? int($raw_key)
+                : next;
+
+        my $hex_key = sprintf('0x%08x', $key_int);
 
         next if $key_int == 0;  # IPC_PRIVATE segments can't be found by key
-
-        # Attach to existing segment (size=0 means attach-only, no IPC_CREAT)
-        my $id = shmget($key_int, 0, 0);
-        next unless defined $id;
 
         # Get segment size via IPC_STAT
         my $stat_buf = '';
         shmctl($id, IPC_STAT, $stat_buf) or next;
 
-        my ($segsz) = $^O ne 'linux'
-            ? unpack('x[24] Q', $stat_buf)           # macOS/BSD
-            : $Config{longsize} == 8
-                ? unpack('x[48] Q', $stat_buf)       # 64-bit Linux
-                : unpack('x[36] L', $stat_buf);      # 32-bit Linux
+        my ($segsz) = $^O eq 'linux'
+            ? ( $Config{longsize} == 8
+                    ? unpack('x[48] Q', $stat_buf)   # 64-bit Linux
+                    : unpack('x[36] L', $stat_buf) ) # 32-bit Linux
+            : ( $^O eq 'freebsd' && $Config{longsize} == 8
+                    ? unpack('x[32] Q', $stat_buf)   # 64-bit FreeBSD (key_t=long=8, ipc_perm=32)
+                    : unpack('x[24] Q', $stat_buf) );# macOS/32-bit BSD
 
         next unless $segsz;
 
@@ -515,21 +543,247 @@ sub shm_segments {
             child_keys    => \@child_keys,
             content       => $data,
             local_process => (exists $process_register{$id} ? 1 : 0),
-            orphaned      => (exists $global_register{$id}  ? 0 : 1),
+            known         => (exists $global_register{$id}  ? 1 : 0),
         };
+    }
+
+    if (defined $filter_int) {
+        # Walk the segment tree starting from the root whose key matches
+        # $filter_int, collecting it and all its descendants.  Use integer
+        # comparison so that hex formatting differences (zero-padding, case)
+        # between ipcs(1) output and child_key_hex values don't matter.
+        my %int_to_hex = map { hex($_) => $_ } keys %segments;
+        my (%related, @queue);
+        push @queue, $filter_int;
+        while (my $k_int = shift @queue) {
+            my $k_hex = $int_to_hex{$k_int} // next;
+            next if $related{$k_hex}++;
+            push @queue, map { hex($_) } @{ $segments{$k_hex}{child_keys} };
+        }
+        %segments = map { $_ => $segments{$_} } keys %related;
     }
 
     return \%segments;
 }
-sub orphans {
+sub unknown_segments {
     shift if ref $_[0]; # Allow for object or class method call
 
     my $segs = shm_segments();
 
-    return grep { $segs->{$_}{orphaned} } keys %$segs;
+    return grep { !$segs->{$_}{known} } keys %$segs;
+}
+sub _seg_data_summary {
+    my ($knot) = @_;
+
+    my $data  = $knot->{_data};
+    my $rtype = Scalar::Util::reftype($data) // '';
+
+    if ($rtype eq 'SCALAR') {
+        my $v = $$data;
+        return defined $v ? qq("$v") : '(undef)';
+    }
+
+    if ($rtype eq 'HASH') {
+        my @parts;
+        for my $k (sort keys %$data) {
+            my $v = $data->{$k};
+            if (ref $v) {
+                my $vt    = Scalar::Util::reftype($v) // '';
+                my $child = $vt eq 'HASH'   ? tied(%$v)
+                          : $vt eq 'ARRAY'  ? tied(@$v)
+                          : $vt eq 'SCALAR' ? tied($$v)
+                          : undef;
+                push @parts, $child && $child->{_key_hex}
+                    ? qq($k => <child: $child->{_key_hex}>)
+                    : "$k => <ref>";
+            }
+            else {
+                push @parts, defined $v ? qq($k => "$v") : "$k => (undef)";
+            }
+        }
+        return @parts ? '{ ' . join(', ', @parts) . ' }' : '{}';
+    }
+
+    if ($rtype eq 'ARRAY') {
+        my @parts;
+        for my $v (@$data) {
+            if (ref $v) {
+                my $vt    = Scalar::Util::reftype($v) // '';
+                my $child = $vt eq 'HASH'   ? tied(%$v)
+                          : $vt eq 'ARRAY'  ? tied(@$v)
+                          : $vt eq 'SCALAR' ? tied($$v)
+                          : undef;
+                push @parts, $child && $child->{_key_hex}
+                    ? "<child: $child->{_key_hex}>"
+                    : '<ref>';
+            }
+            else {
+                push @parts, defined $v ? qq("$v") : '(undef)';
+            }
+        }
+        return '[' . join(', ', @parts) . ']';
+    }
+
+    return '(unknown type)';
+}
+sub seg_map {
+    croak "seg_map() must be called as an object method" unless ref $_[0];
+    my $knot_filter = shift;
+
+    my $segs = shm_segments();
+
+    # Build hex_key -> OS segment ID from ipcs output
+    my %id_by_hex;
+    for my $line (`ipcs -m`) {
+        my ($id, $raw_key);
+        if    ($line =~ /^\s*m\s+(\d+)\s+(\S+)/)    { ($id, $raw_key) = ($1, $2) }
+        elsif ($line =~ /^\s*(\S+)\s+(\d+)\s+\S+/)  { ($raw_key, $id) = ($1, $2) }
+        else  { next }
+
+        my $key_int = $raw_key =~ /^0x[0-9a-fA-F]+$/ ? hex($raw_key)
+                    : $raw_key =~ /^\d+$/             ? int($raw_key)
+                    : next;
+        $id_by_hex{ sprintf('0x%08x', $key_int) } = $id;
+    }
+
+    # Build hex_key -> knot from global_register (keyed by seg_id)
+    my %knot_by_hex;
+    for my $id (keys %global_register) {
+        my $knot = $global_register{$id};
+        my $hex  = $knot->{_key_hex};
+        $knot_by_hex{$hex} = $knot if defined $hex;
+    }
+
+    # Supplement child_keys from global_register for Storable segments.
+    # shm_segments() only extracts child_key_hex from JSON segment content;
+    # for Storable we walk each knot's _data looking for tied child references.
+    my %extra_child_keys;   # hex_key -> [ child_hex, ... ]
+    for my $hex (keys %knot_by_hex) {
+        my $knot  = $knot_by_hex{$hex};
+        my $data  = $knot->{_data};
+        my $rtype = Scalar::Util::reftype($data) // '';
+
+        my @vals = $rtype eq 'HASH'  ? values %$data
+                 : $rtype eq 'ARRAY' ? @$data
+                 : ();
+
+        for my $v (@vals) {
+            next unless ref($v);
+            my $vtype = Scalar::Util::reftype($v) // '';
+            my $child_knot;
+            if    ($vtype eq 'HASH')   { $child_knot = tied(%$v) }
+            elsif ($vtype eq 'ARRAY')  { $child_knot = tied(@$v) }
+            elsif ($vtype eq 'SCALAR') { $child_knot = tied($$v) }
+            next unless $child_knot && $child_knot->{_key_hex};
+            push @{ $extra_child_keys{$hex} }, $child_knot->{_key_hex};
+        }
+    }
+
+    # If called as an object method, restrict output to just that knot's tree
+    # by BFS through both child_keys (JSON) and extra_child_keys (Storable).
+    if ($knot_filter && $knot_filter->{_key_hex}) {
+        my $root_hex = $knot_filter->{_key_hex};
+        my (%in_tree, @queue);
+        push @queue, $root_hex;
+        while (my $h = shift @queue) {
+            next if $in_tree{$h}++;
+            push @queue, @{ $segs->{$h}{child_keys}   // [] };
+            push @queue, @{ $extra_child_keys{$h}     // [] };
+        }
+        %$segs = map { $_ => $segs->{$_} } grep { $in_tree{$_} } keys %$segs;
+    }
+
+    # Identify root segments (not a child of any other segment)
+    my %is_child;
+    for my $hex (keys %$segs) {
+        $is_child{$_}++ for @{ $segs->{$hex}{child_keys} };
+    }
+    for my $hex (keys %extra_child_keys) {
+        next unless exists $segs->{$hex};
+        $is_child{$_}++ for @{ $extra_child_keys{$hex} };
+    }
+    my @roots = sort grep { !$is_child{$_} } keys %$segs;
+
+    my @lines;
+    push @lines, 'IPC::Shareable Segment Map';
+    push @lines, '=' x 26;
+
+    if (!@roots) {
+        push @lines, '';
+        push @lines, '  (no IPC::Shareable segments found)';
+        return join("\n", @lines) . "\n";
+    }
+
+    my $render;
+    $render = sub {
+        my ($hex, $depth) = @_;
+        my $indent = '  ' x $depth;
+        my $seg    = $segs->{$hex} // {};
+
+        my @tags;
+        push @tags, $seg->{known} ? 'known' : 'unknown';
+        push @tags, 'owner' if $seg->{local_process};
+        my $tag_str = '[' . join(', ', @tags) . ']';
+
+        my $seg_id = $id_by_hex{$hex} // '?';
+
+        # Read semaphore slot values and ID; for segments not in
+        # global_register attach with nsems=0 (avoids EINVAL on existing sets)
+        my ($sem_str, $content_str);
+        my $sem = $knot_by_hex{$hex}
+            ? $knot_by_hex{$hex}->sem
+            : IPC::Semaphore->new(hex($hex), 0, 0);
+
+        if (defined $sem) {
+            my $sem_id    = $sem->id                    // '?';
+            my $marker    = $sem->getval(SEM_MARKER)    // '?';
+            my $readers   = $sem->getval(SEM_READERS)   // '?';
+            my $writers   = $sem->getval(SEM_WRITERS)   // '?';
+            my $protected = $sem->getval(SEM_PROTECTED) // '?';
+            # Continuation indent: one tab (8 spaces) from the left margin
+            my $cont = ' ' x 8;
+            $sem_str = join("\n",
+                "sem_id: $sem_id",
+                "${cont}1: SEM_MARKER=$marker",
+                "${cont}2: READERS=$readers",
+                "${cont}3: WRITERS=$writers",
+                "${cont}4: PROTECTED=$protected",
+            );
+        }
+        else {
+            $sem_str = '(not accessible)';
+        }
+
+        $content_str = $knot_by_hex{$hex}
+            ? _seg_data_summary($knot_by_hex{$hex})
+            : '(not accessible - segment not tied in this process)';
+
+        # Merge child keys from shm_segments() and from global_register walk
+        my %seen_child;
+        my @child_keys = grep { !$seen_child{$_}++ } (
+            @{ $seg->{child_keys} // [] },
+            @{ $extra_child_keys{$hex} // [] },
+        );
+        my $children = @child_keys ? join(', ', @child_keys) : '(none)';
+
+        push @lines, '';
+        push @lines, "${indent}${tag_str}  key: ${hex}  seg_id: ${seg_id}";
+        push @lines, "${indent}  Semaphores: ${sem_str}";
+        push @lines, "${indent}  Children:   ${children}";
+        push @lines, "${indent}  Content:    ${content_str}";
+
+        $render->($_, $depth + 1) for @child_keys;
+    };
+
+    $render->($_, 0) for @roots;
+
+    push @lines, '';
+    return join("\n", @lines) . "\n";
 }
 sub sysv_info {
-    shift if ref $_[0]; # Allow for object or class method call
+    shift; # Discard invocant (object ref or class name)
+    my %opts     = @_;
+    my $proc_dir = delete $opts{_proc_dir} // '/proc/sys/kernel';
 
     my %info;
 
@@ -543,7 +797,7 @@ sub sysv_info {
     }
     elsif ($^O eq 'linux') {
         for my $key (qw(shmmax shmmin shmmni shmall)) {
-            my $file = "/proc/sys/kernel/$key";
+            my $file = "$proc_dir/$key";
             if (open my $fh, '<', $file) {
                 chomp(my $val = <$fh>);
                 $info{$key} = $val;
@@ -821,7 +1075,7 @@ sub _write_permitted {
 
     # Block if any process holds LOCK_EX
 
-    if ($sem->getval(2) > 0) {
+    if ($sem->getval(SEM_WRITERS) > 0) {
         if ($knot->attributes('violated_lock_warn')) {
             my $uuid   = $knot->uuid;
             my $seg_id = $knot->seg->id;
@@ -834,7 +1088,7 @@ sub _write_permitted {
 
     # Block if any process holds LOCK_SH (active readers present)
 
-    if ($sem->getval(1) > 0) {
+    if ($sem->getval(SEM_READERS) > 0) {
         if ($knot->attributes('violated_lock_warn')) {
             my $uuid   = $knot->uuid;
             my $seg_id = $knot->seg->id;
@@ -1168,7 +1422,13 @@ sub _tie {
         }
     }
 
-    my $sem = IPC::Semaphore->new($key, 3, $seg->flags);
+    # Try to attach to an existing semaphore set first using nsems=0, which
+    # avoids EINVAL on macOS/BSD when the existing set has fewer slots than
+    # the requested count. If the set does not exist yet, fall through to
+    # create a new 4-slot set (SEM_MARKER=0, SEM_PROTECTED=1, shared/write
+    # lock counters=2/3).
+    my $sem = IPC::Semaphore->new($key, 0, $seg->flags & 0777)
+           // IPC::Semaphore->new($key, 4, $seg->flags);
 
     if (! defined $sem){
         croak "Could not create semaphore set: $!\n";
@@ -1194,7 +1454,33 @@ sub _tie {
     my $serializer = $knot->attributes('serializer');
 
     if ($serializer eq 'json') {
-        $knot->{_data} = $knot->_decode($seg);
+        my $data;
+        my $decoded_ok = eval { $data = $knot->_decode($seg); 1 };
+
+        if (! $decoded_ok) {
+            # JSON decode threw — the segment may contain legacy Storable data.
+            # Try Storable; if it succeeds, silently switch this session over
+            # and warn the caller so they know to migrate.
+            my $storable_data;
+            my $thaw_ok = eval { $storable_data = _thaw($seg); 1 };
+
+            if ($thaw_ok && defined $storable_data) {
+                carp sprintf(
+                    "IPC::Shareable: segment 0x%08x contains Storable-encoded data; "
+                  . "switching serializer to 'storable' for this session. "
+                  . "Re-create the segment to migrate it to JSON.",
+                    $key
+                );
+                $knot->{attributes}{serializer} = 'storable';
+                $knot->{_data} = $storable_data;
+            }
+            else {
+                die $@;
+            }
+        }
+        else {
+            $knot->{_data} = $data;
+        }
     }
     else {
         $knot->{_data} = _thaw($seg);
@@ -1213,9 +1499,19 @@ sub _tie {
 
         $process_register{$knot->seg->id} ||= $knot;
 
+        $sem->setval(SEM_PROTECTED, $knot->attributes('protected'));
+
         if (! $sem->setval(SEM_MARKER, SHM_EXISTS)){
             croak "Couldn't set semaphore during object creation: $!";
         }
+    }
+    else {
+        # Segment already existed — restore the protected attribute from the
+        # semaphore so that clean_up_all() in this process correctly skips it
+        # even when the caller did not explicitly pass protected => N.
+        my $stored_protected = $sem->getval(SEM_PROTECTED);
+        $knot->{attributes}{protected} = $stored_protected
+            if defined $stored_protected && $stored_protected != 0;
     }
 
     $sem->op(@{ $semop_args{(LOCK_SH|LOCK_UN)} });
@@ -1328,6 +1624,19 @@ sub _need_tie {
 }
 
 # Segment operations
+sub _key_str_to_int {
+    # Convert any key format (hex string, decimal integer string, or arbitrary
+    # text) to a 32-bit integer using the same algorithm as _shm_key(), but
+    # without the %used_ids side effect. Safe to call any number of times.
+    my ($key_str) = @_;
+
+    return hex($key_str)    if $key_str =~ /^0x[0-9a-fA-F]+$/i;
+    return $key_str + 0     if $key_str =~ /^\d+$/;
+
+    my $int = crc32($key_str);
+    $int -= MAX_KEY_INT_SIZE if $int > MAX_KEY_INT_SIZE;
+    return $int;
+}
 sub _shm_key {
     # Generates a 32-bit CRC on the key string. The $key_str parameter is used
     # for testing only, for purposes of testing various key strings
@@ -1500,41 +1809,6 @@ sub _end {
     }
 }
 
-sub _trace {
-    require Carp;
-    require Data::Dumper;
-    my $caller = '    ' . (caller(1))[3] . " called with:\n";
-    my $i = -1;
-    my @msg = map {
-        ++$i;
-        my $obj;
-        if (ref eq 'IPC::Shareable') {
-            '        ' . "\$_[$i] = $_: shmid: $_->{_shm}->{_id}; " .
-                Data::Dumper->Dump([ $_->attributes ], [ 'opts' ]);
-        } else {
-            '        ' . Data::Dumper->Dump( [ $_ ] => [ "\_[$i]" ]);
-        }
-    }  @_;
-    Carp::carp "IPC::Shareable ($$) debug:\n", $caller, @msg;
-}
-sub _debug {
-    require Carp;
-    require Data::Dumper;
-    local $Data::Dumper::Terse = 1;
-    my $caller = '    ' . (caller(1))[3] . " tells us that:\n";
-    my @msg = map {
-        my $obj;
-        if (ref eq 'IPC::Shareable') {
-            '        ' . "$_: shmid: $_->{_shm}->{_id}; " .
-                Data::Dumper->Dump([ $_->attributes ], [ 'opts' ]);
-        }
-        else {
-            '        ' . Data::Dumper::Dumper($_);
-        }
-    }  @_;
-    Carp::carp "IPC::Shareable ($$) debug:\n", $caller, @msg;
-}
-
 sub _placeholder {}
 
 1;
@@ -1640,7 +1914,7 @@ within a single bound variable is limited by the system's maximum size
 for a shared memory segment (the exact value is system-dependent).
 
 The bound data structures are all linearized (using Raphael Manfredi's
-L<Storable> module or optionally L<JSON>) before being slurped into shared
+L<JSON> module or optionally L<Storable>) before being slurped into shared
 memory.  Upon retrieval, the original format of the data structure is recovered.
 Semaphore flags can be used for locking data between competing processes.
 
@@ -1746,13 +2020,23 @@ Default: C<IPC::Shareable::SHM_BUFSIZ()> (ie. B<65536>)
 If set, the C<clean_up()> and C<clean_up_all()> routines will not remove the
 segments or semaphores related to the tied object.
 
-Set this to a specific integer so we can pass the value to any child objects
-created under the main one.
+Set this to a non-zero integer. The integer is persisted in the segment's
+associated semaphore set, so any process that later attaches to the same
+segment via C<< create => 0 >> will automatically have this attribute restored;
+it does not need to pass C<< protected >> explicitly. This means
+C<clean_up_all()> in that process will also honour the protection.
+
+The integer acts as a group key: all segments (including nested children)
+created under the same protected parent share the same value, so a single call
+to C<clean_up_protected($key)> removes the entire group.
 
 To clean up protected objects, call
 C<< (tied %object)->clean_up_protected(integer) >>, where 'integer' is the
 value you set the C<protected> option to. You can call this cleanup routine in
 the script you created the segment, or anywhere else, at any time.
+
+The protect key is limited to values accepted by the system's semaphore
+implementation (typically 0-32767; 0 means unprotected).
 
 Default: B<0>
 
@@ -1812,14 +2096,15 @@ Default: B<true>
 
 =head2 serializer
 
-By default, we use L<Storable> as the data serializer when writing to or
+By default, we use L<JSON> as the data serializer when writing to or
 reading from the shared memory segments we create. For cross-platform and
-cross-language purposes, you can optionally use L<JSON> for this task.
+cross-language interoperability this is the recommended choice. Alternatively,
+you can use L<Storable> for richer data type support (e.g. blessed objects).
 
 Send in either C<json> or C<storable> as the value to use the respective
 serializer.
 
-Default: B<storable>
+Default: B<json>
 
 =head2 Default Option Values
 
@@ -1836,7 +2121,7 @@ Default values for options are:
     graceful            => 0,
     warn                => 0,
     tidy                => 1,
-    serializer          => 'storable',
+    serializer          => 'json',
     enforced_locking    => 1,
     violated_lock_warn  => 0,
 
@@ -1903,9 +2188,13 @@ system's C<ipcs -m> call. It is guaranteed though to produce reliable results.
 
 Return: Integer
 
-=head2 shm_segments
+=head2 shm_segments($key)
 
     my $ipc_shareable_segments = IPC::Shareable->shm_segments;
+
+    # Filtered to one variable's segments only
+    my $segs = IPC::Shareable->shm_segments('my_key');
+    my $segs = IPC::Shareable->shm_segments('0xDEADBEEF');
 
 Class/object method. Scans all existing shared memory segments on the system
 and returns a hash reference mapping the hex key string (e.g. C<'0xdeadbeef'>)
@@ -1915,12 +2204,22 @@ created by L<IPC::Shareable>.
 Segments created with C<IPC_PRIVATE> (key C<0x00000000>) are skipped because
 they cannot be looked up by key.
 
+Parameters:
+
+    $key
+
+Optional, String or Int: If sent in, we will restrict the result to only the
+segments related to the variable the C<$key> reflects. Without this parameter,
+all L<IPC::Shareable> segments on the system are returned.
+
 Return: Hash reference where each key is the SHM key in hex format.
 
 Field descriptions:
 
-B<orphaned>: Was created by C<IPC::Shareable>, but is no longer associated with
-any process. Should be cleaned up.
+B<known>: C<1> if this segment is currently tied in the calling process,
+C<0> if not. A value of C<0> includes segments legitimately persisted by
+another process (C<destroy =E<gt> 0>), not just crashed leftovers. See
+L</unknown_segments> for important caveats.
 
 B<local_process>: C<1> if created by the same process this method is being run,
 and C<0> if not.
@@ -1956,7 +2255,7 @@ and 'b'), which are stored in the top-level segment.
 
     {
         '0x2abc0001' => {
-            orphaned        => 0,
+            known           => 1,
             local_process   => 1
             content         => 'IPC::Shareable{
                 "a": 1,
@@ -1982,41 +2281,106 @@ and 'b'), which are stored in the top-level segment.
             ],
         },
         '0x000e1b1d' => {
-            orphaned        => 0,
+            known           => 1,
             local_process   => 1
             content         => 'IPC::Shareable{"y":20,"x":10}',
             child_keys      => [],
         },
         '0x000097af' => {
-            orphaned        => 0,
+            known           => 1,
             local_process   => 1
             content         => 'IPC::Shareable{"p":"foo","q":"bar"}',
             child_keys      => [],
         }
     }
 
-=head2 orphans
+=head2 unknown_segments
 
-    my @orphan_keys = IPC::Shareable->orphans;
+    my @unknown_keys = IPC::Shareable->unknown_segments;
 
     # or
 
-    my @orphan_keys = $knot->orphans;
+    my @unknown_keys = $knot->unknown_segments;
 
 Class/object method. Returns a list of hex key strings (e.g. C<'0xdeadbeef'>)
 for all shared memory segments that were created by L<IPC::Shareable> but are
-no longer associated with any process (i.e. orphaned). Orphaned segments are
-typically left over from processes that exited without cleaning up (read:
-crashed).
+not currently tied in the calling process.
+
+B<Important>: this method has no way to distinguish between a segment that was
+left behind by a crashed process and one that is legitimately persisted by
+another running process (C<destroy =E<gt> 0>). Both will appear in the returned
+list. Only call C<remove> on entries you are certain belong to your own
+application and are no longer in use.
 
 Return: List of hex key strings.
 
-    my @orphans = IPC::Shareable->orphans;
+    my @unknown = IPC::Shareable->unknown_segments;
 
-    for my $key (@orphans) {
-        print "Orphaned segment: $key\n";
+    for my $key (@unknown) {
+        print "Unknown segment: $key\n";
         IPC::Shareable->remove($key);
     }
+
+=head2 seg_map
+
+    # Show all IPC::Shareable segments visible on the system
+    print IPC::Shareable->seg_map;
+
+    # Show only the segment tree rooted at this object
+    print $knot->seg_map;
+    print tied(%hash)->seg_map;
+
+When called as a B<class method>, returns a human-readable string showing all
+L<IPC::Shareable> shared memory segments visible on the current system,
+organised as a tree (root segments at the top, nested children indented below
+their parent).
+
+When called as an B<object method>, the output is filtered to just the segment
+tree rooted at that object (the segment itself plus any nested children).
+
+For each segment the output includes:
+
+=over 4
+
+=item * The hex key and OS segment ID
+
+=item * Status tags: C<known> (tied in this process) or C<unknown>, and
+C<owner> if this process created the segment
+
+=item * Semaphore information: OS semaphore ID (C<sem_id>), C<SEM_MARKER>,
+read-lock counter, write-lock counter, and C<PROTECTED> (the integer stored
+in C<SEM_PROTECTED>)
+
+=item * The list of child segment hex keys, or C<(none)>
+
+=item * The segment's current content. Reference values that are child segments
+are shown as C<< <child: 0xHEX> >> rather than being recursed into.
+Segments not tied in this process show C<(not accessible)>.
+
+=back
+
+Example output:
+
+    IPC::Shareable Segment Map
+    ==========================
+
+    [known, owner]  key: 0x0000cafe  seg_id: 12345678
+      Semaphores: sem_id: 98765
+              1: SEM_MARKER=1
+              2: READERS=0
+              3: WRITERS=0
+              4: PROTECTED=42
+      Children:   0x0001beef
+      Content:    { nested => <child: 0x0001beef> }
+
+      [known, owner]  key: 0x0001beef  seg_id: 23456789
+        Semaphores: sem_id: 98766
+                1: SEM_MARKER=1
+                2: READERS=0
+                3: WRITERS=0
+                4: PROTECTED=42
+        Children:   (none)
+        Content:    { x => "1", y => "2" }
 
 =head2 sysv_info
 
@@ -2364,13 +2728,19 @@ When setting L</protected>, you specified a lock key integer. When calling this
 method, you must send that integer in as a parameter so we know which segments
 to clean up.
 
+Because the protect key is stored in the segment's semaphore set, any process
+that attached to the segment (even without passing C<< protected >> on tie)
+will have had its in-process attribute populated automatically. You can
+therefore call C<clean_up_protected()> from any process that has attached to
+the segment, not only from the one that created it.
+
     my $protect_key = 93432;
 
     IPC::Shareable->clean_up_protected($protect_key);
 
     # or
 
-    tied($var)->clean_up_protected($protect_key;
+    tied($var)->clean_up_protected($protect_key);
 
     # or
 
@@ -2380,7 +2750,7 @@ Parameters:
 
     $protect_key
 
-Mandatory, Integer: The integer protect key you assigned wit the C<protected>
+Mandatory, Integer: The integer protect key you assigned with the C<protected>
 option
 
 =head1 RETURN VALUES
@@ -2413,7 +2783,7 @@ This creates three segments:
 
 Each segment only knows about its direct children. The chain is followed
 lazily, one level at a time, as you C<FETCH> down into the structure. (See the
-L</shm_segments> documentation to gather this structure within code).
+L<shm_segments()|/shm_segments($key)> documentation to gather this structure within code).
 
 When you replace a child with a new reference where the previous value was
 also a reference, a new segment is created and the new data is stored there.
@@ -2448,8 +2818,8 @@ data:
 
     {"c": 1}
 
-On decode, any __ics__ marker is spotted and a tie with create => 0 is used
-to re-attach to the existing child segment by that key -- no new segment is
+On decode, any C<__ics__> marker is spotted and a tie with C<create =Egt 0> is
+used to re-attach to the existing child segment by that key; no new segment is
 created, it simply reconnects.
 
 =head1 AUTHOR

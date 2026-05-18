@@ -20,7 +20,7 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
     my $k;
 
     my $ok = eval {
-        $k = tie my $sv, 'IPC::Shareable', 'TEST', {create => 1, destroy => 1};
+        $k = tie my $sv, 'IPC::Shareable', 'TEST', {create => 1, destroy => 1, serializer => 'storable' };
         1;
     };
 
@@ -32,13 +32,13 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 # shm key matches object key
 {
-    tie my $sv, 'IPC::Shareable', 'TEST', {create => 1, destroy => 1};
+    tie my $sv, 'IPC::Shareable', 'TEST', {create => 1, destroy => 1, serializer => 'storable' };
     is((tied $sv)->seg->key, (tied $sv)->seg->key, "Object key matches segment key ok");
 }
 
 # three letter caps
 {
-    my $k = tie my $sv, 'IPC::Shareable', {key => 'TES', create => 1, destroy => 1};
+    my $k = tie my $sv, 'IPC::Shareable', {key => 'TES', create => 1, destroy => 1, serializer => 'storable' };
 
     is $k->{attributes}{key}, 'TES', "attr key is TES ok";
     is $k->seg->key, 3952665712 - 0x80000000, "three letter attr key is  ok";
@@ -46,7 +46,7 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 # four letter caps
 {
-    my $k = tie my $sv, 'IPC::Shareable', {key => 'TEST', create => 1, destroy => 1};
+    my $k = tie my $sv, 'IPC::Shareable', {key => 'TEST', create => 1, destroy => 1, serializer => 'storable' };
 
     is $k->{attributes}{key}, 'TEST', "attr key is TEST ok";
     is $k->seg->key, 4008350648 - 0x80000000, "four letter attr key is ok";
@@ -54,7 +54,7 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 # three letter lower case
 {
-    my $k = tie my $sv, 'IPC::Shareable', {key => 'tes', create => 1, destroy => 1};
+    my $k = tie my $sv, 'IPC::Shareable', {key => 'tes', create => 1, destroy => 1, serializer => 'storable' };
 
     is $k->{attributes}{key}, 'tes', "3 letter lower case key is tes ok";
     is $k->seg->key, 2101323514, "3 letter lower case attr key is ok";
@@ -62,7 +62,7 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 # six letter
 {
-    my $k = tie my $sv, 'IPC::Shareable', {key => 'tested', create => 1, destroy => 1};
+    my $k = tie my $sv, 'IPC::Shareable', {key => 'tested', create => 1, destroy => 1, serializer => 'storable' };
 
     is $k->{attributes}{key}, 'tested', "six letter attr key is tested ok";
     is $k->seg->key, 142926612, "six letter attr key is ok";
@@ -79,7 +79,7 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
     for (keys %key_hash) {
 
-        my $k = tie my $sv, 'IPC::Shareable', {key => $_, create => 1, destroy => 1};
+        my $k = tie my $sv, 'IPC::Shareable', {key => $_, create => 1, destroy => 1, serializer => 'storable' };
 
         is $k->attributes('key'), $_, "$_ as key is the proper attribute ok";
 
@@ -111,7 +111,7 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
     for (keys %key_hash) {
 
-        my $k = tie my $sv, 'IPC::Shareable', {key => $_, create => 1, destroy => 1};
+        my $k = tie my $sv, 'IPC::Shareable', {key => $_, create => 1, destroy => 1, serializer => 'storable' };
 
         my $attr_key = $k->attributes('key');
         is $attr_key, $_, "'$_' as key is the proper attribute ok";
@@ -145,7 +145,7 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
     for (keys %key_hash) {
 
-        my $k = tie my $sv, 'IPC::Shareable', {key => $_, create => 1, destroy => 1};
+        my $k = tie my $sv, 'IPC::Shareable', {key => $_, create => 1, destroy => 1, serializer => 'storable' };
 
         my $attr_key = $k->attributes('key');
         is $attr_key, $_, "'$_' as key is the proper attribute ok";
@@ -158,7 +158,7 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
     # large integers are used as-is (no overflow correction)
     {
-        my $k = tie my $sv, 'IPC::Shareable', {key => 3735928559, create => 1, destroy => 1};
+        my $k = tie my $sv, 'IPC::Shareable', {key => 3735928559, create => 1, destroy => 1, serializer => 'storable' };
         is $k->seg->key, 3735928559, "large decimal integer key used as-is (no overflow correction) ok";
         $k->clean_up_all;
     }
@@ -176,7 +176,7 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
     );
 
     for my $hex_key (sort keys %key_hash) {
-        my $k = tie my $sv, 'IPC::Shareable', {key => $hex_key, create => 1, destroy => 1};
+        my $k = tie my $sv, 'IPC::Shareable', {key => $hex_key, create => 1, destroy => 1, serializer => 'storable' };
 
         is $k->attributes('key'), $hex_key, "hex string key '$hex_key' stored as attribute ok";
         is $k->seg->key, $key_hash{$hex_key}, "...and '$hex_key' maps to integer $key_hash{$hex_key} (no overflow correction) ok";
@@ -186,8 +186,8 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
     # Case-insensitive: '0xDEADBEEF' and '0xdeadbeef' resolve to the same segment
     {
-        tie my $a, 'IPC::Shareable', {key => '0xDEADBEEF', create => 1,  destroy => 0};
-        tie my $b, 'IPC::Shareable', {key => '0xdeadbeef', create => 0,  destroy => 1};
+        tie my $a, 'IPC::Shareable', {key => '0xDEADBEEF', create => 1,  destroy => 0, serializer => 'storable' };
+        tie my $b, 'IPC::Shareable', {key => '0xdeadbeef', create => 0,  destroy => 1, serializer => 'storable' };
 
         my $key_a = (tied $a)->seg->key;
         my $key_b = (tied $b)->seg->key;
@@ -200,8 +200,8 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
     # integer 3735928559.  It takes the decimal-integer path and is also used
     # as-is, so it resolves to the same segment as the quoted '0xDEADBEEF'.
     {
-        tie my $a, 'IPC::Shareable', {key => '0xDEADBEEF', create => 1,  destroy => 0};
-        tie my $b, 'IPC::Shareable', {key =>  0xDEADBEEF,  create => 0,  destroy => 1};
+        tie my $a, 'IPC::Shareable', {key => '0xDEADBEEF', create => 1,  destroy => 0, serializer => 'storable' };
+        tie my $b, 'IPC::Shareable', {key =>  0xDEADBEEF,  create => 0,  destroy => 1, serializer => 'storable' };
 
         my $key_a = (tied $a)->seg->key;
         my $key_b = (tied $b)->seg->key;
@@ -218,7 +218,7 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
     $sub->return_value(555555);
 
     my $no_collision = eval {
-        tie my %h, 'IPC::Shareable', { key => 'rand key gen', create => 1, destroy => 1 };
+        tie my %h, 'IPC::Shareable', { key => 'rand key gen', create => 1, destroy => 1 , serializer => 'storable' };
 
         $h{a} = 1;
         $h{b}{c} = 2;

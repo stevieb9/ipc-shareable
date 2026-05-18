@@ -32,7 +32,7 @@ if ($pid == 0) {
     sleep unless $awake;
     $awake = 0;
 
-    tie my %thash, 'IPC::Shareable', 'hobj', { destroy => 0 };
+    tie my %thash, 'IPC::Shareable', 'hobj', { destroy => 0 , serializer => 'storable' };
 
     $thash{'foo'} = "marlinspike";
     $thash{'bar'} = "ballyhoo";
@@ -58,7 +58,7 @@ if ($pid == 0) {
     my $awake = 0;
     local $SIG{ALRM} = sub { $awake = 1 };
 
-    tie my %thash, 'IPC::Shareable', 'hobj', { create => 'yes' };
+    tie my %thash, 'IPC::Shareable', 'hobj', { create => 'yes' , serializer => 'storable' };
 
     kill ALRM => $pid;
     sleep unless $awake;

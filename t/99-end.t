@@ -14,7 +14,7 @@ BEGIN {
 #    exit;
 #}
 
-tie my %store, 'IPC::Shareable', {key => 'async_tests', destroy => 1};
+tie my %store, 'IPC::Shareable', {key => 'async_tests', destroy => 1, serializer => 'storable' };
 
 my $start_segs = $store{segs};
 IPC::Shareable::clean_up_all;

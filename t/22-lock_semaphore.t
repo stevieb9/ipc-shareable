@@ -17,7 +17,8 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 my $t = tie my $sv, 'IPC::Shareable', {
     create => 1,
     key => 'data', 
-    destroy => 1
+    destroy => 1,
+    serializer => 'storable',
 };
 
 my @none = qw(1 0 0);

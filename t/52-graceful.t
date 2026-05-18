@@ -19,7 +19,8 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         key     => 'lock',
         create  => 1,
         exclusive => 1,
-        destroy => 1
+        destroy => 1,
+        serializer => 'storable',
     };
 
     my $catch = eval {
@@ -27,7 +28,8 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
             key     => 'lock',
             create  => 1,
             exclusive => 1,
-            destroy => 1
+            destroy => 1,
+            serializer => 'storable',
         };
         1;
     };
@@ -52,7 +54,8 @@ my $catch;
         create  => 1,
         exclusive => 1,
         graceful  => 1,
-        destroy => 1
+        destroy => 1,
+        serializer => 'storable',
     };
 
     tie my $sv2, 'IPC::Shareable', {
@@ -60,7 +63,8 @@ my $catch;
         create  => 1,
         exclusive => 1,
         graceful  => 1,
-        destroy => 1
+        destroy => 1,
+        serializer => 'storable',
     };
 }
 

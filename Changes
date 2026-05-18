@@ -66,8 +66,9 @@ Revision history for Perl extension IPC::Shareable.
     - Closes #45; We now accept a hex-based value as the key
     - Added shm_segments(); fetches raw data about all segments that had been
       created by this distribution
-    - Added orphans(); returns an aref of all segment keys (in hex string
-      format) for segments we've created but are no longer registered by us
+    - Added unknown_segments(); returns an aref of all segment keys (in hex
+      string format) for segments we've created but are no longer registered to
+      any known process
     - Closes #39; remove() now accepts a key, and can remove the segment and
       semaphores related to that key, even if it isn't related to this
       distribution
@@ -76,6 +77,19 @@ Revision history for Perl extension IPC::Shareable.
     - Fix issue when using JSON serializer where it wasn't properly handling
       scalar references properly (eg. creating a tie with a hashref)
     - Enhanced much of the test suite to test both Storable and JSON serializers
+    - Much work in order to add provisions so that shm counting and tracking
+      works on FreeBSD
+    - Add FreeBSD VM config and unit test runner in ci/ dir
+    - Removed the archaic _debug() and _trace functions
+    - Enhanced 'protected' segments; we now use a semaphore to mark a segment as
+      protected (SEM_PROTECTED), and all processes that load this segment will
+      inherit the protected status
+    - Add sem_map(); outputs a text representation of the segment/semaphore
+      mappings
+    - Added consistent naming for all four semaphores: SEM_EXISTS, SEM_READERS,
+      SEM_WRITERS, and SEM_PROTECTED
+    - Default serializer now JSON; Added check for backwards compatibility that
+      if JSON _decode() fails, we then attempt a Storable _thaw()
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

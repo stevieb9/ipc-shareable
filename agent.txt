@@ -1,6 +1,6 @@
 IPC::Shareable — Agent Context File
 =====================================
-Last updated: 2026-05-16 (session 6)
+Last updated: 2026-05-16 (session 7)
 Current version: 1.14 (UNRELEASED)
 Platform: macOS (primary dev), also CI-tested on 64-bit and 32-bit Linux
 Perl: 5.00503 minimum required
@@ -241,7 +241,7 @@ File                  Tests  Notes
 93-manifest.t                MANIFEST check (RELEASE_TESTING)
 99-end.t                     Final leak check
 
-Total test count: ~887 (as of 2026-05-16 session 6)
+Total test count: 905 (as of 2026-05-16 session 7)
 
 Running tests:
   prove -l t/*.t           Sequential (safe — avoid -j, see below)
@@ -375,6 +375,47 @@ RECENT CHANGES (v1.14 development, this session and prior)
     _thaw() handles gracefully via 'return if ! $ice'. Linux does the same
     but FETCHSIZE is called before FETCH in some Perl builds, triggering the
     crash path first.
+
+18. shm_segments($key): optional filter key added (session 7)
+    shm_segments() now accepts an optional key in any accepted format
+    (plain string, decimal integer, hex string '0x...'). When given, the
+    return hash is restricted to the root segment matching that key plus all
+    of its child segments (nested hashes/arrays). Without a key the behaviour
+    is unchanged (returns all IPC::Shareable segments on the system).
+    - Key conversion extracted into _key_str_to_int($key_str) — a pure
+      read-only helper with no %used_ids side effect, placed near _shm_key.
+    - Invocant stripping fixed for both shm_segments and orphans: the old
+      `shift if ref $_[0]` only handled object calls, not class-method calls.
+      Replaced with a UNIVERSAL::isa check that handles all three styles:
+      object method, class method, and bare function.
+    - POD updated with filtered calling forms and parameter description.
+    NOTE: _shm_key() cannot be simplified to call _key_str_to_int() because
+    it also handles the empty-string → IPC_PRIVATE path and maintains the
+    %used_ids side-effect table.
+
+19. FETCH dead code removed (session 7)
+    The `if (defined $data) { ... } else { return }` guards for TYPE_HASH
+    and TYPE_ARRAY in FETCH were dead after the _decode fix (#17): _decode
+    now always returns {} or [] for aggregates. Removed the dead else-branches
+    so FETCH reads the hash/array key directly without the defined check.
+    TYPE_SCALAR keeps its guard because _decode can still return undef for
+    a never-written scalar segment.
+
+20. Coverage-driven test additions (session 7)
+    t/20-lock_operation.t:
+    - LOCK_SH + EXISTS/FIRSTKEY (hash): verifies `unless _lock` skip path
+      for EXISTS and FIRSTKEY while a shared lock is held.
+    - LOCK_SH + FETCHSIZE (array): same for scalar(@array) while locked.
+    - LOCK_EX + STORESIZE ($#array = N): verifies _was_changed deferred
+      write path for STORESIZE and the `unless _lock` skip.
+    - enforced_locking blocked (array): PUSH, POP, SHIFT, UNSHIFT, SPLICE,
+      STORESIZE all return without writing when another knot holds LOCK_EX.
+    - enforced_locking blocked (hash): CLEAR and DELETE return without
+      writing when another knot holds LOCK_EX.
+    t/72-shm_segments.t:
+    - shm_segments() and orphans() called as object method ($k->shm_segments)
+      rather than class method, to cover the ref($_[0]) invocant branch.
+    Total test count: 905 (as of 2026-05-16 session 7)
 
 -----------------------------------------------------------------------
 KNOWN GAPS / FUTURE WORK

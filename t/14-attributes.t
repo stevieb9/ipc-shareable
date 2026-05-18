@@ -14,7 +14,7 @@ use Test::More;
 my $segs_before = IPC::Shareable::shm_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
-my $k = tie my $sv, 'IPC::Shareable', 'testing', {create => 1, destroy => 1};
+my $k = tie my $sv, 'IPC::Shareable', 'testing', {create => 1, destroy => 1, serializer => 'storable' };
 
 my $attrs_tied = (tied $sv)->attributes;
 is ref $attrs_tied, 'HASH', "tied var attributes() returns a hash ref ok";
@@ -65,6 +65,43 @@ is $attrs->{enforced_locking},   1, "enforced_locking is set ok";
 is $attrs->{violated_lock_warn},   0, "violated_lock_warn is set ok";
 
 is $k->attributes('no_exist'), undef, "attributes() on an undefined attr is undef";
+
+# _parse_args: 'no' is a deprecated option value -- silently coerced to 0
+{
+    my $k2 = tie my $sv2, 'IPC::Shareable', {
+        create  => 'no',
+        destroy => 1,
+            serializer => 'storable',
+    };
+    is $k2->attributes('create'), 0,
+        "_parse_args: 'no' value coerced to 0 (no warnings flag)";
+}
+
+# _parse_args: 'no' with $^W true emits a carp warning
+{
+    my @warnings;
+    local $SIG{__WARN__} = sub { push @warnings, @_ };
+
+    my $k3;
+    {
+        local $^W = 1;
+        $k3 = tie my $sv3, 'IPC::Shareable', {
+            create  => 'no',
+            destroy => 1,
+                    serializer => 'storable',
+        };
+    }
+    is $k3->attributes('create'), 0,
+        "_parse_args: 'no' with \$^W=1 still coerces to 0";
+    ok scalar(grep { /obsolete/ } @warnings),
+        "_parse_args: 'no' with \$^W=1 emits obsolete-usage warning";
+}
+
+# Default serializer should now be 'json'
+{
+    my $kd = tie my $sv_def, 'IPC::Shareable', { create => 1, destroy => 1 };
+    is $kd->attributes('serializer'), 'json', "default serializer is 'json'";
+}
 
 IPC::Shareable::_end;
 

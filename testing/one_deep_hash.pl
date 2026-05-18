@@ -4,7 +4,7 @@ use strict;
 use Data::Dumper;
 use IPC::Shareable;
 
-tie my %h, 'IPC::Shareable', {key => 'hash', create => 1, destroy => 1};
+tie my %h, 'IPC::Shareable', {key => 'hash', create => 1, destroy => 1, serializer => 'storable'};
 
 $h{a} = {z => 26, y => {1 => 2}};
 $h{b} = 12;

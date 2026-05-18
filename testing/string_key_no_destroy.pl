@@ -7,7 +7,7 @@ use IPC::Shareable;
 my $string_key = 'mykey';
 
 say "--- Step 1: create segment with string key '$string_key' ---";
-tie my %h, 'IPC::Shareable', { key => $string_key, create => 1, destroy => 0 };
+tie my %h, 'IPC::Shareable', { key => $string_key, create => 1, destroy => 0, serializer => 'storable' };
 
 $h{foo} = 'bar';
 $h{count} = 42;
@@ -22,7 +22,7 @@ say "Segment id  : $seg_id";
 say "";
 
 say "--- Step 2: re-attach to the same segment using the hex key ---";
-tie my %h2, 'IPC::Shareable', { key => $hex_key, create => 0, destroy => 0 };
+tie my %h2, 'IPC::Shareable', { key => $hex_key, create => 0, destroy => 0, serializer => 'storable' };
 
 say "foo   => $h2{foo}";
 say "count => $h2{count}";

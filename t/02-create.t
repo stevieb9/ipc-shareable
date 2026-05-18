@@ -14,7 +14,7 @@ my $segs_before = IPC::Shareable::shm_count();
 warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 my $ok = eval {
-    tie my $sv, 'IPC::Shareable', {key => 'test02', destroy => 1};
+    tie my $sv, 'IPC::Shareable', {key => 'test02', destroy => 1, serializer => 'storable' };
     1;
 };
 
