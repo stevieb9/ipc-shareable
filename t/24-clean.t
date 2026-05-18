@@ -222,10 +222,12 @@ is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
 # remove() (object form) warns when sem->remove fails
 {
     # destroy => 0: the shm segment is already gone after $k->remove, so no
-    # double-remove on scope exit.  The semaphore leaks (mock prevents cleanup)
-    # but shm_count() only counts shm segments so the final count check is fine.
+    # double-remove on scope exit.  Save the semaphore before mocking so we can
+    # clean it up manually after the block (mock prevents normal cleanup).
     my $k = tie my %h, 'IPC::Shareable', { key => 'TE', create => 1, destroy => 0 , serializer => 'storable' };
     $h{a} = 1;
+
+    my $orphan_sem = $k->sem;
 
     my @seen_warnings;
     local $SIG{__WARN__} = sub { push @seen_warnings, @_ };
@@ -235,6 +237,9 @@ is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
         my $sem_mock = $mock->mock('IPC::Semaphore::remove', return_value => undef);
         $k->remove;
     }
+
+    # Mock is now out of scope; remove the orphaned semaphore that the mock left behind.
+    $orphan_sem->remove;
 
     # undef return from sem->remove also triggers two 'uninitialized value'
     # warnings (from != and ne comparisons), so filter to the one we care about.

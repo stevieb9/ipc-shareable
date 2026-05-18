@@ -31,14 +31,4 @@ cpus: 2
 memory: "2GiB"
 disk: "20GiB"
 
-mounts:
-  - location: "~/repos/ipc-shareable"
-    mountPoint: /ipc-shareable
-    writable: false
-
-provision:
-  - mode: system
-    script: |
-      #!/bin/sh
-      set -e
-      pkg install -y perl5 p5-App-cpanminus gmake p5-ExtUtils-MakeMaker
+mounts: []
