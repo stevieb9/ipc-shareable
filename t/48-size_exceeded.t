@@ -29,6 +29,23 @@ like $@, qr/exceeds shared segment size/, "...and the error is sane";
 
 (tied $sv)->clean_up_all;
 
+# JSON serializer: same size check fires in _encode_json
+{
+    my $k2 = tie my $sv2, 'IPC::Shareable', {
+        create     => 1,
+        destroy    => 1,
+        serializer => 'json',
+        size       => 1,
+    };
+
+    my $ok2 = eval { $sv2 = 'x'; 1 };
+
+    is $ok2, undef, "json: croaks when encoded data exceeds segment size";
+    like $@, qr/exceeds shared segment size/, "json: ...and the error is sane";
+
+    $k2->clean_up_all;
+}
+
 IPC::Shareable::_end;
 
 my $segs_after = IPC::Shareable::shm_count();

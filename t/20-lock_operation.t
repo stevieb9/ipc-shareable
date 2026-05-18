@@ -4,6 +4,7 @@ use strict;
 use Carp;
 use Data::Dumper;
 use IPC::Shareable;
+use Mock::Sub;
 use Test::More;
 use Test::SharedFork;
 
@@ -305,6 +306,65 @@ my $sv;
     is $h2{a}, 1, "enforced_locking CLEAR: blocked when k1 holds LOCK_EX";
 
     $k1->unlock;
+}
+
+# lock() re-throws exception from code-ref (covers: die $err if !$ok)
+{
+    my $k = tie my %h, 'IPC::Shareable', { key => 'TB', create => 1, destroy => 1 };
+    $h{a} = 1;
+
+    is
+        eval { $k->lock(IPC::Shareable::LOCK_EX, sub { die "intentional error\n" }); 1 },
+        undef,
+        "lock() code-ref: re-throws exception from code-ref";
+    like $@, qr/intentional error/,
+        "lock() code-ref: error message propagated correctly";
+    is $k->{_lock}, 0,
+        "lock() code-ref: lock released after exception";
+}
+
+# unlock() croaks when _encode fails with _was_changed set (covers: croak in unlock _encode block)
+{
+    my $k = tie my %h, 'IPC::Shareable', { key => 'TC', create => 1, destroy => 1 };
+    $h{a} = 1;
+    $k->lock(IPC::Shareable::LOCK_EX);
+    $h{a} = 2;  # STORE sets _was_changed = 1
+    is $k->{_was_changed}, 1, "unlock _encode fail: _was_changed is set while locked";
+
+    {
+        my $mock = Mock::Sub->new;
+        my $encode_mock = $mock->mock('IPC::Shareable::_encode', return_value => undef);
+
+        is eval { $k->unlock; 1 }, undef,
+            "unlock() croaks when _encode returns undef with _was_changed set";
+        like $@, qr/Could not write to shared memory/,
+            "...and the error message is correct";
+    }
+
+    # Restore clean state so destroy => 1 cleanup works
+    $k->{_was_changed} = 0;
+    $k->unlock;
+}
+
+# unlock() croaks when sem->op fails (covers: croak "Could not release semaphore lock")
+{
+    my $k = tie my %h, 'IPC::Shareable', { key => 'TD', create => 1, destroy => 1 };
+    $h{a} = 1;
+    $k->lock(IPC::Shareable::LOCK_EX);
+    $k->{_was_changed} = 0;  # skip the _encode block
+
+    {
+        my $mock = Mock::Sub->new;
+        my $op_mock = $mock->mock('IPC::Semaphore::op', return_value => 0);
+
+        is eval { $k->unlock; 1 }, undef,
+            "unlock() croaks when sem->op returns false";
+        like $@, qr/Could not release semaphore lock/,
+            "...and the error message is correct";
+    }
+
+    # Manually clear lock flag; semaphore is destroyed with destroy => 1
+    $k->{_lock} = 0;
 }
 
 IPC::Shareable::_end;

@@ -66,6 +66,35 @@ is $attrs->{violated_lock_warn},   0, "violated_lock_warn is set ok";
 
 is $k->attributes('no_exist'), undef, "attributes() on an undefined attr is undef";
 
+# _parse_args: 'no' is a deprecated option value -- silently coerced to 0
+{
+    my $k2 = tie my $sv2, 'IPC::Shareable', {
+        create  => 'no',
+        destroy => 1,
+    };
+    is $k2->attributes('create'), 0,
+        "_parse_args: 'no' value coerced to 0 (no warnings flag)";
+}
+
+# _parse_args: 'no' with $^W true emits a carp warning
+{
+    my @warnings;
+    local $SIG{__WARN__} = sub { push @warnings, @_ };
+
+    my $k3;
+    {
+        local $^W = 1;
+        $k3 = tie my $sv3, 'IPC::Shareable', {
+            create  => 'no',
+            destroy => 1,
+        };
+    }
+    is $k3->attributes('create'), 0,
+        "_parse_args: 'no' with \$^W=1 still coerces to 0";
+    ok scalar(grep { /obsolete/ } @warnings),
+        "_parse_args: 'no' with \$^W=1 emits obsolete-usage warning";
+}
+
 IPC::Shareable::_end;
 
 my $segs_after = IPC::Shareable::shm_count();

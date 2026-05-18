@@ -247,4 +247,49 @@ is $segs_after, $segs_before, "segment count restored to original after cleanup"
     IPC::Shareable->clean_up_all;
 }
 
+# -----------------------------------------------------------------------
+# shm_segments($filter_key) - filter to a specific segment tree
+# -----------------------------------------------------------------------
+
+{
+    # Create two unrelated segments plus a parent-with-child (JSON serializer
+    # creates child segments for nested refs).
+    tie my %parent, 'IPC::Shareable', {
+        key        => '0x1B0B0060',
+        create     => 1,
+        destroy    => 1,
+        serializer => 'json',
+    };
+    tie my %other, 'IPC::Shareable', {
+        key    => '0x1B0B0070',
+        create => 1,
+        destroy => 1,
+    };
+
+    $parent{child} = { nested => 1 };   # creates a child segment
+    $other{x}      = 1;
+
+    # Filter to just the parent key — should include parent and its child,
+    # but not the unrelated segment.
+    my $filtered = IPC::Shareable->shm_segments('0x1B0B0060');
+
+    is ref($filtered), 'HASH',
+        "shm_segments(filter) returns a hash ref";
+
+    ok exists $filtered->{'0x1b0b0060'},
+        "shm_segments(filter) includes the requested segment";
+
+    ok !exists $filtered->{'0x1b0b0070'},
+        "shm_segments(filter) excludes unrelated segment";
+
+    # Filter to a key that doesn't exist — should return an empty hash.
+    my $empty = IPC::Shareable->shm_segments('0x1B0BFFFF');
+    is ref($empty), 'HASH',
+        "shm_segments(nonexistent filter) still returns a hash ref";
+    is scalar(keys %$empty), 0,
+        "shm_segments(nonexistent filter) returns empty hash";
+
+    IPC::Shareable->clean_up_all;
+}
+
 done_testing;

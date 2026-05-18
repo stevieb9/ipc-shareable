@@ -25,7 +25,7 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION = '1.14';
+our $VERSION = '1.14_04';
 
 use constant {
     LOCK_SH               => 1,
@@ -562,7 +562,9 @@ sub orphans {
     return grep { $segs->{$_}{orphaned} } keys %$segs;
 }
 sub sysv_info {
-    shift if ref $_[0]; # Allow for object or class method call
+    shift; # Discard invocant (object ref or class name)
+    my %opts     = @_;
+    my $proc_dir = delete $opts{_proc_dir} // '/proc/sys/kernel';
 
     my %info;
 
@@ -576,7 +578,7 @@ sub sysv_info {
     }
     elsif ($^O eq 'linux') {
         for my $key (qw(shmmax shmmin shmmni shmall)) {
-            my $file = "/proc/sys/kernel/$key";
+            my $file = "$proc_dir/$key";
             if (open my $fh, '<', $file) {
                 chomp(my $val = <$fh>);
                 $info{$key} = $val;
@@ -1544,41 +1546,6 @@ sub _end {
         next if $s->attributes('owner') != $$;
         eval { remove($s) };
     }
-}
-
-sub _trace {
-    require Carp;
-    require Data::Dumper;
-    my $caller = '    ' . (caller(1))[3] . " called with:\n";
-    my $i = -1;
-    my @msg = map {
-        ++$i;
-        my $obj;
-        if (ref eq 'IPC::Shareable') {
-            '        ' . "\$_[$i] = $_: shmid: $_->{_shm}->{_id}; " .
-                Data::Dumper->Dump([ $_->attributes ], [ 'opts' ]);
-        } else {
-            '        ' . Data::Dumper->Dump( [ $_ ] => [ "\_[$i]" ]);
-        }
-    }  @_;
-    Carp::carp "IPC::Shareable ($$) debug:\n", $caller, @msg;
-}
-sub _debug {
-    require Carp;
-    require Data::Dumper;
-    local $Data::Dumper::Terse = 1;
-    my $caller = '    ' . (caller(1))[3] . " tells us that:\n";
-    my @msg = map {
-        my $obj;
-        if (ref eq 'IPC::Shareable') {
-            '        ' . "$_: shmid: $_->{_shm}->{_id}; " .
-                Data::Dumper->Dump([ $_->attributes ], [ 'opts' ]);
-        }
-        else {
-            '        ' . Data::Dumper::Dumper($_);
-        }
-    }  @_;
-    Carp::carp "IPC::Shareable ($$) debug:\n", $caller, @msg;
 }
 
 sub _placeholder {}
