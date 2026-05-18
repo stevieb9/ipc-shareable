@@ -57,7 +57,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 # _magic_tie: croaks for an unsupported ref type
 {
-    my $knot = tie my %h, 'IPC::Shareable', { create => 1, destroy => 1 };
+    my $knot = tie my %h, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
 
     my $code = sub { 42 };   # CODE ref — not HASH/ARRAY/SCALAR
 

@@ -25,7 +25,8 @@ use constant BYTES => 2000000; # ~2MB
         tie my $var, 'IPC::Shareable', {
             create  => 1,
             size    => 2_000_000_000,
-            destroy => 1
+            destroy => 1,
+            serializer => 'storable',
         };
         1;
     };
@@ -39,7 +40,8 @@ use constant BYTES => 2000000; # ~2MB
                 limit   => 0,
                 create  => 1,
                 size    => 2_000_000_000,
-                destroy => 1
+                destroy => 1,
+                serializer => 'storable',
             };
             1;
         };
@@ -57,7 +59,8 @@ use constant BYTES => 2000000; # ~2MB
         tie my $var, 'IPC::Shareable', {
             limit   => 0,
             size    => 999999999999,
-            destroy => 1
+            destroy => 1,
+            serializer => 'storable',
         };
         1;
     };
@@ -71,6 +74,7 @@ my $k = tie my %hv, 'IPC::Shareable', {
     create => 1,
     destroy => 1,
     size => BYTES,
+    serializer => 'storable',
 };
 
 my $seg = $k->seg;

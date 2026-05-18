@@ -35,6 +35,7 @@ if ($pid == 0) {
         mode      => 0666,
         size      => 1024*512,
         destroy   => 0,
+            serializer => 'storable',
     };
 
     @av = ();
@@ -57,6 +58,7 @@ if ($pid == 0) {
         mode      => 0666,
         size      => 1024*512,
         destroy   => 'yes',
+            serializer => 'storable',
     };
     @av = ();
     kill ALRM => $pid;

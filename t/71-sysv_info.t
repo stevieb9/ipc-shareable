@@ -46,7 +46,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 # sysv_info() - object method
 {
-    my $knot = tie my %hv, 'IPC::Shareable', { create => 1, destroy => 1 };
+    my $knot = tie my %hv, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
 
     my $info = $knot->sysv_info;
 
@@ -67,7 +67,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 # sysv_info() - class method and object method return identical data
 {
-    my $knot = tie my %hv, 'IPC::Shareable', { create => 1, destroy => 1 };
+    my $knot = tie my %hv, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
 
     if ($^O eq 'darwin' || $^O eq 'linux') {
         my $class_info  = IPC::Shareable->sysv_info;

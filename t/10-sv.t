@@ -13,7 +13,7 @@ use Test::More;
 my $segs_before = IPC::Shareable::shm_count();
 warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
-tie my $sv, 'IPC::Shareable', {destroy => 1};
+tie my $sv, 'IPC::Shareable', {destroy => 1, serializer => 'storable' };
 
 $sv = 'foo';
 is $sv, 'foo', "SCALAR created ok, and set to 'foo'";
@@ -26,7 +26,7 @@ is $sv, 'foo', "SCALAR created ok, and set to 'foo'";
 for my $mod (qw/HASH SCALAR ARRAY/){
     # --- TIESCALAR
     my $sv;
-    tie($sv, 'IPC::Shareable', { destroy => 'yes' })
+    tie($sv, 'IPC::Shareable', { destroy => 'yes' , serializer => 'storable' })
         or die ('this was not expected to die here');
 
     $sv = $mod.'foo';
@@ -35,7 +35,7 @@ for my $mod (qw/HASH SCALAR ARRAY/){
 
 # FETCH from a never-written scalar segment returns undef (empty segment path)
 {
-    tie my $sv, 'IPC::Shareable', { key => 'sv10e', create => 1, destroy => 1 };
+    tie my $sv, 'IPC::Shareable', { key => 'sv10e', create => 1, destroy => 1 , serializer => 'storable' };
     is $sv, undef, "FETCH on never-written scalar returns undef ok";
 }
 

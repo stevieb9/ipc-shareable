@@ -12,7 +12,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 # serializer: storable
 {
     # scalar ref
-    tie my $sv, 'IPC::Shareable', { destroy => 1 };
+    tie my $sv, 'IPC::Shareable', { destroy => 1 , serializer => 'storable' };
 
     my $ref = 'ref';
     $sv = \$ref;
@@ -47,7 +47,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
     tie my @av, 'IPC::Shareable';
 
-    $av[0] = { foo => 'bar', baz => 'bash' };
+    $av[0] = { foo => 'bar', baz => 'bash' , serializer => 'storable' };
     $av[1] = [ 0 .. 9 ];
 
     is ref($av[0]), 'HASH',  "storable: AV elem 0 is a hash";

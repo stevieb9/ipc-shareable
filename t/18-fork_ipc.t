@@ -22,7 +22,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
         sleep unless $awake;
 
-        tie my %h, 'IPC::Shareable', { key => 'testing25', destroy => 0 };
+        tie my %h, 'IPC::Shareable', { key => 'testing25', destroy => 0 , serializer => 'storable' };
         $h{a} = 'foo';
         exit;
     } else {
@@ -32,6 +32,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
             key     => 'testing25',
             create  => 1,
             destroy => 1,
+                    serializer => 'storable',
         };
 
         $h{a} = 'bar';

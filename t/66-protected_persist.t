@@ -19,6 +19,7 @@ my $protect_lock = 441;
         exclusive => 1,
         destroy   => 0,
         protected => $protect_lock,
+        serializer => 'storable',
     };
     $p{val} = 'same_proc';
 
@@ -26,6 +27,7 @@ my $protect_lock = 441;
     tie my %p2, 'IPC::Shareable', {
         key    => 'pp66a',
         create => 0,
+        serializer => 'storable',
     };
 
     is tied(%p2)->attributes('protected'), $protect_lock,
@@ -54,6 +56,7 @@ my $protect_lock = 441;
         tie my %child_p, 'IPC::Shareable', {
             key    => 'pp66b',
             create => 0,
+            serializer => 'storable',
         };
 
         is tied(%child_p)->attributes('protected'), $protect_lock,
@@ -76,6 +79,7 @@ my $protect_lock = 441;
             exclusive => 1,
             destroy   => 0,
             protected => $protect_lock,
+            serializer => 'storable',
         };
         $p{val} = 'cross_proc';
 

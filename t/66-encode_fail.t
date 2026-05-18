@@ -12,7 +12,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 {
     # STORE croaks when _encode() returns undef (no lock held)
 
-    tie my $sv => 'IPC::Shareable', { create => 1, destroy => 1 };
+    tie my $sv => 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
 
     my $mock = Mock::Sub->new;
     my $encode_mock = $mock->mock('IPC::Shareable::_encode', return_value => undef);
@@ -31,7 +31,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 {
     # CLEAR croaks when _encode() returns undef (no lock held)
 
-    my $s = tie my %hv => 'IPC::Shareable', { create => 1, destroy => 1 };
+    my $s = tie my %hv => 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
     $hv{a} = 1;
 
     my $mock = Mock::Sub->new;
@@ -51,7 +51,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 {
     # DELETE croaks when _encode() returns undef (no lock held)
 
-    tie my %hv => 'IPC::Shareable', { create => 1, destroy => 1 };
+    tie my %hv => 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
     $hv{a} = 1;
 
     my $mock = Mock::Sub->new;
@@ -78,7 +78,7 @@ for my $op (
 ) {
     my ($name, $code) = @$op;
 
-    tie my @av => 'IPC::Shareable', { create => 1, destroy => 1 };
+    tie my @av => 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
     @av = (1, 2, 3);
 
     my $mock = Mock::Sub->new;

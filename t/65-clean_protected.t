@@ -40,6 +40,7 @@ my $protect_lock = 292;
         exclusive => 1,
         destroy => 1,
         protected => 500,
+            serializer => 'storable',
     };
 
     $test{a}{b} = 2;
@@ -64,6 +65,7 @@ tie my %p, 'IPC::Shareable', {
     exclusive => 1,
     destroy => 1,
     protected => $protect_lock,
+    serializer => 'storable',
 };
 
 tie my %u, 'IPC::Shareable', {
@@ -71,6 +73,7 @@ tie my %u, 'IPC::Shareable', {
     create  => 1,
     exclusive => 1,
     destroy => 1,
+    serializer => 'storable',
 };
 
 $p{one}{two} = 1;

@@ -15,7 +15,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 # Single segment (scalar, no children)
 {
-    my $k = tie my $sv, 'IPC::Shareable', { key => 'sm74a', create => 1, exclusive => 1, destroy => 1 };
+    my $k = tie my $sv, 'IPC::Shareable', { key => 'sm74a', create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
     $sv = 'hello';
 
     my $map = $k->seg_map;
@@ -44,6 +44,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         exclusive => 1,
         destroy   => 0,
         protected => 777,
+            serializer => 'storable',
     };
     $h{x} = 1;
 
@@ -56,7 +57,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 # Nested segment (hash with a reference child) - parent and child both appear
 {
-    my $kn = tie my %h, 'IPC::Shareable', { key => 'sm74c', create => 1, exclusive => 1, destroy => 1 };
+    my $kn = tie my %h, 'IPC::Shareable', { key => 'sm74c', create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
     $h{nested} = { val => 42 };
 
     # Force a read to ensure child segment is created
@@ -73,8 +74,8 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 # Object method only shows its own segment tree, not other segments
 {
-    my $k1 = tie my $sv1, 'IPC::Shareable', { key => 'sm74d', create => 1, exclusive => 1, destroy => 1 };
-    my $k2 = tie my $sv2, 'IPC::Shareable', { key => 'sm74e', create => 1, exclusive => 1, destroy => 1 };
+    my $k1 = tie my $sv1, 'IPC::Shareable', { key => 'sm74d', create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
+    my $k2 = tie my $sv2, 'IPC::Shareable', { key => 'sm74e', create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
     $sv1 = 'first';
     $sv2 = 'second';
 

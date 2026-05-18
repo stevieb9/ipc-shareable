@@ -22,7 +22,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 # -----------------------------------------------------------------------
 
 {
-    tie my %h, 'IPC::Shareable', { key => '0x1B0B0001', create => 1, destroy => 1 };
+    tie my %h, 'IPC::Shareable', { key => '0x1B0B0001', create => 1, destroy => 1 , serializer => 'storable' };
     $h{test} = 'hello';
 
     my $segs = IPC::Shareable->shm_segments;
@@ -68,10 +68,10 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 {
     my $count_before = scalar keys %{ IPC::Shareable->shm_segments };
 
-    tie my $sv, 'IPC::Shareable', { key => '0x1B0B0010', create => 1, destroy => 1 };
+    tie my $sv, 'IPC::Shareable', { key => '0x1B0B0010', create => 1, destroy => 1 , serializer => 'storable' };
     $sv = 'scalar value';
 
-    tie my %hv, 'IPC::Shareable', { key => '0x1B0B0020', create => 1, destroy => 1 };
+    tie my %hv, 'IPC::Shareable', { key => '0x1B0B0020', create => 1, destroy => 1 , serializer => 'storable' };
     $hv{x} = 1;
 
     my $segs = IPC::Shareable->shm_segments;
@@ -92,7 +92,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 # -----------------------------------------------------------------------
 
 {
-    tie my %h, 'IPC::Shareable', { key => '0x1B0B0030', create => 1, destroy => 1 };
+    tie my %h, 'IPC::Shareable', { key => '0x1B0B0030', create => 1, destroy => 1 , serializer => 'storable' };
     $h{v} = 1;
 
     my $segs = IPC::Shareable->shm_segments;
@@ -233,7 +233,7 @@ is $segs_after, $segs_before, "segment count restored to original after cleanup"
 # -----------------------------------------------------------------------
 
 {
-    my $k = tie my %h, 'IPC::Shareable', { key => '0x1B0B0050', create => 1, destroy => 1 };
+    my $k = tie my %h, 'IPC::Shareable', { key => '0x1B0B0050', create => 1, destroy => 1 , serializer => 'storable' };
     $h{x} = 1;
 
     my $segs = $k->shm_segments;
@@ -264,6 +264,7 @@ is $segs_after, $segs_before, "segment count restored to original after cleanup"
         key    => '0x1B0B0070',
         create => 1,
         destroy => 1,
+            serializer => 'storable',
     };
 
     $parent{child} = { nested => 1 };   # creates a child segment

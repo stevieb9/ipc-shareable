@@ -14,7 +14,7 @@ use Test::More;
 my $segs_before = IPC::Shareable::shm_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
-my $k = tie my $sv, 'IPC::Shareable', 'testing', {create => 1, destroy => 1};
+my $k = tie my $sv, 'IPC::Shareable', 'testing', {create => 1, destroy => 1, serializer => 'storable' };
 
 my $attrs_tied = (tied $sv)->attributes;
 is ref $attrs_tied, 'HASH', "tied var attributes() returns a hash ref ok";
@@ -71,6 +71,7 @@ is $k->attributes('no_exist'), undef, "attributes() on an undefined attr is unde
     my $k2 = tie my $sv2, 'IPC::Shareable', {
         create  => 'no',
         destroy => 1,
+            serializer => 'storable',
     };
     is $k2->attributes('create'), 0,
         "_parse_args: 'no' value coerced to 0 (no warnings flag)";
@@ -87,6 +88,7 @@ is $k->attributes('no_exist'), undef, "attributes() on an undefined attr is unde
         $k3 = tie my $sv3, 'IPC::Shareable', {
             create  => 'no',
             destroy => 1,
+                    serializer => 'storable',
         };
     }
     is $k3->attributes('create'), 0,

@@ -17,6 +17,7 @@ my $k = tie my $sv, 'IPC::Shareable', {
     create => 1,
     destroy => 1,
     size => 1,
+    serializer => 'storable',
 };
 
 my $ok = eval {

@@ -14,10 +14,12 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         create           => 1,
         destroy          => 1,
         enforced_locking => 1,
+            serializer => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
         key              => 'SLCK1',
         enforced_locking => 1,
+            serializer => 'storable',
     };
 
     $h1{a} = 10;
@@ -47,6 +49,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         create           => 1,
         destroy          => 1,
         enforced_locking => 1,
+            serializer => 'storable',
     };
 
     $h1{a} = 10;
@@ -74,11 +77,13 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         create           => 1,
         destroy          => 1,
         enforced_locking => 1,
+            serializer => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
         key                => 'SLCK3',
         enforced_locking   => 1,
         violated_lock_warn => 1,
+            serializer => 'storable',
     };
 
     $h1{a} = 10;
@@ -118,10 +123,12 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         create           => 1,
         destroy          => 1,
         enforced_locking => 1,
+            serializer => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
         key              => 'SLCK4',
         enforced_locking => 1,
+            serializer => 'storable',
     };
 
     $h1{a} = 10;

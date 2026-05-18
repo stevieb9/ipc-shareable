@@ -75,7 +75,8 @@ our %EXPORT_TAGS = (
 );
 Exporter::export_ok_tags('all', 'lock', 'flock');
 
-# Locking scheme copied from IPC::ShareLite -- ltl
+# Locking scheme copied from IPC::ShareLite
+
 my %semop_args = (
     (LOCK_EX),
     [
@@ -93,7 +94,6 @@ my %semop_args = (
     [
         SEM_WRITERS, -1, (SEM_UNDO | IPC_NOWAIT),
     ],
-
     (LOCK_SH),
     [
         SEM_WRITERS, 0, 0,                        # Wait for writers to finish

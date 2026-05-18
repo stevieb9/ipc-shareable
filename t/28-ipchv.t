@@ -35,6 +35,7 @@ if ($pid == 0) {
         exclusive => 0,
         mode      => 0644,
         destroy   => 0,
+            serializer => 'storable',
     };
 
     for (qw(fee fie foe fum)) {
@@ -64,6 +65,7 @@ if ($pid == 0) {
         mode      => 0666,
         size      => 1024*512,
         destroy   => 'yes',
+            serializer => 'storable',
     };
 
     %hv = ();

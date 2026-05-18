@@ -31,7 +31,7 @@ my $sv;
 #    # child
 #
 #    sleep unless $awake;
-#    tie($sv, 'IPC::Shareable', 'TEST', { destroy => 0 });
+#    tie($sv, 'IPC::Shareable', 'TEST', { destroy => 0 , serializer => 'storable' });
 #
 #    for (0 .. 99) {
 #        (tied $sv)->lock;
@@ -44,7 +44,7 @@ my $sv;
 #} else {
 #    # parent
 #
-#    tie($sv, 'IPC::Shareable', 'TEST', { create => 1, destroy => 1 })
+#    tie($sv, 'IPC::Shareable', 'TEST', { create => 1, destroy => 1 , serializer => 'storable' })
 #        or die "parent process can't tie \$sv";
 #    $sv = 0;
 #    kill ALRM => $pid;
@@ -59,8 +59,8 @@ my $sv;
 
 # Advisory locking
 {
-    my $k1 = tie my %h1, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1 };
-    my $k2 = tie my %h2, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1 };
+    my $k1 = tie my %h1, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1 , serializer => 'storable' };
+    my $k2 = tie my %h2, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1 , serializer => 'storable' };
 
     $h1{a} = {b => 1};
 
@@ -96,10 +96,12 @@ my $sv;
         create           => 1,
         destroy          => 1,
         enforced_locking => 1,
+            serializer => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
         key              => 'TEST2',
         enforced_locking => 1,
+            serializer => 'storable',
     };
 
     $h1{a} = 1;
@@ -132,11 +134,13 @@ my $sv;
         create             => 1,
         destroy            => 1,
         enforced_locking   => 1,
+            serializer => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
         key                 => 'TEST2',
         enforced_locking    => 1,
         violated_lock_warn  => 1,
+            serializer => 'storable',
     };
 
     $h1{a} = 1;
@@ -169,7 +173,7 @@ my $sv;
 
 # LOCK_EX + CLEAR on a hash: _was_changed deferred write
 {
-    my $k = tie my %h, 'IPC::Shareable', { key => 'T3', create => 1, destroy => 1 };
+    my $k = tie my %h, 'IPC::Shareable', { key => 'T3', create => 1, destroy => 1 , serializer => 'storable' };
     $h{a} = 1;
     $h{b} = 2;
     $k->lock(IPC::Shareable::LOCK_EX);
@@ -181,7 +185,7 @@ my $sv;
 
 # LOCK_EX + DELETE on a hash: _was_changed deferred write
 {
-    my $k = tie my %h, 'IPC::Shareable', { key => 'T4', create => 1, destroy => 1 };
+    my $k = tie my %h, 'IPC::Shareable', { key => 'T4', create => 1, destroy => 1 , serializer => 'storable' };
     $h{x} = 10;
     $h{y} = 20;
     $k->lock(IPC::Shareable::LOCK_EX);
@@ -194,7 +198,7 @@ my $sv;
 
 # LOCK_EX + array mutation ops: PUSH, POP, SHIFT, UNSHIFT, SPLICE
 {
-    my $k = tie my @a, 'IPC::Shareable', { key => 'T5', create => 1, destroy => 1 };
+    my $k = tie my @a, 'IPC::Shareable', { key => 'T5', create => 1, destroy => 1 , serializer => 'storable' };
     @a = (1, 2, 3);
 
     $k->lock(IPC::Shareable::LOCK_EX);
@@ -227,7 +231,7 @@ my $sv;
 
 # LOCK_SH: hash read ops skip _decode when already locked (EXISTS, FIRSTKEY)
 {
-    my $k = tie my %h, 'IPC::Shareable', { key => 'T6', create => 1, destroy => 1 };
+    my $k = tie my %h, 'IPC::Shareable', { key => 'T6', create => 1, destroy => 1 , serializer => 'storable' };
     $h{a} = 1;
     $k->lock(IPC::Shareable::LOCK_SH);
     ok  exists($h{a}), "LOCK_SH EXISTS: returns true for existing key (uses cached _data)";
@@ -239,7 +243,7 @@ my $sv;
 
 # LOCK_SH: array FETCHSIZE skips _decode when already locked
 {
-    my $k = tie my @a, 'IPC::Shareable', { key => 'T7', create => 1, destroy => 1};
+    my $k = tie my @a, 'IPC::Shareable', { key => 'T7', create => 1, destroy => 1, serializer => 'storable' };
     @a = (1, 2, 3);
     $k->lock(IPC::Shareable::LOCK_SH);
     is scalar(@a), 3, "LOCK_SH FETCHSIZE: scalar(\@array) correct while locked (uses cached _data)";
@@ -248,7 +252,7 @@ my $sv;
 
 # LOCK_EX + STORESIZE ($#array = N): _was_changed deferred write
 {
-    my $k = tie my @a, 'IPC::Shareable', { key => 'T8', create => 1, destroy => 1 };
+    my $k = tie my @a, 'IPC::Shareable', { key => 'T8', create => 1, destroy => 1 , serializer => 'storable' };
     @a = (1, 2, 3, 4, 5);
     $k->lock(IPC::Shareable::LOCK_EX);
     $#a = 1;
@@ -260,9 +264,11 @@ my $sv;
 # enforced_locking: array write ops blocked when another knot holds LOCK_EX
 {
     my $k1 = tie my @a1, 'IPC::Shareable', {
-        key => 'T9', create => 1, destroy => 1, enforced_locking => 1 };
+        key => 'T9', create => 1, destroy => 1, enforced_locking => 1, serializer => 'storable',
+    };
     my $k2 = tie my @a2, 'IPC::Shareable', {
-        key => 'T9', enforced_locking => 1 };
+        key => 'T9', enforced_locking => 1, serializer => 'storable',
+    };
 
     @a1 = (1, 2, 3);
     $k1->lock(IPC::Shareable::LOCK_EX);
@@ -291,9 +297,11 @@ my $sv;
 # enforced_locking: hash CLEAR and DELETE blocked when another knot holds LOCK_EX
 {
     my $k1 = tie my %h1, 'IPC::Shareable', {
-        key => 'TA', create => 1, destroy => 1, enforced_locking => 1 };
+        key => 'TA', create => 1, destroy => 1, enforced_locking => 1, serializer => 'storable',
+    };
     my $k2 = tie my %h2, 'IPC::Shareable', {
-        key => 'TA', enforced_locking => 1 };
+        key => 'TA', enforced_locking => 1, serializer => 'storable',
+    };
 
     $h1{a} = 1;
     $h1{b} = 2;
@@ -310,7 +318,7 @@ my $sv;
 
 # lock() re-throws exception from code-ref (covers: die $err if !$ok)
 {
-    my $k = tie my %h, 'IPC::Shareable', { key => 'TB', create => 1, destroy => 1 };
+    my $k = tie my %h, 'IPC::Shareable', { key => 'TB', create => 1, destroy => 1 , serializer => 'storable' };
     $h{a} = 1;
 
     is
@@ -325,7 +333,7 @@ my $sv;
 
 # unlock() croaks when _encode fails with _was_changed set (covers: croak in unlock _encode block)
 {
-    my $k = tie my %h, 'IPC::Shareable', { key => 'TC', create => 1, destroy => 1 };
+    my $k = tie my %h, 'IPC::Shareable', { key => 'TC', create => 1, destroy => 1 , serializer => 'storable' };
     $h{a} = 1;
     $k->lock(IPC::Shareable::LOCK_EX);
     $h{a} = 2;  # STORE sets _was_changed = 1
@@ -348,7 +356,7 @@ my $sv;
 
 # unlock() croaks when sem->op fails (covers: croak "Could not release semaphore lock")
 {
-    my $k = tie my %h, 'IPC::Shareable', { key => 'TD', create => 1, destroy => 1 };
+    my $k = tie my %h, 'IPC::Shareable', { key => 'TD', create => 1, destroy => 1 , serializer => 'storable' };
     $h{a} = 1;
     $k->lock(IPC::Shareable::LOCK_EX);
     $k->{_was_changed} = 0;  # skip the _encode block

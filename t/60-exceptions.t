@@ -70,7 +70,7 @@ is $segs_after, $segs_before, "All segs cleaned up ok";
 # _tie: limit check — croaks when size > SHMMAX_BYTES and limit => 1
 {
     is
-        eval { tie my %h, 'IPC::Shareable', { create => 1, destroy => 1, size => 2_000_000_000, limit => 1 }; 1 },
+        eval { tie my %h, 'IPC::Shareable', { create => 1, destroy => 1, size => 2_000_000_000, limit => 1 , serializer => 'storable' }; 1 },
         undef,
         "_tie limit: croaks when size exceeds SHMMAX_BYTES";
     like $@, qr/larger than max size/,
@@ -83,7 +83,7 @@ is $segs_after, $segs_before, "All segs cleaned up ok";
     my $shm_mock = $mock->mock('IPC::Shareable::SharedMem::new', return_value => undef);
 
     is
-        eval { tie my %h, 'IPC::Shareable', { create => 1, destroy => 1 }; 1 },
+        eval { tie my %h, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' }; 1 },
         undef,
         "_tie: croaks when SharedMem->new returns undef";
     like $@, qr/Could not create shared memory segment/,
@@ -100,7 +100,7 @@ is $segs_after, $segs_before, "All segs cleaned up ok";
         my $sem_mock = $mock->mock('IPC::Semaphore::new', return_value => undef);
 
         is
-            eval { tie my %h, 'IPC::Shareable', { key => $key, create => 1, destroy => 0 }; 1 },
+            eval { tie my %h, 'IPC::Shareable', { key => $key, create => 1, destroy => 0 , serializer => 'storable' }; 1 },
             undef,
             "_tie: croaks when IPC::Semaphore->new returns undef";
         like $@, qr/Could not create semaphore set/,
@@ -115,7 +115,7 @@ is $segs_after, $segs_before, "All segs cleaned up ok";
 
 # _thaw: croaks when Storable::thaw returns undef (munged segment)
 {
-    tie my $sv, 'IPC::Shareable', { create => 1, destroy => 1 };
+    tie my $sv, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
     $sv = 'hello';   # write so the segment carries the IPC::Shareable tag
 
     {
@@ -136,7 +136,7 @@ is $segs_after, $segs_before, "All segs cleaned up ok";
         return undef;
     };
 
-    is eval { tie my %h, 'IPC::Shareable', { create => 1, destroy => 1 }; 1 }, undef,
+    is eval { tie my %h, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' }; 1 }, undef,
         "_tie: croaks when SharedMem->new fails with ENOMEM";
     like $@, qr/spawning too many segments/,
         "_tie: OOM error message references segment spawning";
@@ -150,7 +150,7 @@ is $segs_after, $segs_before, "All segs cleaned up ok";
         return undef;
     };
 
-    is eval { tie my %h, 'IPC::Shareable', { create => 1, exclusive => 1, destroy => 1 }; 1 }, undef,
+    is eval { tie my %h, 'IPC::Shareable', { create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' }; 1 }, undef,
         "_tie: croaks when create+exclusive set and SharedMem->new returns undef";
     like $@, qr/exclusive.*are set|Does the segment already exist/,
         "_tie: create+exclusive error message correct";
@@ -165,7 +165,7 @@ is $segs_after, $segs_before, "All segs cleaned up ok";
         my $mock    = Mock::Sub->new;
         my $op_mock = $mock->mock('IPC::Semaphore::op', return_value => 0);
 
-        is eval { tie my %h, 'IPC::Shareable', { key => $key, create => 1, destroy => 0 }; 1 }, undef,
+        is eval { tie my %h, 'IPC::Shareable', { key => $key, create => 1, destroy => 0 , serializer => 'storable' }; 1 }, undef,
             "_tie: croaks when sem->op fails for initial LOCK_SH";
         like $@, qr/Could not obtain semaphore set lock/,
             "_tie: semaphore op failure error message correct";
@@ -187,7 +187,7 @@ is $segs_after, $segs_before, "All segs cleaned up ok";
         my $mock        = Mock::Sub->new;
         my $setval_mock = $mock->mock('IPC::Semaphore::setval', return_value => 0);
 
-        is eval { tie my %h, 'IPC::Shareable', { key => $key, create => 1, destroy => 0 }; 1 }, undef,
+        is eval { tie my %h, 'IPC::Shareable', { key => $key, create => 1, destroy => 0 , serializer => 'storable' }; 1 }, undef,
             "_tie: croaks when sem->setval fails during initialization";
         like $@, qr/Couldn't set semaphore during object creation/,
             "_tie: setval failure error message correct";

@@ -41,7 +41,7 @@ my $ok = 1;
     }
 }
 
-tie my $d, 'IPC::Shareable', { destroy => 'yes' };
+tie my $d, 'IPC::Shareable', { destroy => 'yes' , serializer => 'storable' };
 
 $d = Dummy->new or undef $ok;
 is ref($d), 'Dummy', "shared var is a Dummy object ok";
