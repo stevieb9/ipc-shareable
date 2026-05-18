@@ -84,6 +84,8 @@ Revision history for Perl extension IPC::Shareable.
     - Enhanced 'protected' segments; we now use a semaphore to mark a segment as
       protected, and all processes that load this segment will inherit the
       protected status
+    - Add sem_map(); outputs a text representation of the segment/semaphore
+      mappings
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
