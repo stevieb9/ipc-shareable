@@ -28,6 +28,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         destroy   => 1,
         mode      => 0600,
         size      => 999,
+        serializer => 'storable',
     };
 
     my $s = tie my %opt_test => 'IPC::Shareable', $opts;

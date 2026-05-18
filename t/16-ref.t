@@ -60,7 +60,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         is $av[1]->[$_], $_, "storable: AV[1]->[$_] == $_ ok";
     }
 
-    tie my %hv, 'IPC::Shareable';
+    tie my %hv, 'IPC::Shareable', { serializer => 'storable' };
 
     for ('a' .. 'z') {
         $hv{lower}->{$_} = $_;
