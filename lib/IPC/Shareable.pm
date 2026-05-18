@@ -2000,7 +2000,7 @@ value you set the C<protected> option to. You can call this cleanup routine in
 the script you created the segment, or anywhere else, at any time.
 
 The protect key is limited to values accepted by the system's semaphore
-implementation (typically 0–32767; 0 means unprotected).
+implementation (typically 0-32767; 0 means unprotected).
 
 Default: B<0>
 

@@ -49,10 +49,12 @@ t/62-fork_dup_rand_keys.t
 t/63-sig_child_ignore.t
 t/65-clean_protected.t
 t/66-encode_fail.t
+t/66-protected_persist.t
 t/70-global_register.t
 t/71-sysv_info.t
 t/72-shm_segments.t
 t/73-internal.t
+t/74-seg_map.t
 t/80-SharedMem.t
 t/90-pod_coverage.t
 t/91-pod_linkcheck.t
