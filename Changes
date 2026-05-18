@@ -66,8 +66,9 @@ Revision history for Perl extension IPC::Shareable.
     - Closes #45; We now accept a hex-based value as the key
     - Added shm_segments(); fetches raw data about all segments that had been
       created by this distribution
-    - Added orphans(); returns an aref of all segment keys (in hex string
-      format) for segments we've created but are no longer registered by us
+    - Added unknown_segments(); returns an aref of all segment keys (in hex
+      string format) for segments we've created but are no longer registered to
+      any known process
     - Closes #39; remove() now accepts a key, and can remove the segment and
       semaphores related to that key, even if it isn't related to this
       distribution

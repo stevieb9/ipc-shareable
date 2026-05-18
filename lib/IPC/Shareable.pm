@@ -532,7 +532,7 @@ sub shm_segments {
             child_keys    => \@child_keys,
             content       => $data,
             local_process => (exists $process_register{$id} ? 1 : 0),
-            orphaned      => (exists $global_register{$id}  ? 0 : 1),
+            known         => (exists $global_register{$id}  ? 1 : 0),
         };
     }
 
@@ -554,12 +554,12 @@ sub shm_segments {
 
     return \%segments;
 }
-sub orphans {
+sub unknown_segments {
     shift if ref $_[0]; # Allow for object or class method call
 
     my $segs = shm_segments();
 
-    return grep { $segs->{$_}{orphaned} } keys %$segs;
+    return grep { !$segs->{$_}{known} } keys %$segs;
 }
 sub sysv_info {
     shift; # Discard invocant (object ref or class name)
@@ -1944,8 +1944,10 @@ Return: Hash reference where each key is the SHM key in hex format.
 
 Field descriptions:
 
-B<orphaned>: Was created by C<IPC::Shareable>, but is no longer associated with
-any process. Should be cleaned up.
+B<known>: C<1> if this segment is currently tied in the calling process,
+C<0> if not. A value of C<0> includes segments legitimately persisted by
+another process (C<destroy =E<gt> 0>), not just crashed leftovers. See
+L</unknown_segments> for important caveats.
 
 B<local_process>: C<1> if created by the same process this method is being run,
 and C<0> if not.
@@ -1981,7 +1983,7 @@ and 'b'), which are stored in the top-level segment.
 
     {
         '0x2abc0001' => {
-            orphaned        => 0,
+            known           => 1,
             local_process   => 1
             content         => 'IPC::Shareable{
                 "a": 1,
@@ -2007,39 +2009,43 @@ and 'b'), which are stored in the top-level segment.
             ],
         },
         '0x000e1b1d' => {
-            orphaned        => 0,
+            known           => 1,
             local_process   => 1
             content         => 'IPC::Shareable{"y":20,"x":10}',
             child_keys      => [],
         },
         '0x000097af' => {
-            orphaned        => 0,
+            known           => 1,
             local_process   => 1
             content         => 'IPC::Shareable{"p":"foo","q":"bar"}',
             child_keys      => [],
         }
     }
 
-=head2 orphans
+=head2 unknown_segments
 
-    my @orphan_keys = IPC::Shareable->orphans;
+    my @unknown_keys = IPC::Shareable->unknown_segments;
 
     # or
 
-    my @orphan_keys = $knot->orphans;
+    my @unknown_keys = $knot->unknown_segments;
 
 Class/object method. Returns a list of hex key strings (e.g. C<'0xdeadbeef'>)
 for all shared memory segments that were created by L<IPC::Shareable> but are
-no longer associated with any process (i.e. orphaned). Orphaned segments are
-typically left over from processes that exited without cleaning up (read:
-crashed).
+not currently tied in the calling process.
+
+B<Important>: this method has no way to distinguish between a segment that was
+left behind by a crashed process and one that is legitimately persisted by
+another running process (C<destroy =E<gt> 0>). Both will appear in the returned
+list. Only call C<remove> on entries you are certain belong to your own
+application and are no longer in use.
 
 Return: List of hex key strings.
 
-    my @orphans = IPC::Shareable->orphans;
+    my @unknown = IPC::Shareable->unknown_segments;
 
-    for my $key (@orphans) {
-        print "Orphaned segment: $key\n";
+    for my $key (@unknown) {
+        print "Unknown segment: $key\n";
         IPC::Shareable->remove($key);
     }
 
