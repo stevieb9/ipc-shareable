@@ -97,6 +97,12 @@ is $k->attributes('no_exist'), undef, "attributes() on an undefined attr is unde
         "_parse_args: 'no' with \$^W=1 emits obsolete-usage warning";
 }
 
+# Default serializer should now be 'json'
+{
+    my $kd = tie my $sv_def, 'IPC::Shareable', { create => 1, destroy => 1 };
+    is $kd->attributes('serializer'), 'json', "default serializer is 'json'";
+}
+
 IPC::Shareable::_end;
 
 my $segs_after = IPC::Shareable::shm_count();

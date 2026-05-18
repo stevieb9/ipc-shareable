@@ -7,7 +7,8 @@ use IPC::Shareable;
 tie my %shared_data, 'IPC::Shareable', {
     key         => '123456789',
     create      => 1,
-    destroy     => 1
+    destroy     => 1,
+    serializer  => 'storable',
 };
 
 $shared_data{called_count}{$$}++;

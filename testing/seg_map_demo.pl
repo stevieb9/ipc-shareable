@@ -7,15 +7,16 @@ use IPC::Shareable;
 IPC::Shareable->clean_up_all;
 
 # Simple scalar
-my $ks = tie my $sv, 'IPC::Shareable', { key => 'demo1', create => 1, destroy => 1 };
+my $ks = tie my $sv, 'IPC::Shareable', { key => 'demo1', create => 1, destroy => 1, serializer => 'storable' };
 $sv = 'hello';
 
 # Protected hash with a nested child
 my $kh = tie my %h, 'IPC::Shareable', {
-    key       => 'demo2',
-    create    => 1,
-    destroy   => 1,
-    protected => 42,
+    key        => 'demo2',
+    create     => 1,
+    destroy    => 1,
+    protected  => 42,
+    serializer => 'storable',
 };
 $h{nested} = { x => 1, y => 2 };
 

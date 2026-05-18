@@ -26,10 +26,10 @@ for my $key (@raw_keys) {
 # Section 2: IPC::Shareable segments - Storable (default) serializer
 # -----------------------------------------------------------------------
 
-tie my $storable_scalar, 'IPC::Shareable', { key => '0x1EAD0010', create => 1, destroy => 0 };
+tie my $storable_scalar, 'IPC::Shareable', { key => '0x1EAD0010', create => 1, destroy => 0, serializer => 'storable' };
 $storable_scalar = 'Value for key: 0x1ead0010';
 
-tie my %storable_hash, 'IPC::Shareable', { key => '0x1EAD0020', create => 1, destroy => 0 };
+tie my %storable_hash, 'IPC::Shareable', { key => '0x1EAD0020', create => 1, destroy => 0, serializer => 'storable' };
 $storable_hash{msg} = 'Value for key: 0x1ead0020';
 
 # -----------------------------------------------------------------------

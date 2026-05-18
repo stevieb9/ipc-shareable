@@ -122,7 +122,7 @@ my %default_options = (
     graceful           => 0,
     warn               => 0,
     tidy               => 1,
-    serializer         => 'storable',
+    serializer         => 'json',
     enforced_locking   => 1,
     violated_lock_warn => 0,
 );
@@ -1454,7 +1454,33 @@ sub _tie {
     my $serializer = $knot->attributes('serializer');
 
     if ($serializer eq 'json') {
-        $knot->{_data} = $knot->_decode($seg);
+        my $data;
+        my $decoded_ok = eval { $data = $knot->_decode($seg); 1 };
+
+        if (! $decoded_ok) {
+            # JSON decode threw — the segment may contain legacy Storable data.
+            # Try Storable; if it succeeds, silently switch this session over
+            # and warn the caller so they know to migrate.
+            my $storable_data;
+            my $thaw_ok = eval { $storable_data = _thaw($seg); 1 };
+
+            if ($thaw_ok && defined $storable_data) {
+                carp sprintf(
+                    "IPC::Shareable: segment 0x%08x contains Storable-encoded data; "
+                  . "switching serializer to 'storable' for this session. "
+                  . "Re-create the segment to migrate it to JSON.",
+                    $key
+                );
+                $knot->{attributes}{serializer} = 'storable';
+                $knot->{_data} = $storable_data;
+            }
+            else {
+                die $@;
+            }
+        }
+        else {
+            $knot->{_data} = $data;
+        }
     }
     else {
         $knot->{_data} = _thaw($seg);
@@ -1888,7 +1914,7 @@ within a single bound variable is limited by the system's maximum size
 for a shared memory segment (the exact value is system-dependent).
 
 The bound data structures are all linearized (using Raphael Manfredi's
-L<Storable> module or optionally L<JSON>) before being slurped into shared
+L<JSON> module or optionally L<Storable>) before being slurped into shared
 memory.  Upon retrieval, the original format of the data structure is recovered.
 Semaphore flags can be used for locking data between competing processes.
 
@@ -2070,14 +2096,15 @@ Default: B<true>
 
 =head2 serializer
 
-By default, we use L<Storable> as the data serializer when writing to or
+By default, we use L<JSON> as the data serializer when writing to or
 reading from the shared memory segments we create. For cross-platform and
-cross-language purposes, you can optionally use L<JSON> for this task.
+cross-language interoperability this is the recommended choice. Alternatively,
+you can use L<Storable> for richer data type support (e.g. blessed objects).
 
 Send in either C<json> or C<storable> as the value to use the respective
 serializer.
 
-Default: B<storable>
+Default: B<json>
 
 =head2 Default Option Values
 
@@ -2094,7 +2121,7 @@ Default values for options are:
     graceful            => 0,
     warn                => 0,
     tidy                => 1,
-    serializer          => 'storable',
+    serializer          => 'json',
     enforced_locking    => 1,
     violated_lock_warn  => 0,
 

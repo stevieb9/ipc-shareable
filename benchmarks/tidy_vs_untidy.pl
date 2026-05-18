@@ -34,10 +34,11 @@ printf "Benchmark: tidy=1 for %d iters, tidy=0 for %d iters (segment-leak constr
 {
     my %h;
     tie %h, 'IPC::Shareable', {
-        key     => 'bench_tidy',
-        create  => 1,
-        destroy => 1,
-        tidy    => 1,
+        key        => 'bench_tidy',
+        create     => 1,
+        destroy    => 1,
+        tidy       => 1,
+        serializer => 'storable',
     };
 
     # Seed so first loop iteration is an overwrite (not first-create)
@@ -63,10 +64,11 @@ printf "Benchmark: tidy=1 for %d iters, tidy=0 for %d iters (segment-leak constr
 {
     my %h;
     tie %h, 'IPC::Shareable', {
-        key     => 'bench_untidy',
-        create  => 1,
-        destroy => 1,
-        tidy    => 0,
+        key        => 'bench_untidy',
+        create     => 1,
+        destroy    => 1,
+        tidy       => 0,
+        serializer => 'storable',
     };
 
     $h{nested} = { a => 1, b => 2 };
