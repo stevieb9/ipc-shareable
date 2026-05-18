@@ -10,7 +10,7 @@ use strict;
 use IPC::Shareable;
 use Test::More;
 
-my $segs_before;
+my ($segs_before, $sems_before);
 
 BEGIN {
     # if (! $ENV{CI_TESTING}) {
@@ -23,6 +23,7 @@ BEGIN {
 
     warn "Segs Before: " . IPC::Shareable::shm_count() . "\n" if $ENV{PRINT_SEGS};
     $segs_before = IPC::Shareable::shm_count();
+    $sems_before = IPC::Shareable::sem_count();
 }
 
 use Async::Event::Interval;
@@ -62,5 +63,7 @@ warn "Segs After: " . IPC::Shareable::shm_count() . "\n" if $ENV{PRINT_SEGS};
 my $segs_after = IPC::Shareable::shm_count();
 
 is $segs_after, $segs_before, "json: All segs, even those created in separate procs, cleaned up ok";
+my $sems_after = IPC::Shareable::sem_count();
+is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
 
 done_testing();

@@ -16,6 +16,7 @@ use IPC::Shareable;
 #}
 
 my $segs_before = IPC::Shareable::shm_count();
+my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 {
@@ -52,6 +53,8 @@ IPC::Shareable::_end;
 my $segs_after = IPC::Shareable::shm_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs cleaned up ok";
+my $sems_after = IPC::Shareable::sem_count();
+is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
 
 # _decode_json: croaks when decode_json returns undef (mocked)
 {

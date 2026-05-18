@@ -25,7 +25,7 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION = '1.14_05';
+our $VERSION = '1.14_06';
 
 use constant {
     # Locking
@@ -473,6 +473,18 @@ sub shm_count {
         # BSD/macOS format: m <shmid> <key> ...
         # Linux format:     <key> <shmid> ...
         $count++ if $line =~ /^\s*m\s+\d+\s+\S+/;
+        $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
+    }
+
+    return $count;
+}
+sub sem_count {
+    my $count = 0;
+
+    for my $line (`ipcs -s`) {
+        # BSD/macOS format: s <semid> <key> ...
+        # Linux format:     <key> <semid> ...
+        $count++ if $line =~ /^\s*s\s+\d+\s+\S+/;
         $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
     }
 
@@ -2185,6 +2197,15 @@ That library implements C<singleton> for a script with a simple C<use> line.
 Returns the number of instantiated shared memory segments that currently exist
 on the system. This isn't precise; it simply does a C<wc -l> line count on your
 system's C<ipcs -m> call. It is guaranteed though to produce reliable results.
+
+Return: Integer
+
+=head2 sem_count
+
+Returns the number of semaphore sets that currently exist on the system, by
+parsing C<ipcs -s>. Since each L<IPC::Shareable> segment is associated with
+exactly one semaphore set (same SysV key), this count moves in lockstep with
+L</shm_count> when segments are created and destroyed cleanly.
 
 Return: Integer
 

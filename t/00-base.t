@@ -12,6 +12,7 @@ BEGIN {
 };
 
 my $segs_before = IPC::Shareable::shm_count();
+my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 print "Starting with $segs_before segments\n";
@@ -19,7 +20,7 @@ is $segs_before, $segs_before, "Initial test ok";
 
 tie my %store, 'IPC::Shareable', {key => 'async_tests', create => 1, serializer => 'storable' };
 $store{segs} = $segs_before;
-
+$store{sems} = $sems_before;
 
 {
     my $a = tie my $x, 'IPC::Shareable';

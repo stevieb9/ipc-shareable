@@ -90,6 +90,8 @@ Revision history for Perl extension IPC::Shareable.
       SEM_WRITERS, and SEM_PROTECTED
     - Default serializer now JSON; Added check for backwards compatibility that
       if JSON _decode() fails, we then attempt a Storable _thaw()
+    - Added sem_count(); behaves like seg_count() but for semaphores. Also
+      updated tests to ensure no straggling semaphores are left behind
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

@@ -8,7 +8,7 @@ use Config;
 use Data::Dumper;
 use IPC::SysV qw(IPC_RMID IPC_STAT);
 
-our $VERSION = '1.14_05';
+our $VERSION = '1.14_06';
 
 use constant {
     DEFAULT_SEG_SIZE    => 1024,
