@@ -67,7 +67,7 @@ use constant {
 
 require Exporter;
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(LOCK_EX LOCK_SH LOCK_NB LOCK_UN);
+our @EXPORT_OK = qw(LOCK_EX LOCK_SH LOCK_NB LOCK_UN SEM_MARKER SEM_READERS SEM_WRITERS SEM_PROTECTED);
 our %EXPORT_TAGS = (
     all     => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
     lock    => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
