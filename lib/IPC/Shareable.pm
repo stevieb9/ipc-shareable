@@ -1861,15 +1861,16 @@ IPC::Shareable - Use shared memory backed variables across processes
     tie my @array,  'IPC::Shareable', OPTIONS;
     tie my $scalar, 'IPC::Shareable', OPTIONS;
 
-    # Get SYSV shared memory specifications of the system (if available)
-
-    my $href = IPC::Shareable::sysv_info();
-
     # Lock, make changes, unlock
 
     tied(VARIABLE)->lock;
         # Do something with the variable
     tied(VARIABLE)->unlock;
+
+    # Blocking lock attempt (a writer must have a LOCK_EX lock)
+
+    tied(VARIABLE)->lock(LOCK_SH);
+    my $val = VARIABLE->[5]; # Will wait to get value until writer releases LOCK_EX
 
     # Non-blocking lock attempt
 
@@ -1879,6 +1880,10 @@ IPC::Shareable - Use shared memory backed variables across processes
     # Lock with a code reference, which will auto-unlock when the block finishes
 
     tied(VARIABLE->lock(sub { print "hello!\n"; });
+
+    # Get SYSV shared memory specifications of the system (if available)
+
+    my $href = IPC::Shareable::sysv_info();
 
     # Get the shared memory segment and semaphore objects directly
 
