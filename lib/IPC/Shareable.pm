@@ -1893,7 +1893,14 @@ sub _read_check {
     return unless $knot->attributes('enforced_read_locking');
     return unless $knot->attributes('violated_read_lock_warn');
 
-    if ($knot->sem->getval(SEM_WRITERS) > 0) {
+    # getval() can return undef if the semaphore set has been removed (e.g.
+    # after clean_up_all). The check is advisory only, so silently skip when
+    # the semaphore is no longer reachable.
+
+    my $writers = $knot->sem->getval(SEM_WRITERS);
+    return unless defined $writers;
+
+    if ($writers > 0) {
         my $uuid   = $knot->uuid;
         my $seg_id = $knot->seg->id;
         warn "Object with UUID $uuid attempted read from segment ID "
@@ -2215,7 +2222,7 @@ with C<violated_write_lock_warn> to also emit a warning when a write is
 blocked.
 
 B<Note>: Only a C<LOCK_EX> lock is enforced against other writers. C<LOCK_SH>
-write protection is advisory only — it blocks writes from C<enforced_write_locking>-
+write protection is advisory only; it blocks writes from C<enforced_write_locking>-
 enabled knots, but a knot that has disabled this option can still write.
 
 Default: B<true>
@@ -2223,7 +2230,7 @@ Default: B<true>
 =head2 enforced_read_locking
 
 When enabled, an unlocked read against a segment that another knot has locked
-with C<LOCK_EX> is detected. Reads are never B<blocked> — this option only
+with C<LOCK_EX> is detected. Reads are never B<blocked>; this option only
 controls whether the check fires. Pair with C<violated_read_lock_warn> to emit
 a warning when this happens.
 
@@ -3195,7 +3202,7 @@ the four lock-control attributes:
 
 =head2 Lock acquisition (attribute-independent)
 
-C<semop> runs at the kernel level — none of the four flags affect whether a
+C<semop> runs at the kernel level; none of the four flags affect whether a
 lock is granted.
 
     +--------------------------+----------------------------------------------+
@@ -3212,7 +3219,7 @@ lock is granted.
 
 =head3 Case 1: B successfully holds LOCK_EX (blocking attempts complete after A unlocks)
 
-All flags are irrelevant — C<FETCH> uses the cache (skipping the read check),
+All flags are irrelevant; C<FETCH> uses the cache (skipping the read check),
 and the write check bypasses on C<LOCK_EX> ownership.
 
     +----------+--------------+-----------+--------------+
@@ -3234,7 +3241,7 @@ check, which sees C<SEM_READERS E<gt> 0> from B's own C<LOCK_SH>.
     |  1 |  1 | blocked ("active readers")         | YES          |
     +----+----+------------------------------------+--------------+
 
-=head3 Case 3: B is unlocked (NB attempt returned 0, or B never attempted a lock) — A still holds LOCK_EX, so SEM_WRITERS = 1
+=head3 Case 3: B is unlocked (NB attempt returned 0, or B never attempted a lock); A still holds LOCK_EX, so SEM_WRITERS = 1
 
     +----+----+----+----+-------------------+--------------+-------------------+---------------+
     | EW | ER | WW | WR | Read              | Read warn?   | Write             | Write warn?   |
@@ -3257,6 +3264,49 @@ check, which sees C<SEM_READERS E<gt> 0> from B's own C<LOCK_SH>.
     |  1 |  1 |  1 |  1 | raw shmem         | YES          | blocked           | YES           |
     +----+----+----+----+-------------------+--------------+-------------------+---------------+
 
+=head2 When A holds LOCK_SH instead of LOCK_EX
+
+When A holds a shared lock, C<SEM_READERS E<gt> 0> and C<SEM_WRITERS = 0>.
+This collapses the matrix in three significant ways:
+
+=over 4
+
+=item *
+
+B<Lock acquisition diverges.> B's C<LOCK_SH> and C<LOCK_SH | LOCK_NB> both
+succeed immediately; multiple readers can hold C<LOCK_SH> concurrently.
+Only the C<LOCK_EX> attempts still block (or return 0 for the NB variant).
+
+    +--------------------------+----------------------------------------------+
+    | B's attempt              | Lock result while A holds LOCK_SH            |
+    +--------------------------+----------------------------------------------+
+    | LOCK_EX                  | Blocks, then acquires once A unlocks         |
+    | LOCK_EX | LOCK_NB        | Returns 0 immediately                        |
+    | LOCK_SH                  | Acquires immediately (concurrent readers OK) |
+    | LOCK_SH | LOCK_NB        | Acquires immediately                         |
+    | (no lock)                | N/A                                          |
+    +--------------------------+----------------------------------------------+
+
+=item *
+
+B<Read warnings never fire.> The read check tests C<SEM_WRITERS E<gt> 0>,
+which is false. ER and WR become irrelevant; unlocked reads return raw
+shmem but never warn. The data is also genuinely fresher: A is reading, not
+writing, so there is no stale-write risk.
+
+=item *
+
+B<Write warnings carry a different message.> Unlocked writes are still
+blocked when C<EW = 1>, but via the C<SEM_READERS E<gt> 0> branch of the
+write check. The warning text becomes:
+
+    "...has active readers (enforced write locking enabled)"
+
+rather than the "exclusively locked" variant. Write outcome and warn
+behavior across (EW, WW) are otherwise identical to Case 3 above.
+
+=back
+
 =head2 Rules distilled from the matrix
 
 =over 4
@@ -3268,8 +3318,8 @@ not participate.
 
 =item *
 
-B<Read result> is always raw shmem when unlocked, always cached when locked
-— the four flags only affect whether a warning is emitted, never the value
+B<Read result> is always raw shmem when unlocked, always cached when locked;
+the four flags only affect whether a warning is emitted, never the value
 returned.
 
 =item *

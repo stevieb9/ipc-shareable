@@ -29,7 +29,9 @@ t/23-lock_sh_enforcement.t
 t/24-clean.t
 t/24-lock_fork_blocking.t
 t/25-clean.t
+t/25-fetch_read_warn.t
 t/26-ipcav.t
+t/27-fetch_read_warn.t
 t/28-ipchv.t
 t/30-ipcref.t
 t/32-obj.t
@@ -60,6 +62,7 @@ t/72-shm_segments.t
 t/73-internal.t
 t/74-seg_map.t
 t/80-SharedMem.t
+t/85-clean.t
 t/90-pod_coverage.t
 t/91-pod_linkcheck.t
 t/92-pod.t
