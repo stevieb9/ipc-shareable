@@ -133,7 +133,7 @@ my %default_options = (
     tidy               => 1,
     serializer         => 'json',
     enforced_locking   => 1,
-    violated_lock_warn => 0,
+    violated_lock_warn => 1,
 );
 
 # Seed the random number generator
@@ -880,15 +880,24 @@ sub seg_map {
 }
 sub sysv_info {
     shift; # Discard invocant (object ref or class name)
-    my %opts     = @_;
-    my $proc_dir = delete $opts{_proc_dir} // '/proc/sys/kernel';
+    my %opts       = @_;
+    my $proc_dir   = delete $opts{_proc_dir}   // '/proc/sys/kernel';
+    my $sysctl_out = delete $opts{_sysctl_out};
 
     my %info;
 
     if ($^O eq 'darwin') {
-        my $out = `sysctl kern.sysv 2>/dev/null`;
+        my $out = $sysctl_out // `sysctl kern.sysv 2>/dev/null`;
         for my $line (split /\n/, $out) {
             if ($line =~ /^kern\.sysv\.(\w+):\s*(\S+)/) {
+                $info{$1} = $2;
+            }
+        }
+    }
+    elsif ($^O eq 'freebsd') {
+        my $out = $sysctl_out // `sysctl kern.ipc 2>/dev/null`;
+        for my $line (split /\n/, $out) {
+            if ($line =~ /^kern\.ipc\.(shm\w+):\s*(\S+)/) {
                 $info{$1} = $2;
             }
         }
@@ -1974,10 +1983,9 @@ version (L<JSON::PP>).
 
 =head1 OPTIONS
 
-a.k.a "attributes"
-
 Options are specified by passing a reference to a hash as the third argument to
-the C<tie()> function that enchants a variable. We also call these "Attributes"
+the C<tie()> function that enchants a variable. We also call these
+B<attributes>.
 
 The following fields are recognized in the options hash:
 
@@ -1986,8 +1994,8 @@ The following fields are recognized in the options hash:
 B<key> is the GLUE that is a direct reference to the shared memory segment
 that's to be tied to the variable.
 
-If this option is missing, we'll default to using C<IPC_PRIVATE>. This
-default key will not allow sharing of the variable between processes.
+If this option is missing, we'll default to using C<IPC_PRIVATE>. Note however,
+that going this route will not allow you to share your data across processes.
 
 The key can be specified as:
 
@@ -1995,9 +2003,11 @@ The key can be specified as:
 
 =item * A text string (internally, a 32-bit CRC of the string is used as the key)
 
-=item * A hex string (e.g. C<'0xDEADBEEF'>), used as-is as the integer key
+=item * A hex string (eg. C<'0xDEADBEEF'>), converted to its respective integer
 
-=item * An integer (e.g. C<1234>), used as-is as the integer key
+=item * A hex value (eg. C<0XDEADBEEF>), used as-is as the integer key
+
+=item * An integer (eg. C<1234>), used as-is as the integer key
 
 =back
 
@@ -2034,7 +2044,7 @@ process attempts to obtain the same shared memory segment. Set B<graceful>
 to true and we'll C<exit> silently and gracefully. This option does nothing
 if C<exclusive> isn't set.
 
-Useful for ensuring only a single process is running at a time.
+See L</warn> to emit a warning before gracefully exiting when a collision occurs.
 
 Default: B<false>
 
@@ -2050,7 +2060,7 @@ Default: B<false>
 The B<mode> argument is an octal number specifying the access
 permissions when a new data binding is being created.  These access
 permission are the same as file access permissions in that C<0666> is
-world readable and writable, C<0600> is readable only by the effective UID of
+world readable and writable, C<0600> is writable only by the effective UID of
 the process creating the shared variable, etc.
 
 Default: B<0666> (world readable and writeable)
@@ -2063,21 +2073,21 @@ B<Note>: Each nested data structure requires a new shared memory segment. The
 C<size> attribute is applied to the first, and all subsequent segments created,
 and does not reflect the overall size of memory to be used.
 
-The maximum size we allow by default is ~1GB. See the L</limit> option to
-override this default.
+The maximum size we allow for each segment by default is ~1GB. See the L</limit>
+option to override this default.
 
 Default: C<IPC::Shareable::SHM_BUFSIZ()> (ie. B<65536>)
 
 =head2 protected
 
-If set, the C<clean_up()> and C<clean_up_all()> routines will not remove the
-segments or semaphores related to the tied object.
+The segments with this option set will persist even through all of our automatic
+and manual clean up procedures, less
+L<clean_up_protected|/clean_up_protected($protect_key)>.
 
 Set this to a non-zero integer. The integer is persisted in the segment's
 associated semaphore set, so any process that later attaches to the same
 segment via C<< create => 0 >> will automatically have this attribute restored;
-it does not need to pass C<< protected >> explicitly. This means
-C<clean_up_all()> in that process will also honour the protection.
+it does not need to pass C<< protected >> explicitly.
 
 The integer acts as a group key: all segments (including nested children)
 created under the same protected parent share the same value, so a single call
@@ -2088,7 +2098,7 @@ C<< (tied %object)->clean_up_protected(integer) >>, where 'integer' is the
 value you set the C<protected> option to. You can call this cleanup routine in
 the script you created the segment, or anywhere else, at any time.
 
-The protect key is limited to values accepted by the system's semaphore
+B<Note>: The protect key is limited to values accepted by the system's semaphore
 implementation (typically 0-32767; 0 means unprotected).
 
 Default: B<0>
@@ -2105,10 +2115,16 @@ Default: B<true>
 
 =head2 enforced_locking
 
-This attribute will allow you to enforce locks that you set, instead of them
-being simply advisory.
+This attribute will allow you to enforce C<LOCK_EX> exclusive write locks that
+you set, so that readers and writers who aren't using advisory locks will be
+blocked from writing.
 
-B<Note>: Only a C<LOCK_EX> lock is enforced. C<LOCK_SH> locks are still advisory.
+B<Note>: Only a C<LOCK_EX> lock is enforced. C<LOCK_SH> locks are still advisory
+only.
+
+B<Note>: If a reader does not have a C<LOCK_SH> in place and they attempt a read
+while a C<LOCK_EX> is active and this option is set, they will simply return
+stale data. You have been warned!
 
 Use with C<violated_lock_warn> to emit a warning when a lock collision has
 occurred.
@@ -2122,7 +2138,7 @@ emit a warning when an exclusive lock collision has occurred. The warning will
 include the UUID of the object that caused the violation, and the segment ID
 that the violation occurred against.
 
-Default: B<false>
+Default: B<true>
 
 =head2 destroy
 
@@ -2144,8 +2160,11 @@ Default: B<false>
 
 =head2 tidy
 
-For long running processes, set this to a true value to clean up unneeded
-segments from nested data structures. Comes with a slight 2% performance hit.
+When updating a nested structure, a new segment is created and the updated data
+is stored into it. This option, when set to true will automatically clean up the
+old segment that is no longer needed after the update.
+
+Comes with a slight 2% performance hit.
 
 Default: B<true>
 
@@ -2178,7 +2197,7 @@ Default values for options are:
     tidy                => 1,
     serializer          => 'json',
     enforced_locking    => 1,
-    violated_lock_warn  => 0,
+    violated_lock_warn  => 1,
 
 
 =head1 METHODS
@@ -2186,7 +2205,7 @@ Default values for options are:
 =head2 new
 
 This C<new()> call is not necessary and is a simple wrapper around C<tie()>. It
-is capable only of returning a tied hash reference object.
+is capable only of returning a tied reference object (by default, a hash ref).
 
 Instantiates and returns a reference to a hash backed by shared memory.
 
@@ -2201,8 +2220,8 @@ Instantiates and returns a reference to a hash backed by shared memory.
 
 Parameters:
 
-Hash, Optional: See the L</OPTIONS> section for a list of all available options.
-Most often, you'll want to send in the B<key> and B<create> options.
+Optional: See the L</OPTIONS> section for a list of all available options.
+Most often, you'll want to at minimum, send in the B<key> and B<create> options.
 
 It is possible to get a reference to an array or scalar as well. Simply send in
 either C<< var = > 'ARRAY' >> or C<< var => 'SCALAR' >> to do so.
@@ -2239,7 +2258,7 @@ That library implements C<singleton> for a script with a simple C<use> line.
 
 Returns the number of instantiated shared memory segments that currently exist
 on the system. This isn't precise; it simply does a C<wc -l> line count on your
-system's C<ipcs -m> call. It is guaranteed though to produce reliable results.
+system's C<ipcs -m> call. It is guaranteed though to produce consistent results.
 
 Return: Integer
 
@@ -2360,11 +2379,12 @@ and 'b'), which are stored in the top-level segment.
 
 =head2 unknown_segments
 
-    my @unknown_keys = IPC::Shareable->unknown_segments;
+    my @unknown_segments = IPC::Shareable->unknown_segments;
 
-    # or
-
-    my @unknown_keys = $knot->unknown_segments;
+    for my $key (@unknown_segments) {
+        print "Unknown segment: $key\n";
+        IPC::Shareable->remove($key);
+    }
 
 Class/object method. Returns a list of hex key strings (e.g. C<'0xdeadbeef'>)
 for all shared memory segments that were created by L<IPC::Shareable> but are
@@ -2377,13 +2397,6 @@ list. Only call C<remove> on entries you are certain belong to your own
 application and are no longer in use.
 
 Return: List of hex key strings.
-
-    my @unknown = IPC::Shareable->unknown_segments;
-
-    for my $key (@unknown) {
-        print "Unknown segment: $key\n";
-        IPC::Shareable->remove($key);
-    }
 
 =head2 seg_map
 
@@ -2423,26 +2436,40 @@ Segments not tied in this process show C<(not accessible)>.
 
 =back
 
-Example output:
+Example:
 
-    IPC::Shareable Segment Map
-    ==========================
+    tie my %h, 'IPC::Shareable', {
+        key     => 0x1a2b,
+        create  => 1,
+        destroy => 1
+    };
 
-    [known, owner]  key: 0x0000cafe  seg_id: 12345678
-      Semaphores: sem_id: 98765
-              1: SEM_MARKER=1
-              2: READERS=0
-              3: WRITERS=0
-              4: PROTECTED=42
-      Children:   0x0001beef
-      Content:    { nested => <child: 0x0001beef> }
+    $h->{nested} = { x => 1, y => 2 };
 
-      [known, owner]  key: 0x0001beef  seg_id: 23456789
-        Semaphores: sem_id: 98766
-                1: SEM_MARKER=1
-                2: READERS=0
-                3: WRITERS=0
-                4: PROTECTED=42
+    my $mapping = tied(%h)->seg_map;
+
+    print $mapping;
+
+Output:
+
+IPC::Shareable Segment Map
+==========================
+
+    [known, owner]  key: 0x00001a2b  seg_id: 1890844693
+        Semaphores: sem_id: 1272774674
+            1: SEM_MARKER=1
+            2: READERS=0
+            3: WRITERS=0
+            4: PROTECTED=0
+        Children:   0x00018373
+        Content:    { nested => <child: 0x00018373> }
+
+    [known, owner]  key: 0x00018373  seg_id: 1888682002
+        Semaphores: sem_id: 1300234259
+            1: SEM_MARKER=1
+            2: READERS=0
+            3: WRITERS=0
+            4: PROTECTED=0
         Children:   (none)
         Content:    { x => "1", y => "2" }
 
@@ -2458,7 +2485,7 @@ memory configuration parameters for the current platform.
 
 Returns C<undef> if the platform is not supported or no data could be read.
 
-On macOS, reads from C<sysctl kern.sysv>. Example return value:
+On MacOS, reads from C<sysctl kern.sysv>. Example return value:
 
     {
         shmmax => 4194304,   # Maximum size of a single segment (bytes)
@@ -2480,9 +2507,30 @@ On Linux, reads from C</proc/sys/kernel/>. Example return value:
 Note: Linux has no per-process segment limit (C<shmseg>); only the system-wide
 C<shmmni> applies.
 
-Return: Hash reference, or C<undef> if the platform is not supported or no data could be read.
+On FreeBSD, reads from C<sysctl kern.ipc>. Example return value:
+
+    {
+        shmmax => 536870912,  # Maximum size of a single segment (bytes)
+        shmmin => 1,          # Minimum size of a single segment (bytes)
+        shmmni => 192,        # Maximum number of segments system-wide
+        shmseg => 128,        # Maximum number of segments per process
+        shmall => 131072,     # Maximum total shared memory (pages)
+    }
+
+Return: Hash reference, or C<undef> if the platform is not supported or no data
+could be read.
 
 =head2 lock($flags, $code)
+
+Obtains a lock on the shared memory. C<$flags> specifies the type of lock to
+acquire.  If C<$flags> is not specified, an exclusive read/write lock is
+obtained. Acceptable flags are:
+
+    LOCK_EX         - Exclusive; use when writing
+    LOCK_SH         - Shared; use when reading
+
+    LOCK_EX|LOCK_NB - Exclusive, non-blocking
+    LOCK_SH|LOCK_NB - Shared, non-blocking
 
 Parameters:
 
@@ -2498,17 +2546,12 @@ Optional, Code reference: If this parameter is sent in, and an exclusive lock
 is asked for, we will set the lock, execute the subroutine, and then call
 C<unlock()> on the segment.
 
-Obtains a lock on the shared memory. C<$flags> specifies the type
-of lock to acquire.  If C<$flags> is not specified, an exclusive
-read/write lock is obtained.  Acceptable values for C<$flags> are
-the same as for the C<flock()> system call.
-
-Returns C<true> on success, and C<undef> on error. For non-blocking calls
-(see below), the method returns C<0> if it would have blocked.
-
 B<Note>: Although the C<$flags> and C<$code> parameters appear positional, you
 can send in C<$code> without sending in any C<$flags>. When this occurs,
 C<$flags> will automatically be set to C<LOCK_EX>.
+
+Return: C<true> on success, and C<undef> on error. For non-blocking calls, the
+method returns C<0> if it would have blocked.
 
 Obtain an exclusive lock like this:
 
@@ -2533,10 +2576,15 @@ Either of the locks may be specified as non-blocking:
 A non-blocking lock request will return C<0> if it would have had to
 wait to obtain the lock.
 
-Note that these locks are advisory (just like flock), meaning that
+B<Note>: These locks are advisory (just like flock), meaning that
 all cooperating processes must coordinate their accesses to shared memory
 using these calls in order for locking to work.  See the C<flock()> call for
 details.
+
+B<Note>: You can enforce a C<LOCK_EX> lock at a software level by ensuring that
+the C<enforced_locking> option is set to a true value (the default). This will
+prevent processes that decide not to implement the advisory locking from data
+access.
 
 Locks are inherited through forks, which means that two processes actually
 can possess an exclusive lock at the same time. Don't do that.
@@ -2562,15 +2610,29 @@ See L</LOCKING> for further details.
 
 =head2 seg
 
-Called on either the tied variable or the tie object, returns the shared
+Called on either a tied variable or on the tie object, returns the shared
 memory segment object currently in use.
+
+    tie my %h, ...;
+    $h{a}->{b}{c} = 10;
+
+    my $top_level_seg = tied(%h)->seg;
+    my $bot_level_seg = tied(%{ $h{a}->{b} })->seg;
 
 See L<IPC::Shareable::SharedMem> documentation for details.
 
 =head2 sem
 
-Called on either the tied variable or the tie object, returns the semaphore
+Called on either a tied variable or on the tie object, returns the semaphore
 object related to the memory segment currently in use.
+
+    tie my %h, ...;
+    $h{a}->{b}{c} = 10;
+
+    my $top_level_sem = tied(%h)->sem;
+    my $bot_level_sem = tied(%{ $h{a}->{b} })->sem;
+
+See L<IPC::Semaphore> documentation.
 
 =head2 attributes
 
@@ -2591,14 +2653,14 @@ value of the specific attribute if it is.
 =head2 global_register
 
 Returns a hash reference of hashes of all in-use shared memory segments across
-all processes. The key is the memory segment ID, and the value is the segment
-and semaphore objects.
+all processes/forks within the current process space. The key is the memory
+segment ID, and the value is the segment and semaphore objects.
 
 =head2 process_register
 
 Returns a hash reference of hashes of all in-use shared memory segments created
-by the calling process. The key is the memory segment ID, and the value is the
-segment and semaphore objects.
+by the calling process only (ie. not including forks). The key is the memory
+segment ID, and the value is the segment and semaphore objects.
 
 =head1 LOCKING
 
@@ -2608,22 +2670,27 @@ C<unlock()>. To use them you must first get the object underlying the tied
 variable, either by saving the return value of the original call to C<tie()> or
 by using the built-in C<tied()> function.
 
+See L<lock()|/lock($flags, $code)> for flag combinations allowed.
+
 =head2 Lock and unlock
 
 To lock and subsequently unlock a variable, do this:
 
-    my $knot = tie my %hash, 'IPC::Shareable', { %options };
-
-    $knot->lock;
-    $hash{a} = 'foo';
-    $knot->unlock;
-
-or equivalently, if you've decided to throw away the return of C<tie()>:
-
     tie my %hash, 'IPC::Shareable', { %options };
 
+    # Simple, top level
+
     tied(%hash)->lock;
-    $hash{a} = 'foo';
+    $hash{a} = 1;
+    tied(%hash)->unlock;
+
+    # Complex, nested (indented for clarity)
+
+    tied(%hash)->lock;
+        $hash{a} = { b => { c => 1 } };
+        tied(%{ $hash{a}->{b} })->lock;
+            $hash{a}->{b}{c} = 10;
+        tied(%{ $hash{a}->{b} })->unlock;
     tied(%hash)->unlock;
 
 This will place an exclusive lock on the data of C<%hash>.  You can

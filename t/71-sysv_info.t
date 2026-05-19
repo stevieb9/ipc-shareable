@@ -1,6 +1,7 @@
 use warnings;
 use strict;
 
+use Data::Dumper;
 use File::Temp qw(tempdir);
 use IPC::Shareable;
 use Test::More;
@@ -13,11 +14,11 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 {
     my $info = IPC::Shareable->sysv_info;
 
-    if ($^O eq 'darwin' || $^O eq 'linux') {
+    if ($^O eq 'darwin' || $^O eq 'linux' || $^O eq 'freebsd') {
         isnt $info, undef, "sysv_info() returns a value on $^O";
         is ref $info, 'HASH', "...and it's a hash ref";
 
-        # shmmax, shmmni, shmall are always present on both platforms
+        # shmmax, shmmni, shmall are always present on all supported platforms
         for my $key (qw(shmmax shmmni shmall)) {
             ok exists $info->{$key}, "...key '$key' exists";
             like $info->{$key}, qr/^\d+$/, "...'$key' is an integer ($info->{$key})";
@@ -27,6 +28,13 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
             # shmmin and shmseg come from sysctl and are always present on macOS
             for my $key (qw(shmmin shmseg)) {
                 ok exists $info->{$key}, "...key '$key' exists on macOS";
+                like $info->{$key}, qr/^\d+$/, "...'$key' is an integer ($info->{$key})";
+            }
+        }
+        elsif ($^O eq 'freebsd') {
+            # FreeBSD exposes the same five keys as macOS via sysctl kern.ipc
+            for my $key (qw(shmmin shmseg)) {
+                ok exists $info->{$key}, "...key '$key' exists on FreeBSD";
                 like $info->{$key}, qr/^\d+$/, "...'$key' is an integer ($info->{$key})";
             }
         }
@@ -51,7 +59,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
     my $info = $knot->sysv_info;
 
-    if ($^O eq 'darwin' || $^O eq 'linux') {
+    if ($^O eq 'darwin' || $^O eq 'linux' || $^O eq 'freebsd') {
         isnt $info, undef, "sysv_info() called as object method returns a value";
         is ref $info, 'HASH', "...and it's a hash ref";
 
@@ -63,6 +71,8 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         is $info, undef, "sysv_info() returns undef on unsupported platform ($^O)";
     }
 
+    # warn(Dumper $info);
+
     IPC::Shareable->clean_up_all;
 }
 
@@ -70,7 +80,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 {
     my $knot = tie my %hv, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
 
-    if ($^O eq 'darwin' || $^O eq 'linux') {
+    if ($^O eq 'darwin' || $^O eq 'linux' || $^O eq 'freebsd') {
         my $class_info  = IPC::Shareable->sysv_info;
         my $object_info = $knot->sysv_info;
 
@@ -115,6 +125,42 @@ is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
         is $info->{$key}, '65536',
             "linux branch (mocked): '$key' reads value from fake proc file";
     }
+}
+
+# -----------------------------------------------------------------------
+# FreeBSD branch - mocked via _sysctl_out and local $^O
+# -----------------------------------------------------------------------
+
+{
+    my $fake_out = join("\n",
+        'kern.ipc.shmmax: 65536',
+        'kern.ipc.shmmin: 1',
+        'kern.ipc.shmmni: 192',
+        'kern.ipc.shmseg: 128',
+        'kern.ipc.shmall: 131072',
+        'kern.ipc.somethingelse: ignored',
+    );
+
+    my $info;
+    {
+        local $^O = 'freebsd';
+        $info = IPC::Shareable->sysv_info(_sysctl_out => $fake_out);
+    }
+
+    isnt $info, undef,
+        "freebsd branch (mocked): sysv_info() returns a defined value";
+    is ref($info), 'HASH',
+        "freebsd branch (mocked): return value is a hash ref";
+
+    for my $key (qw(shmmax shmmin shmmni shmseg shmall)) {
+        ok exists $info->{$key},
+            "freebsd branch (mocked): '$key' key present";
+        like $info->{$key}, qr/^\d+$/,
+            "freebsd branch (mocked): '$key' is an integer";
+    }
+
+    ok !exists $info->{somethingelse},
+        "freebsd branch (mocked): non-shm kern.ipc keys are filtered out";
 }
 
 done_testing();
