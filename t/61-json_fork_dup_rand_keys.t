@@ -18,8 +18,8 @@ BEGIN {
         plan skip_all => "Developer only test... needs Async::Event::Interval";
     }
 
-    warn "Segs Before: " . IPC::Shareable::shm_count() . "\n" if $ENV{PRINT_SEGS};
-    $segs_before = IPC::Shareable::shm_count();
+    warn "Segs Before: " . IPC::Shareable::seg_count() . "\n" if $ENV{PRINT_SEGS};
+    $segs_before = IPC::Shareable::seg_count();
     $sems_before = IPC::Shareable::sem_count();
 }
 
@@ -56,8 +56,8 @@ use Async::Event::Interval;
 Async::Event::Interval::_end;
 IPC::Shareable::_end;
 
-warn "Segs After: " . IPC::Shareable::shm_count() . "\n" if $ENV{PRINT_SEGS};
-my $segs_after = IPC::Shareable::shm_count();
+warn "Segs After: " . IPC::Shareable::seg_count() . "\n" if $ENV{PRINT_SEGS};
+my $segs_after = IPC::Shareable::seg_count();
 
 is $segs_after, $segs_before, "json: All segs, even those created in separate procs, cleaned up ok";
 my $sems_after = IPC::Shareable::sem_count();

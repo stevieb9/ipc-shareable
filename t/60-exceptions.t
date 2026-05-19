@@ -9,7 +9,7 @@ use Test::More;
 
 use IPC::Shareable;
 
-my $segs_before = IPC::Shareable::shm_count();
+my $segs_before = IPC::Shareable::seg_count();
 my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
@@ -44,7 +44,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 IPC::Shareable::_end;
 
-my $segs_after = IPC::Shareable::shm_count();
+my $segs_after = IPC::Shareable::seg_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs cleaned up ok";
 my $sems_after = IPC::Shareable::sem_count();

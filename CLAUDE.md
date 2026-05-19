@@ -60,4 +60,4 @@ Configured per-tie: `serializer => 'json'` (default since v1.14_07) or `serializ
 
 ### Test numbering convention
 
-`t/` is numbered by feature area: 00–06 setup/keys, 10–18 variable types, 20–28 locking, 30–48 nested segments, 49–67 edge cases, 70–80 internals, 90–99 POD/manifest. Fork tests use `Test::SharedFork`. Segment/semaphore leak checks via `shm_count()`/`sem_count()` bookend most test files.
+`t/` is numbered by feature area: 00–06 setup/keys, 10–18 variable types, 20–28 locking, 30–48 nested segments, 49–67 edge cases, 70–80 internals, 90–99 POD/manifest. Fork tests use `Test::SharedFork`. Segment/semaphore leak checks via `seg_count()`/`sem_count()` bookend most test files.

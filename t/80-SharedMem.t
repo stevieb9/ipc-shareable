@@ -7,7 +7,7 @@ use IPC::SysV qw(IPC_CREAT IPC_EXCL);
 use Mock::Sub;
 use Test::More;
 
-my $segs_before = IPC::Shareable::shm_count();
+my $segs_before = IPC::Shareable::seg_count();
 my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
@@ -218,7 +218,7 @@ my $mod = 'IPC::Shareable::SharedMem';
 
     is $seg->remove, 1, "seg removed ok";
 }
-my $segs_after = IPC::Shareable::shm_count();
+my $segs_after = IPC::Shareable::seg_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs cleaned up ok";
 my $sems_after = IPC::Shareable::sem_count();

@@ -120,22 +120,22 @@ my %semop_args = (
 );
 
 my %default_options = (
-    key                => IPC_PRIVATE,
-    create             => 0,
-    exclusive          => 0,
-    destroy            => 0,
-    mode               => 0666,
-    size               => SHM_BUFSIZ,
-    protected          => 0,
-    limit              => 1,
-    graceful           => 0,
-    warn               => 0,
-    tidy               => 1,
-    serializer         => 'json',
-    enforced_write_locking   => 1,
-    enforced_read_locking    => 1,
-    violated_write_lock_warn => 1,
-    violated_read_lock_warn  => 1,
+    key                         => IPC_PRIVATE,
+    create                      => 0,
+    exclusive                   => 0,
+    destroy                     => 0,
+    mode                        => 0666,
+    size                        => SHM_BUFSIZ,
+    protected                   => 0,
+    limit                       => 1,
+    graceful                    => 0,
+    warn                        => 0,
+    tidy                        => 1,
+    serializer                  => 'json',
+    enforced_write_locking      => 1,
+    enforced_read_locking       => 1,
+    violated_write_lock_warn    => 1,
+    violated_read_lock_warn     => 1,
 );
 
 # Seed the random number generator
@@ -767,7 +767,7 @@ sub unknown_segments {
 
     return grep { !$segs->{$_}{known} } keys %$segs;
 }
-sub shm_count {
+sub seg_count {
     my $count = 0;
 
     for my $line (`ipcs -m`) {
@@ -2341,7 +2341,7 @@ Instantiates and returns a reference to a hash backed by shared memory.
     # Call tied() on the dereferenced variable to access object methods
     # and information
 
-    tied(%$href)->shm_count;
+    tied(%$href)->seg_count;
 
 Parameters:
 
@@ -2379,20 +2379,11 @@ Default: B<false>
 B<Note>: See L<Script::Singleton|https://metacpan.org/pod/Script::Singleton>.
 That library implements C<singleton> for a script with a simple C<use> line.
 
-=head2 shm_count
+=head2 seg_count
 
 Returns the number of instantiated shared memory segments that currently exist
 on the system. This isn't precise; it simply does a C<wc -l> line count on your
 system's C<ipcs -m> call. It is guaranteed though to produce consistent results.
-
-Return: Integer
-
-=head2 sem_count
-
-Returns the number of semaphore sets that currently exist on the system, by
-parsing C<ipcs -s>. Since each L<IPC::Shareable> segment is associated with
-exactly one semaphore set (same SysV key), this count moves in lockstep with
-L</shm_count> when segments are created and destroyed cleanly.
 
 Return: Integer
 
@@ -2762,6 +2753,15 @@ object related to the memory segment currently in use.
 
 See L<IPC::Semaphore> documentation.
 
+=head2 sem_count
+
+Returns the number of semaphore sets that currently exist on the system, by
+parsing C<ipcs -s>. Since each L<IPC::Shareable> segment is associated with
+exactly one semaphore set (same SysV key), this count moves in lockstep with
+L</seg_count> when segments are created and destroyed cleanly.
+
+Return: Integer
+
 =head2 attributes
 
 Retrieves the list of attributes that drive the L<IPC::Shareable> object.
@@ -2989,7 +2989,7 @@ removed even if they were not created by the calling process.
 
 This method will not clean up segments created with the C<protected> option.
 
-=head2 clean_up_protected($protect_key)
+=head2 clean_up_protected($protect_keydsf)
 
 If a segment is created with the C<protected> option, it, nor its children will
 be removed during calls of C<clean_up()> or C<clean_up_all()>.

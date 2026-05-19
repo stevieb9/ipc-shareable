@@ -16,7 +16,7 @@ my $start_sems = $store{sems};
 
 IPC::Shareable::clean_up_all;
 
-my $segs = IPC::Shareable::shm_count();
+my $segs = IPC::Shareable::seg_count();
 my $sems = IPC::Shareable::sem_count();
 
 is $segs, $start_segs, "All test segments cleaned up after test run";
