@@ -10,7 +10,7 @@ my $segs_before = IPC::Shareable::shm_count();
 my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
-my $k = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 1 , serializer => 'storable' };
+my $k = tie my %hv, 'IPC::Shareable', 'test', { create => 1, destroy => 1 , serializer => 'storable' };
 
 # seg()
 
@@ -25,7 +25,7 @@ my @seg_keys = qw(
 );
 
 my $knot_seg = $k->seg;
-my $tied_seg = (tied $sv)->seg;
+my $tied_seg = (tied %hv)->seg;
 
 is ref $knot_seg, 'IPC::Shareable::SharedMem', "knot seg() is the proper object";
 is ref $tied_seg, 'IPC::Shareable::SharedMem', "tied seg() is the proper object";
@@ -40,15 +40,28 @@ for (@seg_keys) {
 
 is $knot_seg->id, $tied_seg->id, "knot and tied seg() hashes have the same id";
 
+$hv{a}->{b}{c} = 143;
+
+my $top_level_seg = tied(%hv)->seg;
+my $bot_level_seg = tied(%{ $hv{a}->{b} })->seg;
+
+isnt $top_level_seg->id, $bot_level_seg->id, "top level and bot level seg() hashes have different ids";
+
 # sem()
 
 my $knot_sem = $k->sem();
-my $tied_sem = (tied $sv)->sem;
+my $tied_sem = (tied %hv)->sem;
 
 is ref $knot_sem, 'IPC::Semaphore', "knot sem() is the proper object";
 is ref $tied_sem, 'IPC::Semaphore', "tied sem() is the proper object";
 
 is $knot_sem->id, $tied_sem->id, "knot and tied sem() hashes have the same id";
+
+my $top_level_sem = tied(%hv)->sem;
+my $bot_level_sem = tied(%{ $hv{a}->{b} })->sem;
+
+print Dumper $top_level_sem;
+isnt $top_level_sem->id, $bot_level_sem->id, "top level and bot level sem() hashes have different ids";
 
 IPC::Shareable::_end;
 
