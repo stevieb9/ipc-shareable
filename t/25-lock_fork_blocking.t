@@ -219,6 +219,98 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     waitpid($writer_pid, 0);
     waitpid($_, 0) for @reader_pids;
 }
+# --- Test 5: LOCK_EX blocks until previous LOCK_EX released ---
+{
+    my ($r, $w);
+    pipe($r, $w) or die "Cannot create pipe: $!";
+
+    tie my $sv, 'IPC::Shareable', {
+        key        => 'LFBK5',
+        create     => 1,
+        destroy    => 1,
+        serializer => 'storable',
+    };
+
+    $sv = 'initial';
+
+    my $pid = fork;
+    defined $pid or die "Cannot fork: $!";
+
+    if ($pid == 0) {
+        # first writer child
+        close $r;
+        my $wt = tied $sv;
+        $wt->lock(LOCK_EX);
+        $sv = 'updated';
+        print $w "ready\n";
+        close $w;
+        select(undef, undef, undef, 0.3);  # hold lock so parent definitely blocks
+        $wt->unlock;
+        exit 0;
+    }
+
+    # parent (second writer)
+    close $w;
+    <$r>;    # wait until child holds LOCK_EX and has written 'updated'
+    close $r;
+
+    my $rt = tied $sv;
+    my $t0 = time();
+    my $got = $rt->lock(LOCK_EX);  # blocks here until child releases LOCK_EX
+    my $t1 = time();
+    my $wait = $t1 - $t0;
+
+    is $got, 1,        "LOCK_EX: lock() returns 1 after previous LOCK_EX released";
+    is $sv, 'updated', "LOCK_EX: reads value written by previous LOCK_EX holder";
+    ok($wait >= 0.28,  sprintf("Writer waited at least 0.28s for LOCK_EX (actual: %.3fs)", $wait));
+    $rt->unlock;
+
+    waitpid($pid, 0);
+}
+
+# --- Test 6: LOCK_EX|LOCK_NB returns 0 immediately while another LOCK_EX is held ---
+{
+    my ($r, $w);
+    pipe($r, $w) or die "Cannot create pipe: $!";
+
+    tie my $sv, 'IPC::Shareable', {
+        key        => 'LFBK6',
+        create     => 1,
+        destroy    => 1,
+        serializer => 'storable',
+    };
+
+    $sv = 'initial';
+
+    my $pid = fork;
+    defined $pid or die "Cannot fork: $!";
+
+    if ($pid == 0) {
+        # first writer child holds LOCK_EX for long enough that the parent's
+        # non-blocking attempt definitely races against it
+        close $r;
+        my $wt = tied $sv;
+        $wt->lock(LOCK_EX);
+        print $w "ready\n";
+        close $w;
+        select(undef, undef, undef, 0.5);
+        $wt->unlock;
+        exit 0;
+    }
+
+    # parent (second writer)
+    close $w;
+    <$r>;    # writer now holds LOCK_EX
+    close $r;
+
+    my $rt = tied $sv;
+    my $got = $rt->lock(LOCK_EX | LOCK_NB);
+
+    is $got, 0,         "LOCK_EX|LOCK_NB: returns 0 (would block) while another LOCK_EX is held";
+    is $rt->{_lock}, 0, "LOCK_EX|LOCK_NB: _lock remains 0 when non-blocking attempt fails";
+
+    waitpid($pid, 0);
+}
 
 IPC::Shareable::_end;
 
