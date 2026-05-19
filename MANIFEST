@@ -21,11 +21,14 @@ t/12-hv.t
 t/14-attributes.t
 t/16-ref.t
 t/18-fork_ipc.t
+t/19-lock_recursive.t
 t/20-lock_operation.t
 t/21-lock_coderef.t
 t/22-lock_semaphore.t
 t/23-lock_sh_enforcement.t
 t/24-clean.t
+t/24-lock_fork_blocking.t
+t/25-clean.t
 t/26-ipcav.t
 t/28-ipchv.t
 t/30-ipcref.t

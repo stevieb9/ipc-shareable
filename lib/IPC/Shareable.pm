@@ -501,6 +501,20 @@ sub lock {
     if ($lock_success) {
         $knot->{_lock} = $flags;
         $knot->{_data} = $knot->_decode($knot->seg);
+
+        my @locked_children;
+        my %seen = ($knot->seg->id => 1);
+
+        if (! _lock_children($knot, $flags, \@locked_children, \%seen)) {
+            my $rflags = $knot->{_lock} | LOCK_UN;
+            $rflags ^= LOCK_NB if $rflags & LOCK_NB;
+            $knot->sem->op(@{ $semop_args{$rflags} });
+            $knot->{_lock} = 0;
+            $lock_success   = 0;
+        }
+        else {
+            $knot->{_locked_children} = \@locked_children;
+        }
     }
 
     if ($flags == LOCK_EX && $lock_success) {
@@ -526,6 +540,18 @@ sub unlock {
         $knot->{_was_changed} = 0;
     }
 
+    for my $child (reverse @{ $knot->{_locked_children} // [] }) {
+        if ($child->{_was_changed}) {
+            $child->_encode($child->seg, $child->{_data});
+            $child->{_was_changed} = 0;
+        }
+        my $child_flags = $child->{_lock} | LOCK_UN;
+        $child_flags ^= LOCK_NB if $child_flags & LOCK_NB;
+        $child->sem->op(@{ $semop_args{$child_flags} });
+        $child->{_lock} = 0;
+    }
+    $knot->{_locked_children} = [];
+
     my $sem = $knot->sem;
     my $flags = $knot->{_lock} | LOCK_UN;
 
@@ -538,6 +564,44 @@ sub unlock {
     $knot->{_lock} = 0;
 
     1;
+}
+sub _lock_children {
+    my ($knot, $flags, $accumulator, $seen) = @_;
+
+    my $data  = $knot->{_data};
+    my $rtype = Scalar::Util::reftype($data) // '';
+
+    my @vals = $rtype eq 'HASH'  ? values %$data
+             : $rtype eq 'ARRAY' ? @$data
+             : ();
+
+    for my $val (@vals) {
+        next unless ref($val);
+        my $child = _is_child($val);
+        next unless $child && $child->seg;
+
+        my $id = $child->seg->id;
+        next if $seen->{$id}++;
+
+        if (! $child->sem->op(@{ $semop_args{$flags} })) {
+            for my $locked (reverse @$accumulator) {
+                my $rflags = $locked->{_lock} | LOCK_UN;
+                $rflags ^= LOCK_NB if $rflags & LOCK_NB;
+                $locked->sem->op(@{ $semop_args{$rflags} });
+                $locked->{_lock} = 0;
+            }
+            @$accumulator = ();
+            return;
+        }
+
+        $child->{_data} = $child->_decode($child->seg);
+        $child->{_lock} = $flags;
+        push @$accumulator, $child;
+
+        _lock_children($child, $flags, $accumulator, $seen) or return;
+    }
+
+    return 1;
 }
 sub singleton {
 

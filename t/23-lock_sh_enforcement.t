@@ -32,7 +32,17 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     is $k1->sem->getval(SEM_WRITERS), 0, "LOCK_SH enforcement - write lock is 0 after LOCK_SH";
 
     # k2 attempts a write while k1 holds LOCK_SH -- must be blocked
-    my $result = $h2{a} = 99;
+    my $warned = 0;
+    {
+        local $SIG{__WARN__} = sub {
+            my $w = shift;
+            like $w, qr/active readers/, "LOCK_SH enforcement - blocked write warns 'active readers'";
+            like $w, qr/${\$k2->uuid}/, "LOCK_SH enforcement - warning contains k2 UUID";
+            $warned++;
+        };
+        my $result = $h2{a} = 99;
+    }
+    is $warned, 1, "LOCK_SH enforcement - exactly one warning emitted";
     is $h1{a}, 10, "LOCK_SH enforcement - k2 write blocked while k1 holds LOCK_SH";
 
     $k1->unlock;
@@ -59,7 +69,17 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     $k1->lock(LOCK_SH);
 
     # k1 holds LOCK_SH and tries to write itself -- must be blocked
-    $h1{a} = 99;
+    my $warned = 0;
+    {
+        local $SIG{__WARN__} = sub {
+            my $w = shift;
+            like $w, qr/active readers/, "LOCK_SH self-write - blocked write warns 'active readers'";
+            like $w, qr/${\$k1->uuid}/, "LOCK_SH self-write - warning contains k1 UUID";
+            $warned++;
+        };
+        $h1{a} = 99;
+    }
+    is $warned, 1, "LOCK_SH self-write - exactly one warning emitted";
     is $h1{a}, 10, "LOCK_SH self-write - write blocked while holding own LOCK_SH";
 
     $k1->unlock;
@@ -136,7 +156,17 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
     $k1->lock(LOCK_EX);
 
-    $h2{a} = 99;
+    my $warned = 0;
+    {
+        local $SIG{__WARN__} = sub {
+            my $w = shift;
+            like $w, qr/exclusively locked/, "LOCK_EX regression - blocked write warns 'exclusively locked'";
+            like $w, qr/${\$k2->uuid}/, "LOCK_EX regression - warning contains k2 UUID";
+            $warned++;
+        };
+        $h2{a} = 99;
+    }
+    is $warned, 1, "LOCK_EX regression - exactly one warning emitted";
     is $h1{a}, 10, "LOCK_EX regression - k2 write blocked while k1 holds LOCK_EX";
 
     $k1->unlock;

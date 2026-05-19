@@ -57,7 +57,7 @@ is $attrs->{owner},     $$, "owner is set ok";
 is $attrs->{graceful},  0, "graceful is set ok";
 is $attrs->{tidy},      1, "tidy is set ok";
 is $attrs->{enforced_locking},   1, "enforced_locking is set ok";
-is $attrs->{violated_lock_warn},   0, "violated_lock_warn is set ok";
+is $attrs->{violated_lock_warn},   1, "violated_lock_warn is set ok";
 
 is $k->attributes('no_exist'), undef, "attributes() on an undefined attr is undef";
 

@@ -54,8 +54,8 @@ my $sv;
 
 # Advisory locking
 {
-    my $k1 = tie my %h1, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1 , serializer => 'storable' };
-    my $k2 = tie my %h2, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1 , serializer => 'storable' };
+    my $k1 = tie my %h1, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1, enforced_locking => 0, serializer => 'storable' };
+    my $k2 = tie my %h2, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1, enforced_locking => 0, serializer => 'storable' };
 
     $h1{a} = {b => 1};
 
@@ -91,12 +91,12 @@ my $sv;
         create           => 1,
         destroy          => 1,
         enforced_locking => 1,
-            serializer => 'storable',
+        serializer => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
         key              => 'TEST2',
         enforced_locking => 1,
-            serializer => 'storable',
+        serializer => 'storable',
     };
 
     $h1{a} = 1;
@@ -108,11 +108,15 @@ my $sv;
     $h1{a} = 2;
     is $h1{a}, 2, "enforced_locking - lock holder can write while locked";
 
-    # k2 must croak because k1 holds LOCK_EX and k2 has enforced_locking on
-#    eval { $h2{a} = 99 };
-#    like $@, qr/exclusively locked/, "enforced_locking - k2 STORE croaks while k1 holds LOCK_EX";
-
-    $h2{a} = 99;
+    {
+        local $SIG{__WARN__} = sub {
+            my $w = shift;
+            like $w, qr/exclusively locked/, "enforced_locking - blocked write warns 'exclusively locked'";
+            like $w, qr/${\$k2->uuid}/, "enforced_locking - warning contains k2 UUID";
+            like $w, qr/${\$k2->seg->id}/, "enforced_locking - warning contains segment ID";
+        };
+        $h2{a} = 99;
+    }
 
     $k1->unlock;
 
@@ -129,13 +133,13 @@ my $sv;
         create             => 1,
         destroy            => 1,
         enforced_locking   => 1,
-            serializer => 'storable',
+        serializer => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
         key                 => 'TEST2',
         enforced_locking    => 1,
         violated_lock_warn  => 1,
-            serializer => 'storable',
+        serializer => 'storable',
     };
 
     $h1{a} = 1;
@@ -268,6 +272,9 @@ my $sv;
     @a1 = (1, 2, 3);
     $k1->lock(IPC::Shareable::LOCK_EX);
 
+    my @lock_warns;
+    local $SIG{__WARN__} = sub { push @lock_warns, shift };
+
     push    @a2, 99;
     is scalar(@a2), 3, "enforced_locking PUSH: blocked when k1 holds LOCK_EX";
 
@@ -287,6 +294,10 @@ my $sv;
     is scalar(@a2), 3, "enforced_locking STORESIZE: blocked when k1 holds LOCK_EX";
 
     $k1->unlock;
+
+    is scalar(@lock_warns), 6, "enforced_locking array ops: one warning emitted per blocked operation";
+    like $lock_warns[0], qr/exclusively locked/, "enforced_locking array ops: warning mentions 'exclusively locked'";
+    like $lock_warns[0], qr/${\$k2->uuid}/, "enforced_locking array ops: warning contains k2 UUID";
 }
 
 # enforced_locking: hash CLEAR and DELETE blocked when another knot holds LOCK_EX
@@ -302,6 +313,9 @@ my $sv;
     $h1{b} = 2;
     $k1->lock(IPC::Shareable::LOCK_EX);
 
+    my @lock_warns;
+    local $SIG{__WARN__} = sub { push @lock_warns, shift };
+
     delete $h2{a};
     ok exists($h2{a}), "enforced_locking DELETE: blocked when k1 holds LOCK_EX";
 
@@ -309,6 +323,10 @@ my $sv;
     is $h2{a}, 1, "enforced_locking CLEAR: blocked when k1 holds LOCK_EX";
 
     $k1->unlock;
+
+    is scalar(@lock_warns), 2, "enforced_locking hash ops: one warning per blocked operation";
+    like $lock_warns[0], qr/exclusively locked/, "enforced_locking hash ops: warning mentions 'exclusively locked'";
+    like $lock_warns[0], qr/${\$k2->uuid}/, "enforced_locking hash ops: warning contains k2 UUID";
 }
 
 # lock() re-throws exception from code-ref (covers: die $err if !$ok)
