@@ -25,7 +25,7 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION = '1.14_06';
+our $VERSION = '1.14_07';
 
 use constant {
     # Locking
@@ -1027,10 +1027,6 @@ sub remove {
     }
 }
 
-END {
-    _end();
-}
-
 # Private methods
 
 # Encoding/Decoding
@@ -1838,6 +1834,9 @@ sub _end {
         next if $s->attributes('owner') != $$;
         eval { remove($s) };
     }
+}
+END {
+    _end();
 }
 
 sub _placeholder {}
