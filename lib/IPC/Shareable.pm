@@ -135,10 +135,8 @@ my %global_register;
 my %process_register;
 my %used_ids;
 
-sub _trace;
-sub _debug;
+# "Magic" methods
 
-# --- "Magic" methods
 sub TIESCALAR {
     return _tie('SCALAR', @_);
 }
@@ -429,7 +427,12 @@ sub STORESIZE {
     return $n;
 }
 
-# --- Public methods
+# Public methods
+
+*shlock = \&lock;
+*shunlock = \&unlock;
+
+# End user methods
 
 sub new {
     my ($class, %opts) = @_;
@@ -449,12 +452,113 @@ sub new {
         return \$s;
     }
 }
-sub global_register {
-    return \%global_register;
+sub lock {
+    my $knot = shift;
+
+    my ($flags, $code);
+
+    if (scalar @_ == 2) {
+        ($flags, $code) = @_;
+    }
+
+    if (defined $_[0]) {
+        if (ref $_[0] eq 'CODE') {
+            $code = shift;
+        }
+        else {
+            $flags = shift;
+        }
+    }
+
+    if (defined $code && ref $code ne 'CODE') {
+        croak "\$code param to lock() must be a code ref"
+    }
+
+    $flags = LOCK_EX if ! defined $flags;
+
+    return $knot->unlock if ($flags & LOCK_UN);
+
+    return 1 if ($knot->{_lock} & $flags);
+
+    # If they have a different lock than they want, release it first
+
+    $knot->unlock if ($knot->{_lock});
+
+    my $sem = $knot->sem;
+    my $lock_success = $sem->op(@{ $semop_args{$flags} });
+
+    if ($lock_success) {
+        $knot->{_lock} = $flags;
+        $knot->{_data} = $knot->_decode($knot->seg);
+    }
+
+    if ($flags == LOCK_EX && $lock_success) {
+        if ($code) {
+            my $ok = eval { $code->(); 1 };
+            my $err = $@;
+            $knot->unlock;
+            die $err if ! $ok;
+            return 1;
+        }
+    }
+    return $lock_success;
 }
-sub process_register {
-    return \%process_register;
+sub unlock {
+    my $knot = shift;
+
+    return 1 unless $knot->{_lock};
+
+    if ($knot->{_was_changed}) {
+        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
+            croak "Could not write to shared memory: $!\n";
+        }
+        $knot->{_was_changed} = 0;
+    }
+
+    my $sem = $knot->sem;
+    my $flags = $knot->{_lock} | LOCK_UN;
+
+    $flags ^= LOCK_NB if ($flags & LOCK_NB);
+
+    if (! $sem->op(@{ $semop_args{$flags} })) {
+        croak "Could not release semaphore lock: $!\n";
+    }
+
+    $knot->{_lock} = 0;
+
+    1;
 }
+sub singleton {
+
+    # If called with IPC::Shareable::singleton() as opposed to
+    # IPC::Shareable->singleton(), the class isn't sent in. Check
+    # for this and fix it if necessary
+
+    if (! defined $_[0] || $_[0] ne __PACKAGE__) {
+        unshift @_, __PACKAGE__;
+    }
+
+    my ($class, $glue, $warn) = @_;
+
+    if (! defined $glue) {
+        croak "singleton() requires a GLUE parameter";
+    }
+
+    $warn = 0 if ! defined $warn;
+
+    tie my $lock, 'IPC::Shareable', {
+        key         => $glue,
+        create      => 1,
+        exclusive   => 1,
+        graceful    => 1,
+        destroy     => 1,
+        warn        => $warn
+    };
+
+    return $$;
+}
+
+# Helper, maintenance and developer methods
 
 sub attributes {
     my ($knot, $attr) = @_;
@@ -466,30 +570,31 @@ sub attributes {
         return $knot->{attributes};
     }
 }
-sub shm_count {
-    my $count = 0;
+sub global_register {
+    return \%global_register;
+}
+sub process_register {
+    return \%process_register;
+}
+sub uuid {
+    my ($knot) = @_;
 
-    for my $line (`ipcs -m`) {
-        # BSD/macOS format: m <shmid> <key> ...
-        # Linux format:     <key> <shmid> ...
-        $count++ if $line =~ /^\s*m\s+\d+\s+\S+/;
-        $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
+    if (! defined $knot->{_uuid}) {
+        $knot->{_uuid} = md5_hex(rand());
     }
 
-    return $count;
+    return $knot->{_uuid};
 }
-sub sem_count {
-    my $count = 0;
 
-    for my $line (`ipcs -s`) {
-        # BSD/macOS format: s <semid> <key> ...
-        # Linux format:     <key> <semid> ...
-        $count++ if $line =~ /^\s*s\s+\d+\s+\S+/;
-        $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
-    }
-
-    return $count;
+sub seg {
+    my ($knot) = @_;
+    return $knot->{_shm} if defined $knot->{_shm};
 }
+sub sem {
+    my ($knot) = @_;
+    return $knot->{_sem} if defined $knot->{_sem};
+}
+
 sub shm_segments {
     shift if ref($_[0]) || (defined $_[0] && !ref($_[0]) && UNIVERSAL::isa($_[0], __PACKAGE__));
 
@@ -517,8 +622,8 @@ sub shm_segments {
         my $key_int = $raw_key =~ /^0x[0-9a-fA-F]+$/
             ? hex($raw_key)
             : $raw_key =~ /^\d+$/
-                ? int($raw_key)
-                : next;
+            ? int($raw_key)
+            : next;
 
         my $hex_key = sprintf('0x%08x', $key_int);
 
@@ -530,11 +635,11 @@ sub shm_segments {
 
         my ($segsz) = $^O eq 'linux'
             ? ( $Config{longsize} == 8
-                    ? unpack('x[48] Q', $stat_buf)   # 64-bit Linux
-                    : unpack('x[36] L', $stat_buf) ) # 32-bit Linux
+            ? unpack('x[48] Q', $stat_buf)   # 64-bit Linux
+            : unpack('x[36] L', $stat_buf) ) # 32-bit Linux
             : ( $^O eq 'freebsd' && $Config{longsize} == 8
-                    ? unpack('x[32] Q', $stat_buf)   # 64-bit FreeBSD (key_t=long=8, ipc_perm=32)
-                    : unpack('x[24] Q', $stat_buf) );# macOS/32-bit BSD
+            ? unpack('x[32] Q', $stat_buf)   # 64-bit FreeBSD (key_t=long=8, ipc_perm=32)
+            : unpack('x[24] Q', $stat_buf) );# macOS/32-bit BSD
 
         next unless $segsz;
 
@@ -584,59 +689,29 @@ sub unknown_segments {
 
     return grep { !$segs->{$_}{known} } keys %$segs;
 }
-sub _seg_data_summary {
-    my ($knot) = @_;
+sub shm_count {
+    my $count = 0;
 
-    my $data  = $knot->{_data};
-    my $rtype = Scalar::Util::reftype($data) // '';
-
-    if ($rtype eq 'SCALAR') {
-        my $v = $$data;
-        return defined $v ? qq("$v") : '(undef)';
+    for my $line (`ipcs -m`) {
+        # BSD/macOS format: m <shmid> <key> ...
+        # Linux format:     <key> <shmid> ...
+        $count++ if $line =~ /^\s*m\s+\d+\s+\S+/;
+        $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
     }
 
-    if ($rtype eq 'HASH') {
-        my @parts;
-        for my $k (sort keys %$data) {
-            my $v = $data->{$k};
-            if (ref $v) {
-                my $vt    = Scalar::Util::reftype($v) // '';
-                my $child = $vt eq 'HASH'   ? tied(%$v)
-                          : $vt eq 'ARRAY'  ? tied(@$v)
-                          : $vt eq 'SCALAR' ? tied($$v)
-                          : undef;
-                push @parts, $child && $child->{_key_hex}
-                    ? qq($k => <child: $child->{_key_hex}>)
-                    : "$k => <ref>";
-            }
-            else {
-                push @parts, defined $v ? qq($k => "$v") : "$k => (undef)";
-            }
-        }
-        return @parts ? '{ ' . join(', ', @parts) . ' }' : '{}';
+    return $count;
+}
+sub sem_count {
+    my $count = 0;
+
+    for my $line (`ipcs -s`) {
+        # BSD/macOS format: s <semid> <key> ...
+        # Linux format:     <key> <semid> ...
+        $count++ if $line =~ /^\s*s\s+\d+\s+\S+/;
+        $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
     }
 
-    if ($rtype eq 'ARRAY') {
-        my @parts;
-        for my $v (@$data) {
-            if (ref $v) {
-                my $vt    = Scalar::Util::reftype($v) // '';
-                my $child = $vt eq 'HASH'   ? tied(%$v)
-                          : $vt eq 'ARRAY'  ? tied(@$v)
-                          : $vt eq 'SCALAR' ? tied($$v)
-                          : undef;
-                push @parts, $child && $child->{_key_hex}
-                    ? "<child: $child->{_key_hex}>"
-                    : '<ref>';
-            }
-            else {
-                push @parts, defined $v ? qq("$v") : '(undef)';
-            }
-        }
-        return '[' . join(', ', @parts) . ']';
-    }
-
-    return '(unknown type)';
+    return $count;
 }
 sub seg_map {
     croak "seg_map() must be called as an object method" unless ref $_[0];
@@ -767,7 +842,7 @@ sub seg_map {
         }
 
         $content_str = $knot_by_hex{$hex}
-            ? _seg_data_summary($knot_by_hex{$hex})
+            ? _shm_data_summary($knot_by_hex{$hex})
             : '(not accessible - segment not tied in this process)';
 
         # Merge child keys from shm_segments() and from global_register walk
@@ -819,84 +894,6 @@ sub sysv_info {
 
     return %info ? \%info : undef;
 }
-sub lock {
-    my $knot = shift;
-
-    my ($flags, $code);
-
-    if (scalar @_ == 2) {
-        ($flags, $code) = @_;
-    }
-
-    if (defined $_[0]) {
-        if (ref $_[0] eq 'CODE') {
-            $code = shift;
-        }
-        else {
-            $flags = shift;
-        }
-    }
-
-    if (defined $code && ref $code ne 'CODE') {
-        croak "\$code param to lock() must be a code ref"
-    }
-
-    $flags = LOCK_EX if ! defined $flags;
-
-    return $knot->unlock if ($flags & LOCK_UN);
-
-    return 1 if ($knot->{_lock} & $flags);
-
-    # If they have a different lock than they want, release it first
-
-    $knot->unlock if ($knot->{_lock});
-
-    my $sem = $knot->sem;
-    my $lock_success = $sem->op(@{ $semop_args{$flags} });
-
-    if ($lock_success) {
-        $knot->{_lock} = $flags;
-        $knot->{_data} = $knot->_decode($knot->seg);
-    }
-
-    if ($flags == LOCK_EX && $lock_success) {
-        if ($code) {
-            my $ok = eval { $code->(); 1 };
-            my $err = $@;
-            $knot->unlock;
-            die $err if ! $ok;
-            return 1;
-        }
-    }
-    return $lock_success;
-}
-sub unlock {
-    my $knot = shift;
-
-    return 1 unless $knot->{_lock};
-
-    if ($knot->{_was_changed}) {
-        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
-            croak "Could not write to shared memory: $!\n";
-        }
-        $knot->{_was_changed} = 0;
-    }
-
-    my $sem = $knot->sem;
-    my $flags = $knot->{_lock} | LOCK_UN;
-
-    $flags ^= LOCK_NB if ($flags & LOCK_NB);
-
-    if (! $sem->op(@{ $semop_args{$flags} })) {
-        croak "Could not release semaphore lock: $!\n";
-    }
-
-    $knot->{_lock} = 0;
-
-    1;
-}
-*shlock = \&lock;
-*shunlock = \&unlock;
 
 sub clean_up {
     my $class = shift;
@@ -1018,101 +1015,12 @@ sub remove {
         delete $global_register{$id};
     }
 }
-sub seg {
-    my ($knot) = @_;
-    return $knot->{_shm} if defined $knot->{_shm};
-}
-sub sem {
-    my ($knot) = @_;
-    return $knot->{_sem} if defined $knot->{_sem};
-}
-sub singleton {
 
-    # If called with IPC::Shareable::singleton() as opposed to
-    # IPC::Shareable->singleton(), the class isn't sent in. Check
-    # for this and fix it if necessary
-
-    if (! defined $_[0] || $_[0] ne __PACKAGE__) {
-        unshift @_, __PACKAGE__;
-    }
-
-    my ($class, $glue, $warn) = @_;
-
-    if (! defined $glue) {
-        croak "singleton() requires a GLUE parameter";
-    }
-
-    $warn = 0 if ! defined $warn;
-
-    tie my $lock, 'IPC::Shareable', {
-        key         => $glue,
-        create      => 1,
-        exclusive   => 1,
-        graceful    => 1,
-        destroy     => 1,
-        warn        => $warn
-    };
-
-    return $$;
-}
-sub uuid {
-    my ($knot) = @_;
-
-    if (! defined $knot->{_uuid}) {
-        $knot->{_uuid} = md5_hex(rand());
-    }
-
-    return $knot->{_uuid};
-}
 END {
     _end();
 }
 
-# --- Private methods below
-
-sub _write_permitted {
-    my ($knot) = @_;
-
-    return 1 unless $knot->attributes('enforced_locking');
-
-    # If this knot itself holds LOCK_EX it is the owner of the lock and is
-    # permitted to write.
-
-    return 1 if $knot->{_lock} & LOCK_EX;
-
-    my $sem = $knot->sem;
-
-    # Semaphore index 2 is the write-lock counter; it is 1 when any other knot
-    # holds LOCK_EX (set via SEM_UNDO so it auto-releases on process exit).
-
-    # Block if any process holds LOCK_EX
-
-    if ($sem->getval(SEM_WRITERS) > 0) {
-        if ($knot->attributes('violated_lock_warn')) {
-            my $uuid   = $knot->uuid;
-            my $seg_id = $knot->seg->id;
-            warn "Object with UUID $uuid attempted write to segment ID "
-                . "$seg_id which is exclusively locked (enforced locking enabled)";
-        }
-
-        return 0;
-    }
-
-    # Block if any process holds LOCK_SH (active readers present)
-
-    if ($sem->getval(SEM_READERS) > 0) {
-        if ($knot->attributes('violated_lock_warn')) {
-            my $uuid   = $knot->uuid;
-            my $seg_id = $knot->seg->id;
-            warn "Object with UUID $uuid attempted write to segment ID "
-                . "$seg_id which has active readers (enforced locking enabled)";
-        }
-
-        return 0;
-    }
-
-    return 1;
-}
+# Private methods
 
 # Encoding/Decoding
 
@@ -1347,6 +1255,7 @@ sub _thaw {
 }
 
 # Data management
+
 sub _tie {
     my ($type, $class, $key_str, $opts);
 
@@ -1635,7 +1544,8 @@ sub _need_tie {
     return $need_tie ? 1 : 0;
 }
 
-# Segment operations
+# Segment/semaphore operations
+
 sub _key_str_to_int {
     # Convert any key format (hex string, decimal integer string, or arbitrary
     # text) to a 32-bit integer using the same algorithm as _shm_key(), but
@@ -1648,6 +1558,103 @@ sub _key_str_to_int {
     my $int = crc32($key_str);
     $int -= MAX_KEY_INT_SIZE if $int > MAX_KEY_INT_SIZE;
     return $int;
+}
+sub _reset_segment {
+    my ($parent, $id) = @_;
+
+    my $parent_type = Scalar::Util::reftype($parent->{_data}) || '';
+
+    if ($parent_type eq 'HASH') {
+        my $data = $parent->{_data};
+        if (exists $data->{$id}) {
+            my $child_type = Scalar::Util::reftype($data->{$id}) || '';
+            if ($child_type eq 'HASH' && tied %{ $data->{$id} }) {
+                (tied %{ $parent->{_data}{$id} })->remove;
+            }
+            elsif ($child_type eq 'ARRAY' && tied @{ $data->{$id} }) {
+                (tied @{ $parent->{_data}{$id} })->remove;
+            }
+        }
+    }
+    elsif ($parent_type eq 'ARRAY') {
+        my $data = $parent->{_data};
+        if (exists $data->[$id]) {
+            my $child_type = Scalar::Util::reftype($data->[$id]) || '';
+            if ($child_type eq 'HASH' && tied %{ $data->[$id] }) {
+                (tied %{ $parent->{_data}[$id] })->remove;
+            }
+            elsif ($child_type eq 'ARRAY' && tied @{ $data->[$id] }) {
+                (tied @{ $parent->{_data}[$id] })->remove;
+            }
+        }
+    }
+}
+sub _shm_data_summary {
+    my ($knot) = @_;
+
+    my $data  = $knot->{_data};
+    my $rtype = Scalar::Util::reftype($data) // '';
+
+    if ($rtype eq 'SCALAR') {
+        my $v = $$data;
+        return defined $v ? qq("$v") : '(undef)';
+    }
+
+    if ($rtype eq 'HASH') {
+        my @parts;
+        for my $k (sort keys %$data) {
+            my $v = $data->{$k};
+            if (ref $v) {
+                my $vt    = Scalar::Util::reftype($v) // '';
+                my $child = $vt eq 'HASH'   ? tied(%$v)
+                    : $vt eq 'ARRAY'  ? tied(@$v)
+                    : $vt eq 'SCALAR' ? tied($$v)
+                    : undef;
+                push @parts, $child && $child->{_key_hex}
+                    ? qq($k => <child: $child->{_key_hex}>)
+                    : "$k => <ref>";
+            }
+            else {
+                push @parts, defined $v ? qq($k => "$v") : "$k => (undef)";
+            }
+        }
+        return @parts ? '{ ' . join(', ', @parts) . ' }' : '{}';
+    }
+
+    if ($rtype eq 'ARRAY') {
+        my @parts;
+        for my $v (@$data) {
+            if (ref $v) {
+                my $vt    = Scalar::Util::reftype($v) // '';
+                my $child = $vt eq 'HASH'   ? tied(%$v)
+                    : $vt eq 'ARRAY'  ? tied(@$v)
+                    : $vt eq 'SCALAR' ? tied($$v)
+                    : undef;
+                push @parts, $child && $child->{_key_hex}
+                    ? "<child: $child->{_key_hex}>"
+                    : '<ref>';
+            }
+            else {
+                push @parts, defined $v ? qq("$v") : '(undef)';
+            }
+        }
+        return '[' . join(', ', @parts) . ']';
+    }
+
+    return '(unknown type)';
+}
+sub _shm_flags {
+    # Parses the anonymous hash passed to constructors; returns a list
+    # of args suitable for passing to shmget
+
+    my ($knot) = @_;
+
+    my $flags = 0;
+
+    $flags |= IPC_CREAT if $knot->attributes('create');
+    $flags |= IPC_EXCL  if $knot->attributes('exclusive');
+
+    return $flags;
 }
 sub _shm_key {
     # Generates a 32-bit CRC on the key string. The $key_str parameter is used
@@ -1744,51 +1751,52 @@ sub _shm_key_rand {
 sub _shm_key_rand_int {
     return int(rand(1_000_000));
 }
-sub _shm_flags {
-    # Parses the anonymous hash passed to constructors; returns a list
-    # of args suitable for passing to shmget
-
+sub _write_permitted {
     my ($knot) = @_;
 
-    my $flags = 0;
+    return 1 unless $knot->attributes('enforced_locking');
 
-    $flags |= IPC_CREAT if $knot->attributes('create');
-    $flags |= IPC_EXCL  if $knot->attributes('exclusive');
+    # If this knot itself holds LOCK_EX it is the owner of the lock and is
+    # permitted to write.
 
-    return $flags;
-}
-sub _reset_segment {
-    my ($parent, $id) = @_;
+    return 1 if $knot->{_lock} & LOCK_EX;
 
-    my $parent_type = Scalar::Util::reftype($parent->{_data}) || '';
+    my $sem = $knot->sem;
 
-    if ($parent_type eq 'HASH') {
-        my $data = $parent->{_data};
-        if (exists $data->{$id}) {
-            my $child_type = Scalar::Util::reftype($data->{$id}) || '';
-            if ($child_type eq 'HASH' && tied %{ $data->{$id} }) {
-                (tied %{ $parent->{_data}{$id} })->remove;
-            }
-            elsif ($child_type eq 'ARRAY' && tied @{ $data->{$id} }) {
-                (tied @{ $parent->{_data}{$id} })->remove;
-            }
+    # Semaphore index 2 is the write-lock counter; it is 1 when any other knot
+    # holds LOCK_EX (set via SEM_UNDO so it auto-releases on process exit).
+
+    # Block if any process holds LOCK_EX
+
+    if ($sem->getval(SEM_WRITERS) > 0) {
+        if ($knot->attributes('violated_lock_warn')) {
+            my $uuid   = $knot->uuid;
+            my $seg_id = $knot->seg->id;
+            warn "Object with UUID $uuid attempted write to segment ID "
+                . "$seg_id which is exclusively locked (enforced locking enabled)";
         }
+
+        return 0;
     }
-    elsif ($parent_type eq 'ARRAY') {
-        my $data = $parent->{_data};
-        if (exists $data->[$id]) {
-            my $child_type = Scalar::Util::reftype($data->[$id]) || '';
-            if ($child_type eq 'HASH' && tied %{ $data->[$id] }) {
-                (tied %{ $parent->{_data}[$id] })->remove;
-            }
-            elsif ($child_type eq 'ARRAY' && tied @{ $data->[$id] }) {
-                (tied @{ $parent->{_data}[$id] })->remove;
-            }
+
+    # Block if any process holds LOCK_SH (active readers present)
+
+    if ($sem->getval(SEM_READERS) > 0) {
+        if ($knot->attributes('violated_lock_warn')) {
+            my $uuid   = $knot->uuid;
+            my $seg_id = $knot->seg->id;
+            warn "Object with UUID $uuid attempted write to segment ID "
+                . "$seg_id which has active readers (enforced locking enabled)";
         }
+
+        return 0;
     }
+
+    return 1;
 }
 
 # Misc
+
 sub _parse_args {
     my ($opts) = @_;
 
