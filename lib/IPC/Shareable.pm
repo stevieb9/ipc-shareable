@@ -1881,6 +1881,12 @@ IPC::Shareable - Use shared memory backed variables across processes
 
     tied(VARIABLE->lock(sub { print "hello!\n"; });
 
+    # Ensure only one instance of a script can be run at any time
+
+    IPC::Shareable->singleton('UNIQUE SCRIPT LOCK STRING');
+
+=head1 DEVELOPER/TROUBLESHOOTING SYNOPSIS
+
     # Get SYSV shared memory specifications of the system (if available)
 
     my $href = IPC::Shareable::sysv_info();
@@ -1890,6 +1896,11 @@ IPC::Shareable - Use shared memory backed variables across processes
     my $segment   = tied(VARIABLE)->seg;
     my $semaphore = tied(VARIABLE)->sem;
 
+    # Get the shared memory segment and semaphores for a lower level
+
+    my $seg = tied(%{ $hv{a}->{b} })->seg;
+    my $sem = tied(%{ $hv{a}->{b} })->sem;
+
     # Print using Data::Dumper the segment and semaphor mapping for your data
 
     tied(VARIABLE)->seg_map;
@@ -1898,15 +1909,11 @@ IPC::Shareable - Use shared memory backed variables across processes
 
     tied(VARIABLE)->remove;
 
-    # Manual cleanup procedures
+    # Manual cleanup procedures (mainly used for unit testing etc)
 
     IPC::Shareable::clean_up;
     IPC::Shareable::clean_up_all;
     IPC::Shareable::clean_up_protected;
-
-    # Ensure only one instance of a script can be run at any time
-
-    IPC::Shareable->singleton('UNIQUE SCRIPT LOCK STRING');
 
     # Get the actual IPC::Shareable tied object you can make method calls on
     # instead of using the tied object like the examples above
@@ -1920,7 +1927,7 @@ IPC::Shareable - Use shared memory backed variables across processes
 
 =head1 DESCRIPTION
 
-IPC::Shareable allows you to tie a variable to shared memory making it
+IPC::Shareable allows you to tie a variable to shared memory, making it
 easy to share the contents of that variable with other Perl processes and
 scripts.
 
@@ -1933,7 +1940,7 @@ additional shared memory segment. The entire structure is not squashed into a
 single segment. See L</DATA AND SEGMENT MAPPING> for details.
 
 The association between variables in distinct processes is provided by
-GLUE (aka "key").  This is any arbitrary string or integer that serves as a
+GLUE (aka. a "key"). This is any arbitrary string or integer that serves as a
 common identifier for data across process space.  Hence the statement:
 
     tie my %hash, 'IPC::Shareable', { key => 'GLUE STRING', create => 1 };
@@ -1949,12 +1956,21 @@ There is no pre-set limit to the number of processes that can bind to
 data; nor is there a pre-set limit to the complexity of the underlying
 data of the tied variables.  The amount of data that can be shared
 within a single bound variable is limited by the system's maximum size
-for a shared memory segment (the exact value is system-dependent).
+for a shared memory segment, and the total number of segments allowed by the
+system (the exact values are system-dependent).
 
-The bound data structures are all linearized (using Raphael Manfredi's
-L<JSON> module or optionally L<Storable>) before being slurped into shared
-memory.  Upon retrieval, the original format of the data structure is recovered.
-Semaphore flags can be used for locking data between competing processes.
+The bound data structures are all linearized (using L<JSON> by default or
+optionally L<Storable>) before being slurped into shared memory. Upon retrieval,
+the original format of the data structure is recovered. Semaphore flags can be
+used for locking data between competing processes.
+
+B<Recommendation>: Utilizing the locking mechanisms is highly advised to ensure
+data consistency and integrity. See L</LOCKING>.
+
+B<Recommendation>: If you're using JSON to serialize your data (the default), I
+would highly advise you to install the XS version (L<JSON::XS>. We will
+automatically use it if available, and it is much faster than the pure Perl
+version (L<JSON::PP>).
 
 =head1 OPTIONS
 
