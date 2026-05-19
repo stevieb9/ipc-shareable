@@ -38,7 +38,7 @@ use constant {
     # SHM parameters
 
     SHM_BUFSIZ            => 65536,
-    SHMMAX_BYTES          => 1073741824, # 1 GB
+    SHMMAX_BYTES          => 1073741824, # ~1 GB
     SHM_EXISTS            => 1,
 
     # Semaphore slots
@@ -50,7 +50,7 @@ use constant {
 
     # Perl sends in a double as opposed to an integer to shmat(), and on some
     # systems, this causes the IPC system to round down to the maximum integer
-    # size of 0x80000000 we correct that when generating keys with CRC32
+    # size of 0x80000000. We correct that when generating keys with CRC32.
 
     MAX_KEY_INT_SIZE      => 0x80000000,
 
@@ -67,7 +67,16 @@ use constant {
 
 require Exporter;
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(LOCK_EX LOCK_SH LOCK_NB LOCK_UN SEM_MARKER SEM_READERS SEM_WRITERS SEM_PROTECTED);
+our @EXPORT_OK = qw(
+    LOCK_EX
+    LOCK_SH
+    LOCK_NB
+    LOCK_UN
+    SEM_MARKER
+    SEM_READERS
+    SEM_WRITERS
+    SEM_PROTECTED
+);
 our %EXPORT_TAGS = (
     all     => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
     lock    => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
@@ -75,7 +84,7 @@ our %EXPORT_TAGS = (
 );
 Exporter::export_ok_tags('all', 'lock', 'flock');
 
-# Locking scheme copied from IPC::ShareLite
+# Locking scheme copied from IPC::ShareLite (with minor modifications)
 
 my %semop_args = (
     (LOCK_EX),
@@ -130,6 +139,8 @@ my %default_options = (
 # Seed the random number generator
 
 srand();
+
+# Class-level variables
 
 my %global_register;
 my %process_register;
@@ -1843,7 +1854,6 @@ IPC::Shareable - Use shared memory backed variables across processes
 <a href="https://github.com/stevieb9/ipc-shareable/actions"><img src="https://github.com/stevieb9/ipc-shareable/workflows/CI/badge.svg"/></a>
 <a href='https://coveralls.io/github/stevieb9/ipc-shareable?branch=master'><img src='https://coveralls.io/repos/stevieb9/ipc-shareable/badge.svg?branch=master&service=github' alt='Coverage Status' /></a>
 
-
 =head1 SYNOPSIS
 
     use IPC::Shareable qw(:lock);
@@ -1875,6 +1885,10 @@ IPC::Shareable - Use shared memory backed variables across processes
 
     my $segment   = tied(VARIABLE)->seg;
     my $semaphore = tied(VARIABLE)->sem;
+
+    # Print using Data::Dumper the segment and semaphor mapping for your data
+
+    tied(VARIABLE)->seg_map;
 
     # Remove the shared memory segment and semaphore directly
 
@@ -2023,8 +2037,7 @@ Default: B<0666> (world readable and writeable)
 
 =head2 size
 
-This field may be used to specify the size of the shared memory segment
-allocated.
+This field is used to specify the size of each shared memory segment allocated.
 
 B<Note>: Each nested data structure requires a new shared memory segment. The
 C<size> attribute is applied to the first, and all subsequent segments created,
@@ -2075,6 +2088,8 @@ Default: B<true>
 This attribute will allow you to enforce locks that you set, instead of them
 being simply advisory.
 
+B<Note>: Only a C<LOCK_EX> lock is enforced. C<LOCK_SH> locks are still advisory.
+
 Use with C<violated_lock_warn> to emit a warning when a lock collision has
 occurred.
 
@@ -2093,7 +2108,7 @@ Default: B<false>
 
 If set to a true value, the shared memory segment underlying the data
 binding will be removed when the process that initialized the shared memory
-segment exits (gracefully)[1].
+segment exits cleanly.
 
 Only those memory segments that were created by the current process will be
 removed.
@@ -2102,7 +2117,7 @@ Use this option with care. In particular you should not use this option in a
 program that will fork after binding the data.  On the other hand, shared memory
 is a finite resource and should be released if it is not needed.
 
-B<NOTE>: If the segment was created with its L</protected> attribute set,
+B<Note>: If the segment was created with its L</protected> attribute set,
 it will not be removed upon program completion, even if C<destroy> is set.
 
 Default: B<false>
@@ -2657,13 +2672,13 @@ As described in L</OPTIONS>, specifying the B<destroy> option when
 C<tie()>ing a variable coerces L<IPC::Shareable> to remove the underlying
 shared memory segment when the process calling C<tie()> exits gracefully.
 
-B<NOTE>: The destruction is handled in an C<END> block. Only those memory
+B<Note>: The destruction is handled in an C<END> block. Only those memory
 segments that are tied to the current process will be removed.
 
-B<NOTE>: If the segment was created with its L</protected> attribute set,
+B<Note>: If the segment was created with its L</protected> attribute set,
 it will not be removed in the C<END> block, even if C<destroy> is set.
 
-B<NOTE>: The C<END> block only runs on a I<clean> exit (normal program
+B<Note>: The C<END> block only runs on a I<clean> exit (normal program
 end, C<die>, or C<exit>). It does B<not> run for untrapped signals
 (C<SIGTERM>, C<SIGINT>, etc.) or for C<SIGKILL>. If your process may be
 terminated by a signal and you want C<destroy> cleanup to run, install
@@ -2675,7 +2690,7 @@ This causes the C<END> block to fire on those signals. C<SIGKILL> cannot
 be caught; any segments left behind by it can be recovered with
 C<IPC::Shareable-E<gt>clean_up_all>.
 
-B<NOTE>: Advisory locks (C<lock()>/C<unlock()>) are I<always> released
+B<Note>: Advisory locks (C<lock()>/C<unlock()>) are I<always> released
 automatically when a process dies, even on C<SIGKILL>, because the
 underlying semaphore operations use C<SEM_UNDO>. Lock release is
 therefore not a concern; only shared memory I<segment> data requires
@@ -2707,8 +2722,8 @@ and return immediately thereafter.
     IPC::Shareable->remove(1234);           # integer
     tied($var)->remove('Test');             # string
 
-Calling C<remove()> on the object underlying a C<tie()>d variable removes
-the associated shared memory segments.  The segment is removed
+B<Note>: Calling C<remove()> on the object underlying a C<tie()>d variable
+removes the associated shared memory segment.  The segment is removed
 irrespective of whether it has the B<destroy> option set or not and
 irrespective of whether the calling process created the segment.
 
