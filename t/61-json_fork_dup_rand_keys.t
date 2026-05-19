@@ -14,10 +14,6 @@ use Test::SharedFork;
 my ($segs_before, $sems_before);
 
 BEGIN {
-    # if (! $ENV{CI_TESTING}) {
-    #     plan skip_all => "Not on a legit CI platform...";
-    # }
-
     if (! $ENV{ASYNC_TESTING}) {
         plan skip_all => "Developer only test... needs Async::Event::Interval";
     }

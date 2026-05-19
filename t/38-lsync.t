@@ -7,12 +7,6 @@ use Carp;
 use IPC::Shareable;
 use Test::More;
 
-#BEGIN {
-#    if (! $ENV{CI_TESTING}) {
-#        plan skip_all => "Not on a legit CI platform...";
-#    }
-#}
-
 my $segs_before = IPC::Shareable::shm_count();
 my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};

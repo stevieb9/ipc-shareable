@@ -5,9 +5,6 @@ use Data::Dumper;
 use Test::More;
 
 BEGIN {
-    #if (!$ENV{CI_TESTING}) {
-    #    plan skip_all => "Not on a valid CI platform...";
-    #}
     use_ok('IPC::Shareable');
 };
 
