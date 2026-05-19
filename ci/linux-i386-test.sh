@@ -41,10 +41,6 @@ if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then
         echo "ERROR: VM '${VM}' is not Running after start"; exit 1; }
 fi
 
-# Determine the actual guest home directory (Lima appends .linux on Linux VMs)
-GUEST_HOME="$(limactl shell "$VM" -- sh -lc 'echo $HOME')"
-GUEST_REPO="${GUEST_HOME}/ipc-shareable"
-
 echo "==> Setting up i386 chroot (first run ~5 min, subsequent runs instant)..."
 limactl shell "$VM" -- sh -lc "
     set -e
@@ -53,16 +49,17 @@ limactl shell "$VM" -- sh -lc "
         sudo apt-get install -y debootstrap systemd-container
         sudo debootstrap --arch=i386 bookworm '${CHROOT}' http://deb.debian.org/debian/
         sudo systemd-nspawn -D '${CHROOT}' apt-get install -y perl cpanminus build-essential
-        sudo systemd-nspawn -D '${CHROOT}' cpanm --notest --quiet JSON String::CRC32 Test::SharedFork Mock::Sub
+        sudo systemd-nspawn -D '${CHROOT}' cpanm --notest --quiet JSON String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval
     fi
 "
 
 echo "==> Copying source into i386 chroot..."
 limactl shell "$VM" -- sh -lc "sudo rm -rf '${CHROOT_REPO}' && sudo mkdir -p '${CHROOT}/opt'"
-scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
-limactl shell "$VM" -- sh -lc "sudo cp -a '${GUEST_REPO}/.' '${CHROOT_REPO}/'"
+tar -C "$(dirname "$HOST_REPO")" -czf - "$(basename "$HOST_REPO")" | \
+    limactl shell "$VM" -- sudo tar -C "${CHROOT}/opt" -xzf - \
+        --transform "s|^$(basename "$HOST_REPO")|ipc-shareable|"
 
 echo "==> Running tests in i386 chroot (32-bit Perl)..."
 limactl shell "$VM" -- sh -lc "
     sudo systemd-nspawn -D '${CHROOT}' \\
-        sh -c 'cd /opt/ipc-shareable && CI_TESTING=1 prove -l ${PROVE_ARGS}'"
+        sh -c 'cd /opt/ipc-shareable && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}'"

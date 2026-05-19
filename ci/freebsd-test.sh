@@ -70,11 +70,11 @@ if ! limactl shell "$VM" -- sh -lc 'command -v sudo >/dev/null 2>&1'; then
 fi
 
 echo "==> Installing FreeBSD packages..."
-limactl shell "$VM" -- sh -lc 'sudo pkg install -y perl5 p5-App-cpanminus gmake p5-ExtUtils-MakeMaker p5-JSON p5-String-CRC32 p5-Test-SharedFork p5-Mock-Sub'
+limactl shell "$VM" -- sh -lc 'sudo pkg install -y perl5 p5-App-cpanminus gmake p5-ExtUtils-MakeMaker p5-JSON p5-String-CRC32 p5-Test-SharedFork p5-Mock-Sub && sudo cpanm --notest Async::Event::Interval'
 
 echo "==> Copying source into VM..."
 limactl shell "$VM" -- sh -lc "rm -rf '${GUEST_REPO}'"
 scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
 
 echo "==> Running tests in VM..."
-limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && CI_TESTING=1 prove -l ${PROVE_ARGS}"
+limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}"

@@ -9,6 +9,7 @@ use strict;
 
 use IPC::Shareable;
 use Test::More;
+use Test::SharedFork;
 
 my ($segs_before, $sems_before);
 
@@ -17,8 +18,8 @@ BEGIN {
     #     plan skip_all => "Not on a legit CI platform...";
     # }
 
-    if (! $ENV{RELEASE_TESTING}) {
-        plan skip_all => "Developer only test...";
+    if (! $ENV{ASYNC_TESTING}) {
+        plan skip_all => "Developer only test... needs Async::Event::Interval";
     }
 
     warn "Segs Before: " . IPC::Shareable::shm_count() . "\n" if $ENV{PRINT_SEGS};
