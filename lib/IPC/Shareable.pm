@@ -132,8 +132,10 @@ my %default_options = (
     warn               => 0,
     tidy               => 1,
     serializer         => 'json',
-    enforced_locking   => 1,
-    violated_lock_warn => 1,
+    enforced_write_locking   => 1,
+    enforced_read_locking    => 1,
+    violated_write_lock_warn => 1,
+    violated_read_lock_warn  => 1,
 );
 
 # Seed the random number generator
@@ -200,6 +202,7 @@ sub FETCH {
         $data = $knot->{_data};
     }
     else {
+        _read_check($knot);
         $data = $knot->_decode($knot->seg);
         $knot->{_data} = $data;
     }
@@ -1834,7 +1837,7 @@ sub _shm_key_rand_int {
 sub _write_permitted {
     my ($knot) = @_;
 
-    return 1 unless $knot->attributes('enforced_locking');
+    return 1 unless $knot->attributes('enforced_write_locking');
 
     # If this knot itself holds LOCK_EX it is the owner of the lock and is
     # permitted to write.
@@ -1849,11 +1852,14 @@ sub _write_permitted {
     # Block if any process holds LOCK_EX
 
     if ($sem->getval(SEM_WRITERS) > 0) {
-        if ($knot->attributes('violated_lock_warn')) {
+        if ($knot->attributes('violated_write_lock_warn')) {
             my $uuid   = $knot->uuid;
             my $seg_id = $knot->seg->id;
             warn "Object with UUID $uuid attempted write to segment ID "
-                . "$seg_id which is exclusively locked (enforced locking enabled)";
+                . "$seg_id which is exclusively locked (enforced write "
+                . "locking enabled). Your write was not accepted. Lock with "
+                . "LOCK_EX to ensure successful writes when a segment is "
+                . "already locked";
         }
 
         return 0;
@@ -1862,17 +1868,41 @@ sub _write_permitted {
     # Block if any process holds LOCK_SH (active readers present)
 
     if ($sem->getval(SEM_READERS) > 0) {
-        if ($knot->attributes('violated_lock_warn')) {
+        if ($knot->attributes('violated_write_lock_warn')) {
             my $uuid   = $knot->uuid;
             my $seg_id = $knot->seg->id;
             warn "Object with UUID $uuid attempted write to segment ID "
-                . "$seg_id which has active readers (enforced locking enabled)";
+                . "$seg_id which has active readers (enforced write locking "
+                . "enabled)";
         }
 
         return 0;
     }
 
     return 1;
+}
+sub _read_check {
+    my ($knot) = @_;
+
+    # Advisory only: never blocks the read, only warns. Called from FETCH
+    # when this knot is unlocked (a locked FETCH uses _data cache and never
+    # touches shmem). Race window exists between this getval() and the
+    # subsequent _decode() — a writer could acquire in between — but this
+    # still catches the common case where a reader forgot to lock.
+
+    return unless $knot->attributes('enforced_read_locking');
+    return unless $knot->attributes('violated_read_lock_warn');
+
+    if ($knot->sem->getval(SEM_WRITERS) > 0) {
+        my $uuid   = $knot->uuid;
+        my $seg_id = $knot->seg->id;
+        warn "Object with UUID $uuid attempted read from segment ID "
+            . "$seg_id which is exclusively locked (enforced read locking "
+            . "enabled); returned data may be stale or partially-written. "
+            . "Acquire LOCK_SH before reading to guarantee a coherent snapshot";
+    }
+
+    return;
 }
 
 # Misc
@@ -2177,30 +2207,52 @@ system RAM.
 
 Default: B<true>
 
-=head2 enforced_locking
+=head2 enforced_write_locking
 
-This attribute will allow you to enforce C<LOCK_EX> exclusive write locks that
-you set, so that readers and writers who aren't using advisory locks will be
-blocked from writing.
+When enabled, writes from any knot are blocked while another knot holds
+C<LOCK_EX> on the segment, or while there are active C<LOCK_SH> readers. Pair
+with C<violated_write_lock_warn> to also emit a warning when a write is
+blocked.
 
-B<Note>: Only a C<LOCK_EX> lock is enforced. C<LOCK_SH> locks are still advisory
-only.
-
-B<Note>: If a reader does not have a C<LOCK_SH> in place and they attempt a read
-while a C<LOCK_EX> is active and this option is set, they will simply return
-stale data. You have been warned!
-
-Use with C<violated_lock_warn> to emit a warning when a lock collision has
-occurred.
+B<Note>: Only a C<LOCK_EX> lock is enforced against other writers. C<LOCK_SH>
+write protection is advisory only — it blocks writes from C<enforced_write_locking>-
+enabled knots, but a knot that has disabled this option can still write.
 
 Default: B<true>
 
-=head2 violated_lock_warn
+=head2 enforced_read_locking
 
-When C<enforced_locking> is enabled, and this attribute is set to true, we will
-emit a warning when an exclusive lock collision has occurred. The warning will
-include the UUID of the object that caused the violation, and the segment ID
-that the violation occurred against.
+When enabled, an unlocked read against a segment that another knot has locked
+with C<LOCK_EX> is detected. Reads are never B<blocked> — this option only
+controls whether the check fires. Pair with C<violated_read_lock_warn> to emit
+a warning when this happens.
+
+B<Note>: Reads (fetches) are never blocked, even when a C<LOCK_EX> is active.
+If a reader does not hold a C<LOCK_SH> and reads while a writer holds
+C<LOCK_EX>, the returned data may be stale or partially-written. To guarantee
+a coherent snapshot, acquire C<LOCK_SH> before reading.
+
+Default: B<true>
+
+=head2 violated_write_lock_warn
+
+When C<enforced_write_locking> is enabled, and this attribute is set to true,
+we will emit a warning when a write violation occurs (a write attempted
+against a segment that another knot has locked with C<LOCK_EX>, or a write
+attempted against a segment with active C<LOCK_SH> readers). The warning
+includes the UUID of the object that caused the violation and the segment ID
+it occurred against.
+
+Default: B<true>
+
+=head2 violated_read_lock_warn
+
+When C<enforced_read_locking> is enabled, and this attribute is set to true,
+we will emit a warning when an unlocked read is attempted against a segment
+that another knot has locked with C<LOCK_EX>. The returned data may be stale
+or partially-written; the warning recommends acquiring C<LOCK_SH> before
+reading to guarantee a coherent snapshot. The warning includes the UUID of
+the object that caused the violation and the segment ID it occurred against.
 
 Default: B<true>
 
@@ -2260,8 +2312,10 @@ Default values for options are:
     warn                => 0,
     tidy                => 1,
     serializer          => 'json',
-    enforced_locking    => 1,
-    violated_lock_warn  => 1,
+    enforced_write_locking    => 1,
+    enforced_read_locking     => 1,
+    violated_write_lock_warn  => 1,
+    violated_read_lock_warn   => 1,
 
 
 =head1 METHODS
@@ -2646,9 +2700,12 @@ using these calls in order for locking to work.  See the C<flock()> call for
 details.
 
 B<Note>: You can enforce a C<LOCK_EX> lock at a software level by ensuring that
-the C<enforced_locking> option is set to a true value (the default). This will
-prevent processes that decide not to implement the advisory locking from data
-access.
+the C<enforced_write_locking> option is set to a true value (the default).
+This will prevent processes that decide not to implement the advisory locking
+from writing to the segment. The companion C<enforced_read_locking> option
+(also true by default) enables detection of unlocked reads against an
+exclusively-locked segment; reads are never blocked, but a warning will be
+emitted if C<violated_read_lock_warn> is also set.
 
 Locks are inherited through forks, which means that two processes actually
 can possess an exclusive lock at the same time. Don't do that.
@@ -2776,16 +2833,27 @@ If no argument is provided to C<lock>, it defaults to C<LOCK_EX>.
 
 =head2 Enforced write locking
 
-By default, the C<enforced_locking> is set to true, which means that if a tied
-variable sets a C<LOCK_EX>, all writes from all other processes will fail,
-regardless of whether the other processes opted in to check locking.
+By default, the C<enforced_write_locking> option is set to true, which means
+that if a tied variable sets a C<LOCK_EX>, all writes from all other processes
+will fail, regardless of whether the other processes opted in to check
+locking. The companion C<enforced_read_locking> option (also true by default)
+enables detection of unlocked reads against an exclusively-locked segment;
+reads are never blocked.
 
-=head3 violated_lock_warn Option
+=head3 violated_write_lock_warn Option
 
-Disabled by default, this is an attribute you set on object instantiation. If
-set to C<< true >> and another object has a C<LOCK_EX> in place during a write
-operation, a warning will be emitted by any process that attempts to write to
-a locked segment.
+Enabled by default, this is an attribute you set on object instantiation. If
+set to C<< true >> and another object has a C<LOCK_EX> in place (or active
+C<LOCK_SH> readers) during a write operation, a warning will be emitted by
+any process that attempts to write to the locked segment.
+
+=head3 violated_read_lock_warn Option
+
+Enabled by default, this is an attribute you set on object instantiation. If
+set to C<< true >> and another object has a C<LOCK_EX> in place during an
+unlocked read, a warning will be emitted alerting that the returned data may
+be stale or partially-written. To guarantee a coherent read, acquire
+C<LOCK_SH> before reading.
 
 =head3 Important notes
 
@@ -3106,3 +3174,121 @@ Thanks to all those with comments or bug fixes, especially
 
 L<perltie>, L<Storable>, C<shmget>, C<ipcs>, C<ipcrm> and other SysV IPC manual
 pages.
+
+=head1 LOCKING BEHAVIOR MATRIX
+
+The following matrix describes what happens to a second object (B) when a
+first object (A) holds C<LOCK_EX> on a segment, across all combinations of
+the four lock-control attributes:
+
+=over 4
+
+=item * EW = C<enforced_write_locking>
+
+=item * ER = C<enforced_read_locking>
+
+=item * WW = C<violated_write_lock_warn>
+
+=item * WR = C<violated_read_lock_warn>
+
+=back
+
+=head2 Lock acquisition (attribute-independent)
+
+C<semop> runs at the kernel level — none of the four flags affect whether a
+lock is granted.
+
+    +--------------------------+----------------------------------------------+
+    | B's attempt              | Lock result while A holds LOCK_EX            |
+    +--------------------------+----------------------------------------------+
+    | LOCK_EX                  | Blocks, then acquires once A unlocks         |
+    | LOCK_EX | LOCK_NB        | Returns 0 immediately                        |
+    | LOCK_SH                  | Blocks, then acquires once A unlocks         |
+    | LOCK_SH | LOCK_NB        | Returns 0 immediately                        |
+    | (no lock)                | N/A                                          |
+    +--------------------------+----------------------------------------------+
+
+=head2 Behavior after lock state is established
+
+=head3 Case 1: B successfully holds LOCK_EX (blocking attempts complete after A unlocks)
+
+All flags are irrelevant — C<FETCH> uses the cache (skipping the read check),
+and the write check bypasses on C<LOCK_EX> ownership.
+
+    +----------+--------------+-----------+--------------+
+    | Read     | Read warn?   | Write     | Write warn?  |
+    +----------+--------------+-----------+--------------+
+    | cache    | never        | succeeds  | never        |
+    +----------+--------------+-----------+--------------+
+
+=head3 Case 2: B successfully holds LOCK_SH (after A unlocks)
+
+C<FETCH> uses cache (no read warn possible). Writes go through the write
+check, which sees C<SEM_READERS E<gt> 0> from B's own C<LOCK_SH>.
+
+    +----+----+------------------------------------+--------------+
+    | EW | WW | Write outcome                      | Write warn?  |
+    +----+----+------------------------------------+--------------+
+    |  0 |  * | succeeds (enforcement off)         | no           |
+    |  1 |  0 | blocked ("active readers")         | no           |
+    |  1 |  1 | blocked ("active readers")         | YES          |
+    +----+----+------------------------------------+--------------+
+
+=head3 Case 3: B is unlocked (NB attempt returned 0, or B never attempted a lock) — A still holds LOCK_EX, so SEM_WRITERS = 1
+
+    +----+----+----+----+-------------------+--------------+-------------------+---------------+
+    | EW | ER | WW | WR | Read              | Read warn?   | Write             | Write warn?   |
+    +----+----+----+----+-------------------+--------------+-------------------+---------------+
+    |  0 |  0 |  0 |  0 | raw shmem (stale) | no           | succeeds (race)   | no            |
+    |  0 |  0 |  0 |  1 | raw shmem         | no           | succeeds          | no            |
+    |  0 |  0 |  1 |  0 | raw shmem         | no           | succeeds          | no            |
+    |  0 |  0 |  1 |  1 | raw shmem         | no           | succeeds          | no            |
+    |  0 |  1 |  0 |  0 | raw shmem         | no           | succeeds          | no            |
+    |  0 |  1 |  0 |  1 | raw shmem         | YES          | succeeds          | no            |
+    |  0 |  1 |  1 |  0 | raw shmem         | no           | succeeds          | no            |
+    |  0 |  1 |  1 |  1 | raw shmem         | YES          | succeeds          | no            |
+    |  1 |  0 |  0 |  0 | raw shmem         | no           | blocked           | no            |
+    |  1 |  0 |  0 |  1 | raw shmem         | no           | blocked           | no            |
+    |  1 |  0 |  1 |  0 | raw shmem         | no           | blocked           | YES           |
+    |  1 |  0 |  1 |  1 | raw shmem         | no           | blocked           | YES           |
+    |  1 |  1 |  0 |  0 | raw shmem         | no           | blocked           | no            |
+    |  1 |  1 |  0 |  1 | raw shmem         | YES          | blocked           | no            |
+    |  1 |  1 |  1 |  0 | raw shmem         | no           | blocked           | YES           |
+    |  1 |  1 |  1 |  1 | raw shmem         | YES          | blocked           | YES           |
+    +----+----+----+----+-------------------+--------------+-------------------+---------------+
+
+=head2 Rules distilled from the matrix
+
+=over 4
+
+=item *
+
+B<Lock acquisition> is governed only by SysV semaphores; the four flags do
+not participate.
+
+=item *
+
+B<Read result> is always raw shmem when unlocked, always cached when locked
+— the four flags only affect whether a warning is emitted, never the value
+returned.
+
+=item *
+
+B<Read warns> iff C<ER = 1> AND C<WR = 1> AND another process holds
+C<LOCK_EX>.
+
+=item *
+
+B<Write blocks> iff C<EW = 1> AND (another process holds C<LOCK_EX> OR has
+active C<LOCK_SH> readers OR the caller itself holds only C<LOCK_SH>).
+
+=item *
+
+B<Write warns> iff the write was blocked AND C<WW = 1>.
+
+=item *
+
+C<LOCK_EX> ownership bypasses every check in the write path and never reaches
+the read check, so the four flags never fire for the lock holder.
+
+=back

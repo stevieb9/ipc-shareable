@@ -92,6 +92,13 @@ Revision history for Perl extension IPC::Shareable.
       if JSON _decode() fails, we then attempt a Storable _thaw()
     - Added sem_count(); behaves like seg_count() but for semaphores. Also
       updated tests to ensure no straggling semaphores are left behind
+    - All LOCK_EX and LOCK_SH locks are now applied to all child segments when
+      the lock is first instantiated on the tied object. Both of them are rolled
+      out in reverse order from the lowest-level child upwards when the lock is
+      released
+    - New attributes for updated locking mechanisms: enforced_write_locking,
+      enforced_read_locking, violated_write_lock_warn and
+      violated_read_lock_warn. All enabled by default
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

@@ -54,8 +54,8 @@ my $sv;
 
 # Advisory locking
 {
-    my $k1 = tie my %h1, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1, enforced_locking => 0, serializer => 'storable' };
-    my $k2 = tie my %h2, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1, enforced_locking => 0, serializer => 'storable' };
+    my $k1 = tie my %h1, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1, enforced_write_locking => 0, enforced_read_locking => 0, serializer => 'storable' };
+    my $k2 = tie my %h2, 'IPC::Shareable', { key => 'TEST1', create => 1, destroy => 1, enforced_write_locking => 0, enforced_read_locking => 0, serializer => 'storable' };
 
     $h1{a} = {b => 1};
 
@@ -75,7 +75,7 @@ my $sv;
     is_deeply {%h1}, {a => {b => 3}}, "h1 - locked STORE written back on unlock";
     is_deeply {%h2}, {a => {b => 3}}, "h2 - sees h1's change after unlock";
 
-    # Without enforced_locking, a knot that does NOT call lock() bypasses the
+    # Without enforced_write_locking, a knot that does NOT call lock() bypasses the
     # semaphore and writes directly -- purely cooperative/advisory locking.
     $k1->lock;
     $h2{a} = {c => 10};  # k2 never locked: writes directly, no error
@@ -84,36 +84,36 @@ my $sv;
     #is_deeply {%h2}, {a => {b => 3}}, "h2 - back to pre-unlock of h1 data";
 }
 
-# enforced_locking w/o warn: k2 attempting a write while k1 holds LOCK_EX must croak
+# enforced_write_locking with warn defaulted on: write blocked AND warning fires
 {
     my $k1 = tie my %h1, 'IPC::Shareable', {
         key              => 'TEST2',
         create           => 1,
         destroy          => 1,
-        enforced_locking => 1,
+        enforced_write_locking => 1, enforced_read_locking => 1,
         serializer => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
         key              => 'TEST2',
-        enforced_locking => 1,
+        enforced_write_locking => 1, enforced_read_locking => 1,
         serializer => 'storable',
     };
 
     $h1{a} = 1;
-    is $h1{a}, 1, "enforced_locking - initial value set";
+    is $h1{a}, 1, "enforced_write_locking - initial value set";
 
     $k1->lock;
 
     # k1 (the lock holder) can still write freely
     $h1{a} = 2;
-    is $h1{a}, 2, "enforced_locking - lock holder can write while locked";
+    is $h1{a}, 2, "enforced_write_locking - lock holder can write while locked";
 
     {
         local $SIG{__WARN__} = sub {
             my $w = shift;
-            like $w, qr/exclusively locked/, "enforced_locking - blocked write warns 'exclusively locked'";
-            like $w, qr/${\$k2->uuid}/, "enforced_locking - warning contains k2 UUID";
-            like $w, qr/${\$k2->seg->id}/, "enforced_locking - warning contains segment ID";
+            like $w, qr/exclusively locked/, "enforced_write_locking - blocked write warns 'exclusively locked'";
+            like $w, qr/${\$k2->uuid}/, "enforced_write_locking - warning contains k2 UUID";
+            like $w, qr/${\$k2->seg->id}/, "enforced_write_locking - warning contains segment ID";
         };
         $h2{a} = 99;
     }
@@ -121,43 +121,46 @@ my $sv;
     $k1->unlock;
 
     # after unlock, k2 can write freely again
-    is $h2{a}, 2, "enforced_locking - after k1 unlock, h2 set properly";
+    is $h2{a}, 2, "enforced_write_locking - after k1 unlock, h2 set properly";
     $h2{a} = 3;
-    is $h2{a}, 3, "enforced_locking - k2 can write after k1 unlocks";
+    is $h2{a}, 3, "enforced_write_locking - k2 can write after k1 unlocks";
 }
 
-# enforced_locking with warn: k2 attempting a write while k1 holds LOCK_EX must croak
+# enforced_write_locking with warn: k2 attempting a write while k1 holds LOCK_EX must croak
 {
     my $k1 = tie my %h1, 'IPC::Shareable', {
         key                => 'TEST2',
         create             => 1,
         destroy            => 1,
-        enforced_locking   => 1,
+        enforced_write_locking => 1,
+        enforced_read_locking  => 1,
         serializer => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
         key                 => 'TEST2',
-        enforced_locking    => 1,
-        violated_lock_warn  => 1,
+        enforced_write_locking => 1,
+        enforced_read_locking  => 1,
+        violated_write_lock_warn => 1,
+        violated_read_lock_warn  => 1,
         serializer => 'storable',
     };
 
     $h1{a} = 1;
-    is $h1{a}, 1, "enforced_locking with warn - initial value set";
+    is $h1{a}, 1, "enforced_write_locking with warn - initial value set";
 
     $k1->lock;
 
     # k1 (the lock holder) can still write freely
     $h1{a} = 2;
-    is $h1{a}, 2, "enforced_locking with warn - lock holder can write while locked";
+    is $h1{a}, 2, "enforced_write_locking with warn - lock holder can write while locked";
 
     local $SIG{__WARN__} = sub {
         my $w = shift;
         my $uuid = $k2->uuid;
         my $seg_id = $k2->seg->id;
 
-        like $w, qr/$uuid/, "With enforced_locking and violated_lock_warn, UUID in warning ok";
-        like $w, qr/$seg_id/, "With enforced_locking and violated_lock_warn, seg ID in warning ok";
+        like $w, qr/$uuid/, "With enforced_write_locking and violated_write_lock_warn, UUID in warning ok";
+        like $w, qr/$seg_id/, "With enforced_write_locking and violated_write_lock_warn, seg ID in warning ok";
     };
 
     $h2{a} = 99;
@@ -165,9 +168,88 @@ my $sv;
     $k1->unlock;
 
     # after unlock, k2 can write freely again
-    is $h2{a}, 2, "enforced_locking with warn - after k1 unlock, h2 set properly";
+    is $h2{a}, 2, "enforced_write_locking with warn - after k1 unlock, h2 set properly";
     $h2{a} = 3;
-    is $h2{a}, 3, "enforced_locking with warn - k2 can write after k1 unlocks";
+    is $h2{a}, 3, "enforced_write_locking with warn - k2 can write after k1 unlocks";
+}
+
+# enforced_write_locking ON + violated_write_lock_warn OFF: write blocked but no warning
+{
+    my $k1 = tie my %h1, 'IPC::Shareable', {
+        key                      => 'TEST2A',
+        create                   => 1,
+        destroy                  => 1,
+        enforced_write_locking   => 1,
+        enforced_read_locking    => 1,
+        violated_write_lock_warn => 0,
+        violated_read_lock_warn  => 0,
+        serializer               => 'storable',
+    };
+    my $k2 = tie my %h2, 'IPC::Shareable', {
+        key                      => 'TEST2A',
+        enforced_write_locking   => 1,
+        enforced_read_locking    => 1,
+        violated_write_lock_warn => 0,
+        violated_read_lock_warn  => 0,
+        serializer               => 'storable',
+    };
+
+    $h1{a} = 1;
+    $k1->lock;
+
+    my $warned = 0;
+    {
+        local $SIG{__WARN__} = sub { $warned++ };
+        $h2{a} = 99;   # blocked silently
+    }
+    is $warned, 0,
+        "EW=1 VW=0: blocked write does NOT emit warning";
+
+    $k1->unlock;
+    is $h2{a}, 1,
+        "EW=1 VW=0: write was indeed blocked while k1 held LOCK_EX";
+
+    $h2{a} = 3;
+    is $h2{a}, 3,
+        "EW=1 VW=0: k2 writes succeed after k1 unlocks";
+}
+
+# enforced_write_locking OFF + violated_write_lock_warn OFF: no enforcement, no warnings (degenerate)
+{
+    my $k1 = tie my %h1, 'IPC::Shareable', {
+        key                      => 'TEST2B',
+        create                   => 1,
+        destroy                  => 1,
+        enforced_write_locking   => 0,
+        enforced_read_locking    => 0,
+        violated_write_lock_warn => 0,
+        violated_read_lock_warn  => 0,
+        serializer               => 'storable',
+    };
+    my $k2 = tie my %h2, 'IPC::Shareable', {
+        key                      => 'TEST2B',
+        enforced_write_locking   => 0,
+        enforced_read_locking    => 0,
+        violated_write_lock_warn => 0,
+        violated_read_lock_warn  => 0,
+        serializer               => 'storable',
+    };
+
+    $h1{a} = 1;
+    $k1->lock;
+
+    my $warned = 0;
+    {
+        local $SIG{__WARN__} = sub { $warned++ };
+        $h2{a} = 99;
+        my $v = $h2{a};
+    }
+    is $warned, 0,
+        "EW=0 VW=0: no warnings on write or read with all enforcement off";
+
+    $k1->unlock;
+    is $h2{a}, 99,
+        "EW=0 VW=0: k2 write succeeded (no enforcement)";
 }
 
 # LOCK_EX + CLEAR on a hash: _was_changed deferred write
@@ -260,13 +342,13 @@ my $sv;
     is scalar(@a), 2, "LOCK_EX STORESIZE: array truncated after unlock";
 }
 
-# enforced_locking: array write ops blocked when another knot holds LOCK_EX
+# enforced_write_locking: array write ops blocked when another knot holds LOCK_EX
 {
     my $k1 = tie my @a1, 'IPC::Shareable', {
-        key => 'T9', create => 1, destroy => 1, enforced_locking => 1, serializer => 'storable',
+        key => 'T9', create => 1, destroy => 1, enforced_write_locking => 1, enforced_read_locking => 1, serializer => 'storable',
     };
     my $k2 = tie my @a2, 'IPC::Shareable', {
-        key => 'T9', enforced_locking => 1, serializer => 'storable',
+        key => 'T9', enforced_write_locking => 1, enforced_read_locking => 1, serializer => 'storable',
     };
 
     @a1 = (1, 2, 3);
@@ -276,37 +358,37 @@ my $sv;
     local $SIG{__WARN__} = sub { push @lock_warns, shift };
 
     push    @a2, 99;
-    is scalar(@a2), 3, "enforced_locking PUSH: blocked when k1 holds LOCK_EX";
+    is scalar(@a2), 3, "enforced_write_locking PUSH: blocked when k1 holds LOCK_EX";
 
     pop     @a2;
-    is scalar(@a2), 3, "enforced_locking POP: blocked when k1 holds LOCK_EX";
+    is scalar(@a2), 3, "enforced_write_locking POP: blocked when k1 holds LOCK_EX";
 
     shift   @a2;
-    is $a2[0], 1, "enforced_locking SHIFT: blocked when k1 holds LOCK_EX";
+    is $a2[0], 1, "enforced_write_locking SHIFT: blocked when k1 holds LOCK_EX";
 
     unshift @a2, 0;
-    is $a2[0], 1, "enforced_locking UNSHIFT: blocked when k1 holds LOCK_EX";
+    is $a2[0], 1, "enforced_write_locking UNSHIFT: blocked when k1 holds LOCK_EX";
 
     splice  @a2, 0, 1;
-    is scalar(@a2), 3, "enforced_locking SPLICE: blocked when k1 holds LOCK_EX";
+    is scalar(@a2), 3, "enforced_write_locking SPLICE: blocked when k1 holds LOCK_EX";
 
     $#a2 = 0;
-    is scalar(@a2), 3, "enforced_locking STORESIZE: blocked when k1 holds LOCK_EX";
+    is scalar(@a2), 3, "enforced_write_locking STORESIZE: blocked when k1 holds LOCK_EX";
 
     $k1->unlock;
 
-    is scalar(@lock_warns), 6, "enforced_locking array ops: one warning emitted per blocked operation";
-    like $lock_warns[0], qr/exclusively locked/, "enforced_locking array ops: warning mentions 'exclusively locked'";
-    like $lock_warns[0], qr/${\$k2->uuid}/, "enforced_locking array ops: warning contains k2 UUID";
+    is scalar(@lock_warns), 8, "enforced_write_locking array ops: one warning emitted per blocked write or unlocked read";
+    like $lock_warns[0], qr/exclusively locked/, "enforced_write_locking array ops: warning mentions 'exclusively locked'";
+    like $lock_warns[0], qr/${\$k2->uuid}/, "enforced_write_locking array ops: warning contains k2 UUID";
 }
 
-# enforced_locking: hash CLEAR and DELETE blocked when another knot holds LOCK_EX
+# enforced_write_locking: hash CLEAR and DELETE blocked when another knot holds LOCK_EX
 {
     my $k1 = tie my %h1, 'IPC::Shareable', {
-        key => 'TA', create => 1, destroy => 1, enforced_locking => 1, serializer => 'storable',
+        key => 'TA', create => 1, destroy => 1, enforced_write_locking => 1, enforced_read_locking => 1, serializer => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
-        key => 'TA', enforced_locking => 1, serializer => 'storable',
+        key => 'TA', enforced_write_locking => 1, enforced_read_locking => 1, serializer => 'storable',
     };
 
     $h1{a} = 1;
@@ -317,16 +399,16 @@ my $sv;
     local $SIG{__WARN__} = sub { push @lock_warns, shift };
 
     delete $h2{a};
-    ok exists($h2{a}), "enforced_locking DELETE: blocked when k1 holds LOCK_EX";
+    ok exists($h2{a}), "enforced_write_locking DELETE: blocked when k1 holds LOCK_EX";
 
     %h2 = ();
-    is $h2{a}, 1, "enforced_locking CLEAR: blocked when k1 holds LOCK_EX";
+    is $h2{a}, 1, "enforced_write_locking CLEAR: blocked when k1 holds LOCK_EX";
 
     $k1->unlock;
 
-    is scalar(@lock_warns), 2, "enforced_locking hash ops: one warning per blocked operation";
-    like $lock_warns[0], qr/exclusively locked/, "enforced_locking hash ops: warning mentions 'exclusively locked'";
-    like $lock_warns[0], qr/${\$k2->uuid}/, "enforced_locking hash ops: warning contains k2 UUID";
+    is scalar(@lock_warns), 3, "enforced_write_locking hash ops: one warning per blocked write or unlocked read";
+    like $lock_warns[0], qr/exclusively locked/, "enforced_write_locking hash ops: warning mentions 'exclusively locked'";
+    like $lock_warns[0], qr/${\$k2->uuid}/, "enforced_write_locking hash ops: warning contains k2 UUID";
 }
 
 # lock() re-throws exception from code-ref (covers: die $err if !$ok)

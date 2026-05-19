@@ -24,7 +24,7 @@ my $segs_before = IPC::Shareable::shm_count();
 my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
-# --- Test 1: LOCK_SH blocks until LOCK_EX released (enforced_locking disabled) ---
+# --- Test 1: LOCK_SH blocks until LOCK_EX released (enforced_write_locking disabled) ---
 {
     my ($r, $w);
     pipe($r, $w) or die "Cannot create pipe: $!";
@@ -33,7 +33,8 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         key              => 'LFBK1',
         create           => 1,
         destroy          => 1,
-        enforced_locking => 0,
+        enforced_write_locking => 0,
+        enforced_read_locking  => 0,
         serializer       => 'storable',
     };
 
@@ -66,15 +67,15 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     my $t1 = time();
     my $wait = $t1 - $t0;
 
-    is $got, 1,        "LOCK_SH (enforced_locking off): lock() returns 1 after LOCK_EX released";
-    is $sv, 'updated', "LOCK_SH (enforced_locking off): reads value written by LOCK_EX holder";
+    is $got, 1,        "LOCK_SH (enforced_write_locking off): lock() returns 1 after LOCK_EX released";
+    is $sv, 'updated', "LOCK_SH (enforced_write_locking off): reads value written by LOCK_EX holder";
     ok($wait >= 0.28,  sprintf("Reader waited at least 0.28s for LOCK_SH (actual: %.3fs)", $wait));
     $rt->unlock;
 
     waitpid($pid, 0);
 }
 
-# --- Test 2: LOCK_SH blocks until LOCK_EX released (enforced_locking enabled) ---
+# --- Test 2: LOCK_SH blocks until LOCK_EX released (enforced_write_locking enabled) ---
 {
     my ($r, $w);
     pipe($r, $w) or die "Cannot create pipe: $!";
@@ -83,7 +84,8 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         key              => 'LFBK2',
         create           => 1,
         destroy          => 1,
-        enforced_locking => 1,
+        enforced_write_locking => 1,
+        enforced_read_locking  => 1,
         serializer       => 'storable',
     };
 
@@ -113,8 +115,8 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     my $rt = tied $sv;
     my $got = $rt->lock(LOCK_SH);
 
-    is $got, 1,        "LOCK_SH (enforced_locking on): lock() returns 1 after LOCK_EX released";
-    is $sv, 'updated', "LOCK_SH (enforced_locking on): reads value written by LOCK_EX holder";
+    is $got, 1,        "LOCK_SH (enforced_write_locking on): lock() returns 1 after LOCK_EX released";
+    is $sv, 'updated', "LOCK_SH (enforced_write_locking on): reads value written by LOCK_EX holder";
     $rt->unlock;
 
     waitpid($pid, 0);
@@ -173,7 +175,8 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         key              => 'LFBK4',
         create           => 1,
         destroy          => 1,
-        enforced_locking => 0,
+        enforced_write_locking => 0,
+        enforced_read_locking  => 0,
         serializer       => 'storable',
     };
 
