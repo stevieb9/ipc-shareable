@@ -1,4 +1,4 @@
-Documentation for the "FreeBSD CI" and "Linux i386 CI" are both in this file.
+Documentation for the "FreeBSD CI", "Linux i386 CI" and "OmniOS CE (Solaris)" are both in this file.
 
 Just do a search
 
@@ -140,3 +140,78 @@ Same prove argument override syntax applies:
 Note: the first run is slow (~5-10 min) because it downloads the amd64 VM
 image, runs debootstrap to build the i386 chroot, and installs Perl packages
 via cpanm.  Subsequent runs only re-copy the source and are much faster.
+
+
+===========================================================================
+
+OmniOS CE (Solaris) CI
+======================
+
+Local Solaris testing via Lima and QEMU.  Targets the CPAN smoker platform:
+  osname=solaris, osvers=2.11, archname=i86pc-solaris-64
+  uname: SunOS 5.11 omnios-r151034
+
+OmniOS CE is the closest freely available match (illumos kernel, same SysV
+IPC implementation).  The VM runs OmniOS r151058 (current stable).
+
+Lima has no illumos/Solaris OS type.  The config uses os:FreeBSD so that
+Lima waits for the file-based boot-done marker instead of the Linux guest
+agent.  solaris-first-boot.py bootstraps the VM via the QEMU serial console
+and installs an SMF service that writes the marker on every subsequent boot.
+
+OmniOS is x86-64 only.  On Apple Silicon, QEMU emulates x86-64 via TCG
+(software emulation) — the first boot takes 10-20 minutes.  Subsequent
+starts are much faster once the boot-done SMF service is installed.
+
+
+ONE-TIME VM SETUP
+-----------------
+
+Done automatically by solaris-test.sh.  To do it manually:
+
+    limactl create --name solaris-ipc ci/solaris-lima.yaml
+    limactl start solaris-ipc
+
+
+LOGGING INTO THE VM
+-------------------
+
+    limactl shell solaris-ipc
+
+Or with SSH directly:
+
+    ssh -F ~/.lima/solaris-ipc/ssh.config lima-solaris-ipc
+
+
+SHUTTING DOWN THE VM
+--------------------
+
+    limactl stop solaris-ipc
+    limactl delete solaris-ipc       # also removes disk image
+
+
+RUNNING THE TEST SUITE
+----------------------
+
+solaris-test.sh follows the same lifecycle as freebsd-test.sh: create VM
+if absent, start it, run first-boot setup on the first run, copy source,
+run tests, stop the VM on exit.
+
+    ./ci/solaris-test.sh
+
+Same prove argument override syntax applies:
+
+    ./ci/solaris-test.sh t/24-clean.t
+    ./ci/solaris-test.sh t
+
+    VM=my-other-solaris ./ci/solaris-test.sh
+
+Note: the first run is slow because it:
+  1. Downloads the OmniOS VMDK (~700 MB, cached after first download).
+  2. Boots via QEMU TCG emulation (10-20 min on Apple Silicon).
+  3. Runs solaris-first-boot.py via the serial console to create the SSH
+     user, install sudo, and set up the SMF boot-done service.
+  4. Installs runtime/perl, GCC, and CPAN dependencies via pkg + cpanm.
+
+If the GCC package name has changed in a newer OmniOS release, adjust the
+pkg install line in solaris-test.sh (try 'pkg search gcc' inside the VM).
