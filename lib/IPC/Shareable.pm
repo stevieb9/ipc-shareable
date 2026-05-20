@@ -3284,13 +3284,9 @@ the signal handler precaution above.
 See L</METHODS - MANUAL CLEANUP> for further information.
 
 
-=head1 ORIGINAL AUTHOR
+=head1 AUTHORS
 
 Benjamin Sugars <bsugars@canoe.ca>
-
-
-=head1 CURRENT AUTHOR
-
 Steve Bertrand <steveb@cpan.org> (since 2016)
 
 
