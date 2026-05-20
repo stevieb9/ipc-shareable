@@ -1995,6 +1995,7 @@ IPC::Shareable - Use shared memory backed variables across processes
 
     IPC::Shareable->singleton('UNIQUE SCRIPT LOCK STRING');
 
+
 =head1 SYNOPSIS - DEVELOPER/TROUBLESHOOTING
 
     # Get SYSV shared memory specifications of the system (if available)
@@ -2624,6 +2625,11 @@ irrespective of whether the calling process created the segment.
 These methods are for very low level diagnostic, troubleshooting, investigation,
 informational and fact finding situations.
 
+B<Note>: Both L</seg> and L</sem> are external objects and have their own
+methods and data that can be used for analysis. This is particularly true with
+L</seg>. Each of their respective documentation sections link to their
+corresponding documentation.
+
 =head2 seg
 
 Called on either a tied variable or on the tie object, returns the shared
@@ -2635,7 +2641,8 @@ memory segment object currently in use.
     my $top_level_seg = tied(%h)->seg;
     my $bot_level_seg = tied(%{ $h{a}->{b} })->seg;
 
-See L<IPC::Shareable::SharedMem> documentation for details.
+See L<IPC::Shareable::SharedMem> documentation for details and available
+methods.
 
 =head2 sem
 
