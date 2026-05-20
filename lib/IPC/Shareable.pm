@@ -2218,55 +2218,6 @@ system RAM.
 
 Default: B<true>
 
-=head2 enforced_write_locking
-
-When enabled, writes from any knot are blocked while another knot holds
-C<LOCK_EX> on the segment, or while there are active C<LOCK_SH> readers. Pair
-with C<violated_write_lock_warn> to also emit a warning when a write is
-blocked.
-
-B<Note>: Only a C<LOCK_EX> lock is enforced against other writers. C<LOCK_SH>
-write protection is advisory only; it blocks writes from C<enforced_write_locking>-
-enabled knots, but a knot that has disabled this option can still write.
-
-Default: B<true>
-
-=head2 enforced_read_locking
-
-When enabled, an unlocked read against a segment that another knot has locked
-with C<LOCK_EX> is detected. Reads are never B<blocked>; this option only
-controls whether the check fires. Pair with C<violated_read_lock_warn> to emit
-a warning when this happens.
-
-B<Note>: Reads (fetches) are never blocked, even when a C<LOCK_EX> is active.
-If a reader does not hold a C<LOCK_SH> and reads while a writer holds
-C<LOCK_EX>, the returned data may be stale or partially-written. To guarantee
-a coherent snapshot, acquire C<LOCK_SH> before reading.
-
-Default: B<true>
-
-=head2 violated_write_lock_warn
-
-When C<enforced_write_locking> is enabled, and this attribute is set to true,
-we will emit a warning when a write violation occurs (a write attempted
-against a segment that another knot has locked with C<LOCK_EX>, or a write
-attempted against a segment with active C<LOCK_SH> readers). The warning
-includes the UUID of the object that caused the violation and the segment ID
-it occurred against.
-
-Default: B<true>
-
-=head2 violated_read_lock_warn
-
-When C<enforced_read_locking> is enabled, and this attribute is set to true,
-we will emit a warning when an unlocked read is attempted against a segment
-that another knot has locked with C<LOCK_EX>. The returned data may be stale
-or partially-written; the warning recommends acquiring C<LOCK_SH> before
-reading to guarantee a coherent snapshot. The warning includes the UUID of
-the object that caused the violation and the segment ID it occurred against.
-
-Default: B<true>
-
 =head2 destroy
 
 If set to a true value, the shared memory segment underlying the data
@@ -2306,6 +2257,55 @@ Send in either C<json> or C<storable> as the value to use the respective
 serializer.
 
 Default: B<json>
+
+=head2 enforced_write_locking
+
+When enabled, writes from any knot are blocked while another knot holds
+C<LOCK_EX> on the segment, or while there are active C<LOCK_SH> readers. Pair
+with C<violated_write_lock_warn> to also emit a warning when a write is
+blocked.
+
+B<Note>: Only a C<LOCK_EX> lock is enforced against other writers. C<LOCK_SH>
+write protection is advisory only; it blocks writes from C<enforced_write_locking>-
+enabled knots, but a knot that has disabled this option can still write.
+
+Default: B<true>
+
+=head2 violated_write_lock_warn
+
+When C<enforced_write_locking> is enabled, and this attribute is set to true,
+we will emit a warning when a write violation occurs (a write attempted
+against a segment that another knot has locked with C<LOCK_EX>, or a write
+attempted against a segment with active C<LOCK_SH> readers). The warning
+includes the UUID of the object that caused the violation and the segment ID
+it occurred against.
+
+Default: B<true>
+
+=head2 enforced_read_locking
+
+When enabled, an unlocked read against a segment that another knot has locked
+with C<LOCK_EX> is detected. Reads are never B<blocked>; this option only
+controls whether the check fires. Pair with C<violated_read_lock_warn> to emit
+a warning when this happens.
+
+B<Note>: Reads (fetches) are never blocked, even when a C<LOCK_EX> is active.
+If a reader does not hold a C<LOCK_SH> and reads while a writer holds
+C<LOCK_EX>, the returned data may be stale or partially-written. To guarantee
+a coherent snapshot, acquire C<LOCK_SH> before reading.
+
+Default: B<true>
+
+=head2 violated_read_lock_warn
+
+When C<enforced_read_locking> is enabled, and this attribute is set to true,
+we will emit a warning when an unlocked read is attempted against a segment
+that another knot has locked with C<LOCK_EX>. The returned data may be stale
+or partially-written; the warning recommends acquiring C<LOCK_SH> before
+reading to guarantee a coherent snapshot. The warning includes the UUID of
+the object that caused the violation and the segment ID it occurred against.
+
+Default: B<true>
 
 =head2 Default Option Values
 
@@ -2377,9 +2377,8 @@ Parameters:
 
     $flags
 
-Optional, Integer: See C<flock()> system call for lock flag combinations. If
-this parameter is emitted, we default to C<LOCK_EX>, an exclusive blocking
-lock.
+Optional, Integer: If this parameter is omitted, we default to C<LOCK_EX>, an
+exclusive blocking lock.
 
     $code
 
@@ -2940,28 +2939,26 @@ To lock and subsequently unlock a variable, do this:
 
     tie my %hash, 'IPC::Shareable', { %options };
 
-    # Simple, top level
-
     tied(%hash)->lock;
-    $hash{a} = 1;
+    $hash{a}->{b} = 1;
     tied(%hash)->unlock;
 
-    # Complex, nested (indented for clarity)
+This will place an exclusive lock on the data of C<%hash>, including all nested
+data below the parent. You can also get shared locks or attempt to get a lock
+without blocking.
 
-    tied(%hash)->lock;
-        $hash{a} = { b => { c => 1 } };
-        tied(%{ $hash{a}->{b} })->lock;
-            $hash{a}->{b}{c} = 10;
-        tied(%{ $hash{a}->{b} })->unlock;
-    tied(%hash)->unlock;
-
-This will place an exclusive lock on the data of C<%hash>.  You can
-also get shared locks or attempt to get a lock without blocking.
-
-L<IPC::Shareable> makes the constants C<LOCK_EX>, C<LOCK_SH>, C<LOCK_UN>, and
-C<LOCK_NB> exportable to your address space with the export tags C<:lock>,
+L<IPC::Shareable> makes the constants C<LOCK_EX>, C<LOCK_SH>, C<LOCK_NB>, and
+C<LOCK_UN> exportable to your address space with the export tags C<:lock>,
 C<:flock>, or C<:all>. The values should be the same as the standard C<flock>
 option arguments.
+
+When attempting to get a blocking lock (eg. C<LOCK_EX> or C<LOCK_SH>) while
+another process has an exclusive write lock (C<LOCK_EX>, your call will block
+and wait until the other process releases its exclusive lock. The same thing
+happens if you attempt to get a C<LOCK_EX> if there are any other processes that
+hold a C<LOCK_SH>.
+
+Here is an example of how to manage a non-blocking lock:
 
     if (tied(%hash)->lock(LOCK_SH|LOCK_NB)){
         print "The value is $hash{a}\n";
@@ -2972,29 +2969,32 @@ option arguments.
 
 If no argument is provided to C<lock>, it defaults to C<LOCK_EX>.
 
-=head2 Enforced write locking
+=head2 Enforced write and read locking
+
+Additional safeguards are in place to protect your locked data from processes
+that don't bother to implement locking explicitly.
+
+=head3 Violating an enforced write lock
 
 By default, the C<enforced_write_locking> option is set to true, which means
 that if a tied variable sets a C<LOCK_EX>, all writes from all other processes
-will fail, regardless of whether the other processes opted in to check
-locking. The companion C<enforced_read_locking> option (also true by default)
-enables detection of unlocked reads against an exclusively-locked segment;
-reads are never blocked.
+will fail, and their data will not be updated.
 
-=head3 violated_write_lock_warn Option
+If C<violated_write_lock_warn> is set to true (also default), the offending
+process will receive a warning regarding the issue.
 
-Enabled by default, this is an attribute you set on object instantiation. If
-set to C<< true >> and another object has a C<LOCK_EX> in place (or active
-C<LOCK_SH> readers) during a write operation, a warning will be emitted by
-any process that attempts to write to the locked segment.
+=head3 Violating an enforced read lock
 
-=head3 violated_read_lock_warn Option
+Also enabled by default, the C<enforced_read_locking> will catch instances where
+a process attempts a read of data that is currently locked with C<LOCK_EX> by
+another process. Unlike write protection, read protection does not prevent the
+read; it simply sets the stage for you to be able to warn the user that they
+are receiving stale data.
 
-Enabled by default, this is an attribute you set on object instantiation. If
-set to C<< true >> and another object has a C<LOCK_EX> in place during an
-unlocked read, a warning will be emitted alerting that the returned data may
-be stale or partially-written. To guarantee a coherent read, acquire
-C<LOCK_SH> before reading.
+To have the user warned that they are in fault, the C<violated_read_lock_warn>
+option must be set to true, which it is by default. The warning advises the user
+that the data they have received is stale, and that they should refactor their
+code to implement proper locking.
 
 =head3 Important notes
 
@@ -3002,7 +3002,7 @@ Note that in the background, we perform lock optimization when reading and
 writing to the shared storage even if the advisory locks aren't being used.
 
 Using the advisory locks can speed up processes that are doing several writes/
-reads at the same time.
+reads at the same time (ie. transactions).
 
 When using C<lock()> to lock a variable, be careful to guard against
 signals.  Under normal circumstances, C<IPC::Shareable>'s C<END> method
@@ -3015,7 +3015,6 @@ C<IPC::Shareable> use the C<SEM_UNDO> flag, which causes the kernel to
 automatically reverse any semaphore operations when the process exits,
 regardless of the cause of death (including C<SIGKILL> and hardware
 faults). Other processes waiting for the lock will be unblocked.
-
 
 =head1 LOCKING BEHAVIOR MATRIX
 
@@ -3243,6 +3242,33 @@ On decode, any C<__ics__> marker is spotted and a tie with C<create =Egt 0> is
 used to re-attach to the existing child segment by that key; no new segment is
 created, it simply reconnects.
 
+=head1 SEMAPHORES
+
+Each memory segment that we utilize comes with it a semaphore set of four
+individual semaphores. These semaphores keep state information about the segment
+itself, and manages the locking aspects.
+
+=head2 SEM_MARKER
+
+Semaphore slot ID 0. Signals whether the associated shared memory segment has
+been initialized and is ready for use. C<1> if it is, C<0> if it isn't.
+
+=head2 SEM_READERS
+
+Semaphore slot ID 1. Specifies the current number of readers holding a
+C<LOCK_SH>. A write lock (C<LOCK_EX> can't be obtained until this value is
+reduced to C<0>.
+
+=head2 SEM_WRITERS
+
+Semaphore slot ID 2. Value is C<1> if a process has a C<LOCK_EX> write lock,
+and C<0> if not.
+
+=head2 SEM_PROTECTED
+
+Semaphore slot ID 3. Used to keep track of the C<protected> option value for
+protected segments. See L</protected>.
+
 
 =head1 DESTRUCTION
 
@@ -3298,6 +3324,20 @@ Steve Bertrand <steveb@cpan.org> (since 2016)
 
 
 =head1 NOTES
+
+=head2 Important Notes
+
+=over 4
+
+=item o
+
+In v1.14, we changed our default serializer from C<Storable> to C<JSON>. For
+backward compatibility, there is a process whereby if you have existing segments
+saved in C<Storable> format and the JSON serializer can't process it, we'll
+automatically fall back to C<Storable> for you. You should however recreate the
+segments with the C<JSON> serializer.
+
+=back
 
 =head2 General Notes
 
