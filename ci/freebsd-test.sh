@@ -1,17 +1,50 @@
 #!/bin/sh
 # Run IPC::Shareable tests in a local FreeBSD VM (Lima template).
-# Usage: ./ci/freebsd-test.sh [prove options]
+# Usage: ./ci/freebsd-test.sh [--german] [prove options]
 
 set -e
 
 VM="${VM:-freebsd-ipc}"
-PROVE_ARGS="${*:--v t}"
 HOST_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 GUEST_USER="freebsd"
 GUEST_HOME="/home/${GUEST_USER}.guest"
 GUEST_REPO="${GUEST_HOME}/ipc-shareable"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+LOCALE="en_US.UTF-8"
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [options] [prove options]
+
+Options:
+  --german        Run tests with LC_ALL=de_DE.ISO8859-1 (German locale)
+  -h, --help      Show this help message and exit
+
+Environment:
+  VM=<name>       Target a different Lima VM (default: freebsd-ipc)
+
+Prove options default to "-v t" (verbose, full suite) when not supplied.
+Examples:
+  $(basename "$0")                        # full suite, English locale
+  $(basename "$0") --german               # full suite, German locale
+  $(basename "$0") t/24-clean.t          # single test file
+  $(basename "$0") --german t/24-clean.t # single test, German locale
+  $(basename "$0") t                     # full suite, no -v
+EOF
+}
+
+_PROVE_ARGS=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --german)  LOCALE="de_DE.ISO8859-1"; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *)         _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
+    esac
+done
+PROVE_ARGS="${_PROVE_ARGS# }"
+PROVE_ARGS="${PROVE_ARGS:--v t}"
 
 cleanup() {
     status=$?
@@ -76,5 +109,5 @@ echo "==> Copying source into VM..."
 limactl shell "$VM" -- sh -lc "rm -rf '${GUEST_REPO}'"
 scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
 
-echo "==> Running tests in VM..."
-limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}"
+echo "==> Running tests in VM (LC_ALL=${LOCALE})..."
+limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 prove -l ${PROVE_ARGS}"

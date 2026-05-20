@@ -11,13 +11,41 @@
 set -e
 
 VM="${VM:-linux-i386}"
-PROVE_ARGS="${*:--v t}"
 HOST_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # i386 chroot path inside the VM
 CHROOT="/opt/chroot-i386"
 CHROOT_REPO="${CHROOT}/opt/ipc-shareable"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [options] [prove options]
+
+Options:
+  -h, --help      Show this help message and exit
+
+Environment:
+  VM=<name>       Target a different Lima VM (default: linux-i386)
+
+Prove options default to "-v t" (verbose, full suite) when not supplied.
+Examples:
+  $(basename "$0")                   # full suite
+  $(basename "$0") t/24-clean.t     # single test file
+  $(basename "$0") -v t/24-clean.t  # verbose, single file
+  $(basename "$0") t                # full suite, no -v
+EOF
+}
+
+_PROVE_ARGS=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        *)         _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
+    esac
+done
+PROVE_ARGS="${_PROVE_ARGS# }"
+PROVE_ARGS="${PROVE_ARGS:--v t}"
 
 cleanup() {
     status=$?
