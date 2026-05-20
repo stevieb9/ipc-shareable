@@ -16,8 +16,14 @@ print "Starting with $segs_before segments\n";
 is $segs_before, $segs_before, "Initial test ok";
 
 tie my %store, 'IPC::Shareable', {key => 'async_tests', create => 1, serializer => 'storable' };
-$store{segs} = $segs_before;
-$store{sems} = $sems_before;
+
+# Measure the baseline AFTER tying and subtract 1 to exclude the async_tests
+# segment/semaphore themselves.  This keeps t/99-end.t's comparison correct
+# even when a stale async_tests semaphore was orphaned by a previous crashed
+# run (segment removed, semaphore not), causing the pre-tie count to be off.
+
+$store{segs} = IPC::Shareable::seg_count() - 1;
+$store{sems} = IPC::Shareable::sem_count() - 1;
 
 {
     my $a = tie my $x, 'IPC::Shareable';
