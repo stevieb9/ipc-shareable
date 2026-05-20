@@ -65,7 +65,7 @@ use constant BYTES => 2000000; # ~2MB
 
     is $size_ok, undef, "We croak if size is greater than max RAM";
 
-    like $@, qr/Cannot allocate memory|Out of memory|Invalid argument/, "...and error is sane";
+    like $@, qr/Could not (?:create|acquire) shared memory/, "...and error is sane";
 }
 
 my $k = tie my %hv, 'IPC::Shareable', {

@@ -14,17 +14,11 @@ my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 sub shm_cleaned {
-    # --- shmread should barf if the segment has really been cleaned
+    # shmread fails with EINVAL when the segment has been removed
     my $id = shift;
     my $data = '';
-
-    eval { shmread($id, $data, 0, 6) or die "$!" };
-
-    if ($@ && ($@ =~ /Invalid/ || $@ =~ /removed/)) {
-        return 1;
-    }
-
-    return 0;
+    shmread($id, $data, 0, 6);
+    return $!{EINVAL} ? 1 : 0;
 }
 
 # create not sent in

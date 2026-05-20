@@ -99,6 +99,11 @@ Revision history for Perl extension IPC::Shareable.
     - New attributes for updated locking mechanisms: enforced_write_locking,
       enforced_read_locking, violated_write_lock_warn and
       violated_read_lock_warn. All enabled by default
+    - Fixes #11; On non-English locales on perl 5.20 and below, checking $! for
+      strings in certain cases was failing and sending code down the wrong path.
+      The fix was to replace the comparisons with $!{ERRNO_CONST} variables
+      instead (eg. $!{EEXIST}, $!{ENOMEM}, $!{ENOSPC}) which are
+      locale-independent
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

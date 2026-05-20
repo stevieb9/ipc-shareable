@@ -38,7 +38,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         undef,
         "trying to re-create an existing memory segment fails";
 
-    like $@, qr/ERROR:.*File exists/, "...and error message is sane";
+    like $@, qr/using exclusive/, "...and error message is sane";
 
 }
 

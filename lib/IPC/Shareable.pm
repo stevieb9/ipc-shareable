@@ -1363,12 +1363,12 @@ sub _tie {
     }
 
     if (! defined $seg) {
-        if ($! =~ /Cannot allocate memory/) {
+        if ($!{ENOMEM}) {
             croak "\nERROR: Could not create shared memory segment: $!\n\n" .
                   "Are you using too large a segment size, or spawning too many segments?";
         }
 
-        if ($! =~ /No space left on device/) {
+        if ($!{ENOSPC}) {
             croak "\nERROR: Could not create shared memory segment: $!\n\n" .
                 "Are you spawning too many segments (in a loop perhaps)?";
         }

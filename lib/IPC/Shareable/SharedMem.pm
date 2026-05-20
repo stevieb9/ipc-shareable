@@ -66,7 +66,7 @@ sub new {
         my $key = $self->key_hex;
 
         if ($!) {
-            if ($! =~ /File exists/ || $! =~ /Permission denied/) {
+            if ($!{EEXIST} || $!{EPERM}) {
                 croak "\nERROR: IPC::Shareable::SharedMem: shmget $key: $!\n\n" .
                     "Are you using exclusive, but trying to create multiple " .
                     "instances?\n\n";
