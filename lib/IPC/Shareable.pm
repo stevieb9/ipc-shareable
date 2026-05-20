@@ -25,7 +25,7 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION = '1.14_07';
+our $VERSION = '1.14_08';
 
 use constant {
     # Locking
@@ -1995,7 +1995,7 @@ IPC::Shareable - Use shared memory backed variables across processes
 
     IPC::Shareable->singleton('UNIQUE SCRIPT LOCK STRING');
 
-=head1 DEVELOPER/TROUBLESHOOTING SYNOPSIS
+=head1 SYNOPSIS - DEVELOPER/TROUBLESHOOTING
 
     # Get SYSV shared memory specifications of the system (if available)
 
