@@ -30,7 +30,7 @@ our $VERSION;
 our $_have_xs;
 
 BEGIN {
-    $VERSION  = '1.14_10';
+    $VERSION  = '1.14';
     $_have_xs = ! $ENV{IPC_SHAREABLE_NO_XS} && eval {
         require XSLoader;
         XSLoader::load('IPC::Shareable', $VERSION);
