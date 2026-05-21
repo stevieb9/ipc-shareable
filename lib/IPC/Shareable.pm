@@ -26,7 +26,17 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION = '1.14_10';
+our $VERSION;
+our $_have_xs;
+
+BEGIN {
+    $VERSION  = '1.14_10';
+    $_have_xs = ! $ENV{IPC_SHAREABLE_NO_XS} && eval {
+        require XSLoader;
+        XSLoader::load('IPC::Shareable', $VERSION);
+        1;
+    } // 0;
+}
 
 use constant {
     # Locking
@@ -506,10 +516,9 @@ sub lock {
         $knot->{_lock} = $flags;
         $knot->{_data} = $knot->_decode($knot->seg);
 
-        my @locked_children;
-        my %seen = ($knot->seg->id => 1);
+        my $locked_ref = _lock_children($knot, $flags);
 
-        if (! _lock_children($knot, $flags, \@locked_children, \%seen)) {
+        if (! $locked_ref) {
             my $rflags = $knot->{_lock} | LOCK_UN;
             $rflags ^= LOCK_NB if $rflags & LOCK_NB;
             $knot->sem->op(@{ $semop_args{$rflags} });
@@ -517,7 +526,7 @@ sub lock {
             $lock_success   = 0;
         }
         else {
-            $knot->{_locked_children} = \@locked_children;
+            $knot->{_locked_children} = $locked_ref;
         }
     }
 
@@ -645,7 +654,8 @@ sub shm_segments {
 
     my %segments;
 
-    for my $line (`ipcs -m`) {
+    open my $ipcs_fh, '-|', 'ipcs', '-m' or die "ipcs -m: $!";
+    while (my $line = <$ipcs_fh>) {
         my ($id, $raw_key);
 
         # BSD/macOS format: m <shmid> <key> ...
@@ -704,10 +714,12 @@ sub shm_segments {
         $segments{$hex_key} = {
             child_keys    => \@child_keys,
             content       => $data,
+            id            => $id,
             local_process => (exists $process_register{$id} ? 1 : 0),
             known         => (exists $global_register{$id}  ? 1 : 0),
         };
     }
+    close $ipcs_fh;
 
     if (defined $filter_int) {
         # Walk the segment tree starting from the root whose key matches
@@ -737,24 +749,28 @@ sub unknown_segments {
 sub seg_count {
     my $count = 0;
 
-    for my $line (`ipcs -m`) {
+    open my $ipcs_fh, '-|', 'ipcs', '-m' or die "ipcs -m: $!";
+    while (my $line = <$ipcs_fh>) {
         # BSD/macOS format: m <shmid> <key> ...
         # Linux format:     <key> <shmid> ...
         $count++ if $line =~ /^\s*m\s+\d+\s+\S+/;
         $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
     }
+    close $ipcs_fh;
 
     return $count;
 }
 sub sem_count {
     my $count = 0;
 
-    for my $line (`ipcs -s`) {
+    open my $ipcs_fh, '-|', 'ipcs', '-s' or die "ipcs -s: $!";
+    while (my $line = <$ipcs_fh>) {
         # BSD/macOS format: s <semid> <key> ...
         # Linux format:     <key> <semid> ...
         $count++ if $line =~ /^\s*s\s+\d+\s+\S+/;
         $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
     }
+    close $ipcs_fh;
 
     return $count;
 }
@@ -764,19 +780,10 @@ sub seg_map {
 
     my $segs = shm_segments();
 
-    # Build hex_key -> OS segment ID from ipcs output
+    # Build hex_key -> OS segment ID from shm_segments() data
+    # (already parsed the ipcs output, no need to shell out again).
     my %id_by_hex;
-    for my $line (`ipcs -m`) {
-        my ($id, $raw_key);
-        if    ($line =~ /^\s*m\s+(\d+)\s+(\S+)/)    { ($id, $raw_key) = ($1, $2) }
-        elsif ($line =~ /^\s*(\S+)\s+(\d+)\s+\S+/)  { ($raw_key, $id) = ($1, $2) }
-        else  { next }
-
-        my $key_int = $raw_key =~ /^0x[0-9a-fA-F]+$/ ? hex($raw_key)
-                    : $raw_key =~ /^\d+$/             ? int($raw_key)
-                    : next;
-        $id_by_hex{ sprintf('0x%08x', $key_int) } = $id;
-    }
+    $id_by_hex{ $_ } = $segs->{$_}{id} for keys %$segs;
 
     # Build hex_key -> knot from global_register (keyed by seg_id)
     my %knot_by_hex;
@@ -921,7 +928,13 @@ sub sysv_info {
     my %info;
 
     if ($^O eq 'darwin') {
-        my $out = $sysctl_out // `sysctl kern.sysv 2>/dev/null`;
+        my $out = defined $sysctl_out ? $sysctl_out : do {
+            open my $fh, '-|', 'sysctl', 'kern.sysv' or die "sysctl: $!";
+            local $/;
+            my $s = <$fh>;
+            close $fh;
+            $s;
+        };
         for my $line (split /\n/, $out) {
             if ($line =~ /^kern\.sysv\.(\w+):\s*(\S+)/) {
                 $info{$1} = $2;
@@ -929,7 +942,13 @@ sub sysv_info {
         }
     }
     elsif ($^O eq 'freebsd') {
-        my $out = $sysctl_out // `sysctl kern.ipc 2>/dev/null`;
+        my $out = defined $sysctl_out ? $sysctl_out : do {
+            open my $fh, '-|', 'sysctl', 'kern.ipc' or die "sysctl: $!";
+            local $/;
+            my $s = <$fh>;
+            close $fh;
+            $s;
+        };
         for my $line (split /\n/, $out) {
             if ($line =~ /^kern\.ipc\.(shm\w+):\s*(\S+)/) {
                 $info{$1} = $2;
@@ -1569,6 +1588,12 @@ sub _magic_tie {
     return $child;
 }
 sub _is_child {
+    return $_have_xs
+        ? _is_child_xs($_[0])
+        : _is_child_pp($_[0]);
+}
+
+sub _is_child_pp {
     my $data = shift or return;
 
     my $type = Scalar::Util::reftype( $data );
@@ -1629,42 +1654,56 @@ sub _key_str_to_int {
     return $int;
 }
 sub _lock_children {
-    my ($knot, $flags, $accumulator, $seen) = @_;
+    my ($root_knot, $flags) = @_;
 
-    my $data  = $knot->{_data};
-    my $rtype = Scalar::Util::reftype($data) // '';
+    my @locked;
+    my %seen = ($root_knot->seg->id => 1);
+    my @stack = ([$root_knot, 0]);
 
-    my @vals = $rtype eq 'HASH'  ? values %$data
-        : $rtype eq 'ARRAY' ? @$data
-        : ();
+    while (@stack) {
+        my $frame = $stack[-1];
+        my ($knot, $idx) = @$frame;
 
-    for my $val (@vals) {
-        next unless ref($val);
-        my $child = _is_child($val);
-        next unless $child && $child->seg;
+        my $data  = $knot->{_data};
+        my $rtype = Scalar::Util::reftype($data) // '';
 
-        my $id = $child->seg->id;
-        next if $seen->{$id}++;
+        my @vals = $rtype eq 'HASH'  ? values %$data
+                 : $rtype eq 'ARRAY' ? @$data
+                 : ();
 
-        if (! $child->sem->op(@{ $semop_args{$flags} })) {
-            for my $locked (reverse @$accumulator) {
-                my $rflags = $locked->{_lock} | LOCK_UN;
-                $rflags ^= LOCK_NB if $rflags & LOCK_NB;
-                $locked->sem->op(@{ $semop_args{$rflags} });
-                $locked->{_lock} = 0;
+        my $found = 0;
+        for (my $i = $idx; $i < @vals; $i++) {
+            my $val = $vals[$i];
+            next unless ref($val);
+            my $child = _is_child($val);
+            next unless $child && $child->seg;
+
+            my $id = $child->seg->id;
+            next if $seen{$id}++;
+
+            if (! $child->sem->op(@{ $semop_args{$flags} })) {
+                for my $locked (reverse @locked) {
+                    my $rflags = $locked->{_lock} | LOCK_UN;
+                    $rflags ^= LOCK_NB if $rflags & LOCK_NB;
+                    $locked->sem->op(@{ $semop_args{$rflags} });
+                    $locked->{_lock} = 0;
+                }
+                return;
             }
-            @$accumulator = ();
-            return;
+
+            $child->{_data} = $child->_decode($child->seg);
+            $child->{_lock} = $flags;
+            push @locked, $child;
+
+            $frame->[1] = $i + 1;
+            push @stack, [$child, 0];
+            $found = 1;
+            last;
         }
-
-        $child->{_data} = $child->_decode($child->seg);
-        $child->{_lock} = $flags;
-        push @$accumulator, $child;
-
-        _lock_children($child, $flags, $accumulator, $seen) or return;
+        pop @stack unless $found;
     }
 
-    return 1;
+    return \@locked;
 }
 sub _reset_segment {
     my ($parent, $id) = @_;
@@ -2105,7 +2144,7 @@ B<Recommendation>: Utilizing the locking mechanisms is highly advised to ensure
 data consistency and integrity. See L</LOCKING>.
 
 B<Recommendation>: If you're using JSON to serialize your data (the default), I
-would highly advise you to install the XS version (L<JSON::XS>. We will
+would highly advise you to install the XS version (L<JSON::XS>). We will
 automatically use it if available, and it is much faster than the pure Perl
 version (L<JSON::PP>).
 
@@ -2132,7 +2171,7 @@ The key can be specified as:
 
 =item * A text string (internally, a 32-bit CRC of the string is used as the key)
 
-=item * A hex string (eg. C<'0xDEADBEEF'>), converted to its respective integer
+=item * A hex string (eg. C<'0xDEADBEEF'>), which we convert to integer form
 
 =item * A hex value (eg. C<0XDEADBEEF>), used as-is as the integer key
 
@@ -2266,7 +2305,8 @@ When updating a nested structure, a new segment is created and the updated data
 is stored into it. This option, when set to true will automatically clean up the
 old segment that is no longer needed after the update.
 
-Comes with a slight 2% performance hit.
+Comes with a slight 2% performance hit, but does prevent an unnecessary
+accumulation of unneeded segments from stressing system resources.
 
 Default: B<true>
 
@@ -2289,9 +2329,8 @@ C<LOCK_EX> on the segment, or while there are active C<LOCK_SH> readers. Pair
 with C<violated_write_lock_warn> to also emit a warning when a write is
 blocked.
 
-B<Note>: Only a C<LOCK_EX> lock is enforced against other writers. C<LOCK_SH>
-write protection is advisory only; it blocks writes from C<enforced_write_locking>-
-enabled knots, but a knot that has disabled this option can still write.
+B<Note>: This protection system will never be reached if all callers use
+proper locking at all times.
 
 Default: B<true>
 
@@ -2317,6 +2356,9 @@ B<Note>: Reads (fetches) are never blocked, even when a C<LOCK_EX> is active.
 If a reader does not hold a C<LOCK_SH> and reads while a writer holds
 C<LOCK_EX>, the returned data may be stale or partially-written. To guarantee
 a coherent snapshot, acquire C<LOCK_SH> before reading.
+
+B<Note>: This protection system will never be reached if all callers use
+proper locking at all times.
 
 Default: B<true>
 
@@ -2402,13 +2444,14 @@ Parameters:
     $flags
 
 Optional, Integer: If this parameter is omitted, we default to C<LOCK_EX>, an
-exclusive blocking lock.
+exclusive write lock.
 
     $code
 
 Optional, Code reference: If this parameter is sent in, and an exclusive lock
 is asked for, we will set the lock, execute the subroutine, and then call
-C<unlock()> on the segment.
+C<unlock()> on the segment. The sub is called within an C<eval>, so we will
+C<unlock> and the script will continue on even if the code failed.
 
 B<Note>: Although the C<$flags> and C<$code> parameters appear positional, you
 can send in C<$code> without sending in any C<$flags>. When this occurs,
@@ -2437,7 +2480,7 @@ Either of the locks may be specified as non-blocking:
         tied(%var)->lock( LOCK_EX|LOCK_NB );
         tied(%var)->lock( LOCK_SH|LOCK_NB );
 
-A non-blocking lock request will return C<0> if it would have had to
+A non-blocking lock request will return C<0> immediately if it would have had to
 wait to obtain the lock.
 
 B<Note>: These locks are advisory (just like flock), meaning that
@@ -2453,8 +2496,9 @@ from writing to the segment. The companion C<enforced_read_locking> option
 exclusively-locked segment; reads are never blocked, but a warning will be
 emitted if C<violated_read_lock_warn> is also set.
 
-Locks are inherited through forks, which means that two processes actually
-can possess an exclusive lock at the same time. Don't do that.
+B<Important>: Locks are inherited through forks, which can cause unintended and
+problematic side effects (particularly duplicated C<LOCK_EX> locks. Don't
+C<fork()> until all active locks have been released.
 
 The constants C<LOCK_EX>, C<LOCK_SH>, C<LOCK_NB>, and C<LOCK_UN> are available
 for import using any of the following export tags:
@@ -2630,7 +2674,7 @@ and return immediately thereafter.
     $knot->remove;
 
     # Remove a specific segment by key (can remove non C<IPC::Shareable>
-    segments). If key is sent in, the caller can be the module or the object.
+    # segments). If key is sent in, the caller can be the module or the object.
 
     IPC::Shareable->remove('0xdeadbeef');   # hex string
     IPC::Shareable->remove(0xdeadbeef);     # hex integer
@@ -3010,8 +3054,8 @@ By default, the C<enforced_write_locking> option is set to true, which means
 that if a tied variable sets a C<LOCK_EX>, all writes from all other processes
 will fail, and their data will not be updated.
 
-If C<violated_write_lock_warn> is set to true (also default), the offending
-process will receive a warning regarding the issue.
+If the offending process has C<violated_write_lock_warn> set to true (also
+default), it will receive a warning regarding the issue.
 
 =head3 Violating an enforced read lock
 
@@ -3349,8 +3393,8 @@ See L</METHODS - MANUAL CLEANUP> for further information.
 
 =head1 AUTHORS
 
-Benjamin Sugars <bsugars@canoe.ca>
-Steve Bertrand <steveb@cpan.org> (since 2016)
+    Benjamin Sugars <bsugars@canoe.ca>
+    Steve Bertrand <steveb@cpan.org> (since 2016)
 
 
 =head1 NOTES
@@ -3375,12 +3419,10 @@ segments with the C<JSON> serializer.
 
 =item o
 
-This version of L<IPC::Shareable> does not understand the format of
-shared memory segments created by versions prior to C<0.60>.  If you try
-to tie to such segments, you will get an error.  The only work around
-is to clear the shared memory segments and start with a fresh set.
-
-B<Note>: This is only applicable when using C<storable> as the serializer.
+This distribution has minor parts of it developed in C/XS, but these components
+are only built if we can determine that you've got the proper build tools
+installed. If not, we simply skip the XS build and fall back to our pure Perl
+code.
 
 =item o
 
@@ -3388,6 +3430,8 @@ Iterating over a hash causes a special optimization if you have not
 obtained a lock (it is better to obtain a read (or write) lock before
 iterating over a hash tied to L<IPC::Shareable>, but we attempt this
 optimization if you do not).
+
+=item o
 
 For tied hashes, the C<fetch>/C<thaw> operation is performed
 when the first key is accessed.  Subsequent key and and value

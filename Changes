@@ -119,6 +119,20 @@ Revision history for Perl extension IPC::Shareable.
     - _encode_json_prepare() now short-circuits for structures with no
       IPC::Shareable child refs, avoiding a full hash/array copy on every encode
     - _decode_json_restore() hoists ref($prev) checks outside hot loop
+    - Added XS implementation of _is_child() for faster child-knot detection;
+      falls back to pure Perl _is_child_pp() if the compiled XS can't be loaded.
+      The XS function _is_child_xs inspects SV magic directly in C, avoiding
+      Scalar::Util::reftype, tied(), and ref() calls
+    - Added t/75-is_child_xs.t to test both XS and pure-Perl _is_child paths
+    - Added IPC_SHAREABLE_NO_XS env var to force pure-Perl mode for verifying
+      operation on systems without a C compiler
+    - Eliminated redundant second ipcs -m shell-out in seg_map(); get id mapping
+      from shm_segments() result instead
+    - Replaced all backtick shell-outs with open('-|', @cmd) pipe-open to bypass
+      /bin/sh and halve the fork count
+    - Rewrote _lock_children() from recursive to iterative (manual stack) to
+      eliminate Perl call-stack overhead on deeply nested structures; simplified
+      interface returns an arrayref instead of passing accumulator/seen refs
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
