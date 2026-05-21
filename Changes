@@ -116,6 +116,9 @@ Revision history for Perl extension IPC::Shareable.
       efficient index+substr
     - SharedMem::stats() now calls stat() once and reuses it, avoiding 11
       redundant shmctl(IPC_STAT) syscalls
+    - _encode_json_prepare() now short-circuits for structures with no
+      IPC::Shareable child refs, avoiding a full hash/array copy on every encode
+    - _decode_json_restore() hoists ref($prev) checks outside hot loop
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

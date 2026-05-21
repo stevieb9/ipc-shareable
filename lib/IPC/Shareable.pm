@@ -1127,6 +1127,14 @@ sub _encode_json_prepare {
     # JSON can't store blessed objects
 
     if ($type eq 'HASH') {
+        {
+            my $has_child = 0;
+            for my $val (values %$data) {
+                if (ref($val) && _is_child($val)) { $has_child = 1; last; }
+            }
+            return $data if !$has_child;
+        }
+
         my %result;
         for my $key (keys %$data) {
             my $val   = $data->{$key};
@@ -1139,6 +1147,14 @@ sub _encode_json_prepare {
     }
 
     if ($type eq 'ARRAY') {
+        {
+            my $has_child = 0;
+            for my $val (@$data) {
+                if (ref($val) && _is_child($val)) { $has_child = 1; last; }
+            }
+            return $data if !$has_child;
+        }
+
         return [
             map {
                 my $inner = ref($_) && _is_child($_);
@@ -1214,21 +1230,24 @@ sub _decode_json_restore {
     my $prev = $knot->{_data};
 
     if ($type eq 'HASH') {
+        my $prev_is_hash = ref($prev) eq 'HASH';
         for my $key (keys %$data) {
             next unless ref($data->{$key}) eq 'HASH' && exists $data->{$key}{'__ics__'};
             $data->{$key} = _decode_json_resolve(
                 $data->{$key}{'__ics__'},
-                ref($prev) eq 'HASH' ? $prev->{$key} : undef,
+                $prev_is_hash ? $prev->{$key} : undef,
                 $knot,
             );
         }
     }
     elsif ($type eq 'ARRAY') {
+        my $prev_is_array = ref($prev) eq 'ARRAY';
+        my $prev_max = $prev_is_array ? $#$prev : -1;
         for my $i (0 .. $#$data) {
             next unless ref($data->[$i]) eq 'HASH' && exists $data->[$i]{'__ics__'};
             $data->[$i] = _decode_json_resolve(
                 $data->[$i]{'__ics__'},
-                ref($prev) eq 'ARRAY' && $i <= $#$prev ? $prev->[$i] : undef,
+                $prev_is_array && $i <= $prev_max ? $prev->[$i] : undef,
                 $knot,
             );
         }
