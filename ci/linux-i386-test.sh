@@ -18,11 +18,14 @@ CHROOT_REPO="${CHROOT}/opt/ipc-shareable"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+XS_MODE=0
+
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [options] [prove options]
 
 Options:
+  -x, --xs      Build and test with XS (default: pure Perl only)
   -h, --help      Show this help message and exit
 
 Environment:
@@ -40,6 +43,7 @@ EOF
 _PROVE_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        -x|--xs)      XS_MODE=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *)         _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
     esac
@@ -83,11 +87,22 @@ limactl shell "$VM" -- sh -lc "
 
 echo "==> Copying source into i386 chroot..."
 limactl shell "$VM" -- sh -lc "sudo rm -rf '${CHROOT_REPO}' && sudo mkdir -p '${CHROOT}/opt'"
-tar -C "$(dirname "$HOST_REPO")" -czf - "$(basename "$HOST_REPO")" | \
+COPYFILE_DISABLE=1 tar -C "$(dirname "$HOST_REPO")" -czf - "$(basename "$HOST_REPO")" | \
     limactl shell "$VM" -- sudo tar -C "${CHROOT}/opt" -xzf - \
         --transform "s|^$(basename "$HOST_REPO")|ipc-shareable|"
+# Strip macOS resource-fork files (._*) that may have leaked through.
+limactl shell "$VM" -- sudo find "${CHROOT_REPO}" -name '._*' -delete 2>/dev/null || true
 
-echo "==> Running tests in i386 chroot (32-bit Perl)..."
-limactl shell "$VM" -- sh -lc "
-    sudo systemd-nspawn -D '${CHROOT}' \\
-        sh -c 'cd /opt/ipc-shareable && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}'"
+if [ $XS_MODE -eq 1 ]; then
+    echo "==> Building and running tests in i386 chroot (32-bit Perl, XS)..."
+    limactl shell "$VM" -- sh -lc "
+        sudo systemd-nspawn -D '${CHROOT}' \\
+            sh -c 'cd /opt/ipc-shareable && perl Makefile.PL && make && ASYNC_TESTING=1 prove -l -Iblib/arch ${PROVE_ARGS}'"
+else
+    echo "==> Running tests in i386 chroot (32-bit Perl, pure Perl)..."
+    limactl shell "$VM" -- sh -lc "
+        sudo systemd-nspawn -D '${CHROOT}' \\
+            sh -c 'cd /opt/ipc-shareable && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}'"
+fi
+
+echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"

@@ -19,11 +19,13 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 LOGDIR="/tmp/vm-tests-${TIMESTAMP}"
 RESULTS_DIR=$(mktemp -d /tmp/vm-tests-status-XXXXXX)
 KEEP_LOGS=0
+XS_MODE=0
+DISPLAY_MODE=0
 
 # Clean up status tempdir on exit; optionally keep logdir.
 cleanup() {
     rm -rf "$RESULTS_DIR"
-    if [ "$KEEP_LOGS" -eq 0 ]; then
+    if [ "$KEEP_LOGS" -eq 0 ] && [ -d "$LOGDIR" ]; then
         rm -rf "$LOGDIR"
     fi
 }
@@ -43,6 +45,8 @@ Options:
   -s, --solaris     Run Solaris/OmniOS tests
   -a, --all         Run all VMs (default)
   -k, --keep-logs   Keep log files after the run (default: delete on success)
+  -x, --xs          Build and test with XS on each VM (default: pure Perl only)
+  -D, --display     Write output directly to stdout instead of log files
   -h, --help        Show this help and exit
 
 Prove options are forwarded to each VM test script (default: -v t).
@@ -64,6 +68,8 @@ while [ $# -gt 0 ]; do
         -s|--solaris)  RUN_SOLARIS=1; shift ;;
         -a|--all)      RUN_FREEBSD=1; RUN_LINUX=1; RUN_SOLARIS=1; shift ;;
         -k|--keep-logs) KEEP_LOGS=1; shift ;;
+        -x|--xs)       XS_MODE=1; shift ;;
+        -D|--display)  DISPLAY_MODE=1; shift ;;
         -h|--help)     usage; exit 0 ;;
         *)             _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
     esac
@@ -74,7 +80,9 @@ if [ $RUN_FREEBSD -eq 0 ] && [ $RUN_LINUX -eq 0 ] && [ $RUN_SOLARIS -eq 0 ]; the
 fi
 
 PROVE_ARGS="${_PROVE_ARGS# }"
-mkdir -p "$LOGDIR"
+XS_FLAG=""
+[ $XS_MODE -eq 1 ] && XS_FLAG="--xs"
+[ $DISPLAY_MODE -eq 0 ] && mkdir -p "$LOGDIR"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -85,15 +93,26 @@ run_vm() {
 
     echo ""
     echo "=== ${_label}: starting at $(date) ==="
-    echo "    log: ${_log}"
 
-    if "${SCRIPT_DIR}/${_script}" ${PROVE_ARGS} >"${_log}" 2>&1; then
-        echo "PASS" > "${RESULTS_DIR}/${_label}"
-        echo "    ${_label}: PASS"
+    if [ $DISPLAY_MODE -eq 1 ]; then
+        if "${SCRIPT_DIR}/${_script}" ${XS_FLAG} ${PROVE_ARGS}; then
+            echo "PASS" > "${RESULTS_DIR}/${_label}"
+            echo "    ${_label}: PASS"
+        else
+            _rc=$?
+            echo "FAIL:${_rc}" > "${RESULTS_DIR}/${_label}"
+            echo "    ${_label}: FAIL (exit ${_rc})"
+        fi
     else
-        _rc=$?
-        echo "FAIL:${_rc}" > "${RESULTS_DIR}/${_label}"
-        echo "    ${_label}: FAIL (exit ${_rc})"
+        echo "    log: ${_log}"
+        if "${SCRIPT_DIR}/${_script}" ${XS_FLAG} ${PROVE_ARGS} >"${_log}" 2>&1; then
+            echo "PASS" > "${RESULTS_DIR}/${_label}"
+            echo "    ${_label}: PASS"
+        else
+            _rc=$?
+            echo "FAIL:${_rc}" > "${RESULTS_DIR}/${_label}"
+            echo "    ${_label}: FAIL (exit ${_rc})"
+        fi
     fi
 }
 
@@ -129,7 +148,12 @@ print_result() {
 
 echo "=== vm-tests.sh started at $(date) ==="
 echo "    prove args: ${PROVE_ARGS:--v t}"
-echo "    logs: ${LOGDIR}/"
+echo "    mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
+if [ $DISPLAY_MODE -eq 1 ]; then
+    echo "    output: stdout (display mode)"
+else
+    echo "    logs: ${LOGDIR}/"
+fi
 printf "    targets: "
 [ $RUN_FREEBSD -eq 1 ] && printf "freebsd "
 [ $RUN_LINUX -eq 1 ]   && printf "linux-i386 "
@@ -162,31 +186,49 @@ for _label in freebsd linux-i386 solaris; do
     print_result "$_label"
 done
 
-_any_failures=0
-for _label in freebsd linux-i386 solaris; do
-    _status_file="${RESULTS_DIR}/${_label}"
-    [ -f "$_status_file" ] || continue
-    case "$(cat "$_status_file")" in
-        FAIL:*)
-            _any_failures=1
-            _log="${LOGDIR}/${_label}-${TIMESTAMP}.log"
-            echo ""
-            echo "--- ${_label} failures ---"
-            extract_failures "$_log"
-            ;;
-    esac
-done
+if [ $DISPLAY_MODE -eq 0 ]; then
+    _any_failures=0
+    for _label in freebsd linux-i386 solaris; do
+        _status_file="${RESULTS_DIR}/${_label}"
+        [ -f "$_status_file" ] || continue
+        case "$(cat "$_status_file")" in
+            FAIL:*)
+                _any_failures=1
+                _log="${LOGDIR}/${_label}-${TIMESTAMP}.log"
+                echo ""
+                echo "--- ${_label} failures ---"
+                extract_failures "$_log"
+                ;;
+        esac
+    done
 
-if [ $_any_failures -eq 0 ]; then
-    echo "All selected VMs passed."
+    if [ $_any_failures -eq 0 ]; then
+        echo "All selected VMs passed."
+    fi
+else
+    echo ""
+    for _label in freebsd linux-i386 solaris; do
+        _status_file="${RESULTS_DIR}/${_label}"
+        [ -f "$_status_file" ] || continue
+        case "$(cat "$_status_file")" in
+            FAIL:*)
+                echo "--- ${_label}: failures shown above ---"
+                ;;
+        esac
+    done
 fi
 
 echo ""
-if [ "$KEEP_LOGS" -eq 1 ]; then
-    echo "Logs kept: ${LOGDIR}/"
+if [ $DISPLAY_MODE -eq 1 ]; then
+    echo "Output: stdout (display mode)"
 else
-    echo "Logs: ${LOGDIR}/ (deleted on exit; use -k to keep)"
+    if [ "$KEEP_LOGS" -eq 1 ]; then
+        echo "Logs kept: ${LOGDIR}/"
+    else
+        echo "Logs: ${LOGDIR}/ (deleted on exit; use -k to keep)"
+    fi
 fi
+echo "Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
 echo "=== vm-tests.sh finished at $(date) ==="
 
 exit $OVERALL

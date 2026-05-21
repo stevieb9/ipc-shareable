@@ -16,11 +16,14 @@ GUEST_REPO="${GUEST_HOME}/ipc-shareable"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+XS_MODE=0
+
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [options] [prove options]
 
 Options:
+  -x, --xs      Build and test with XS (default: pure Perl only)
   -h, --help      Show this help message and exit
 
 Environment:
@@ -38,6 +41,7 @@ EOF
 _PROVE_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        -x|--xs)      XS_MODE=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *)         _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
     esac
@@ -240,9 +244,21 @@ limactl shell "$VM" -- sh -lc '
 echo "==> Copying source into VM..."
 limactl shell "$VM" -- sh -lc "rm -rf '${GUEST_REPO}'"
 scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
+# Strip macOS resource-fork files (._*).
+limactl shell "$VM" -- sh -lc "find '${GUEST_REPO}' -name '._*' -delete" 2>/dev/null || true
 
-echo "==> Running tests in VM..."
-limactl shell "$VM" -- sh -lc "
-    export PATH=/usr/gnu/bin:/usr/bin:\$PATH
-    cd '${GUEST_REPO}' && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}
-"
+if [ $XS_MODE -eq 1 ]; then
+    echo "==> Building and running tests in VM (XS)..."
+    limactl shell "$VM" -- sh -lc "
+        export PATH=/usr/gnu/bin:/usr/bin:\$PATH
+        cd '${GUEST_REPO}' && perl Makefile.PL && make && ASYNC_TESTING=1 prove -l -Iblib/arch ${PROVE_ARGS}
+    "
+else
+    echo "==> Running tests in VM (pure Perl)..."
+    limactl shell "$VM" -- sh -lc "
+        export PATH=/usr/gnu/bin:/usr/bin:\$PATH
+        cd '${GUEST_REPO}' && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}
+    "
+fi
+
+echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"

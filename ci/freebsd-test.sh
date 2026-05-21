@@ -14,6 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 LOCALE="en_US.UTF-8"
 PERL_VERSION=""
+XS_MODE=0
 
 usage() {
     cat <<EOF
@@ -24,6 +25,7 @@ Options:
   --perl-version <ver>  Build and test with perlbrew Perl <ver> (e.g. 5.20.3).
                         Compiles Perl from source on the first run (10-20 min);
                         subsequent runs reuse the cached build.
+  -x, --xs              Build and test with XS (default: pure Perl only)
   -h, --help            Show this help message and exit
 
 Environment:
@@ -45,6 +47,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --german)       LOCALE="de_DE.ISO8859-1"; shift ;;
         --perl-version) shift; PERL_VERSION="$1"; shift ;;
+        -x|--xs)        XS_MODE=1; shift ;;
         -h|--help)      usage; exit 0 ;;
         *)              _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
     esac
@@ -100,6 +103,11 @@ if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then
         echo "ERROR: VM '${VM}' is not Running after start"; exit 1; }
 fi
 
+# Suppress FreeBSD daily tips (fortune freebsd-tips in .profile/.login).
+ssh -F ~/.lima/"$VM"/ssh.config lima-"$VM" \
+    'sed -i "" -e "/fortune freebsd-tips/s/^/#/" ~/.profile ~/.login' \
+    2>/dev/null || true
+
 # If sudo is missing (VM was set up before the first-boot script included the
 # pkg install step), run first-boot again while the VM is still running so the
 # serial console socket is available.
@@ -149,17 +157,34 @@ fi
 echo "==> Copying source into VM..."
 limactl shell "$VM" -- sh -lc "rm -rf '${GUEST_REPO}'"
 scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
+# Strip macOS resource-fork files (._*).
+limactl shell "$VM" -- sh -lc "find '${GUEST_REPO}' -name '._*' -delete" 2>/dev/null || true
 
 if [ -n "$PERL_VERSION" ]; then
-    echo "==> Running tests in VM with Perl ${PERL_VERSION} (LC_ALL=${LOCALE})..."
-    limactl shell "$VM" -- sh -lc "
-        PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
-        cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 PATH=\"\$PERL_BIN:\$PATH\" prove -l ${PROVE_ARGS}
-    "
+    if [ $XS_MODE -eq 1 ]; then
+        echo "==> Building and running tests in VM with Perl ${PERL_VERSION} (XS, LC_ALL=${LOCALE})..."
+        limactl shell "$VM" -- sh -lc "
+            PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
+            cd '${GUEST_REPO}' && PATH=\"\$PERL_BIN:\$PATH\" perl Makefile.PL && make && LC_ALL=${LOCALE} ASYNC_TESTING=1 PATH=\"\$PERL_BIN:\$PATH\" prove -l -Iblib/arch ${PROVE_ARGS}
+        "
+    else
+        echo "==> Running tests in VM with Perl ${PERL_VERSION} (pure Perl, LC_ALL=${LOCALE})..."
+        limactl shell "$VM" -- sh -lc "
+            PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
+            cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 PATH=\"\$PERL_BIN:\$PATH\" prove -l ${PROVE_ARGS}
+        "
+    fi
 else
-    echo "==> Running tests in VM (LC_ALL=${LOCALE})..."
-    limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 prove -l ${PROVE_ARGS}"
+    if [ $XS_MODE -eq 1 ]; then
+        echo "==> Building and running tests in VM (XS, LC_ALL=${LOCALE})..."
+        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl Makefile.PL && make && LC_ALL=${LOCALE} ASYNC_TESTING=1 prove -l -Iblib/arch ${PROVE_ARGS}"
+    else
+        echo "==> Running tests in VM (pure Perl, LC_ALL=${LOCALE})..."
+        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 prove -l ${PROVE_ARGS}"
+    fi
 fi
 
 echo "==> VM environment info..."
-limactl shell "$VM" -- sh -lc "uname -a && LC_ALL=${LOCALE} locale"
+limactl shell "$VM" -- sh -lc "uname -a"
+
+echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
