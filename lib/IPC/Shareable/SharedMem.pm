@@ -9,7 +9,7 @@ use Data::Dumper;
 use Errno qw(EEXIST EPERM);
 use IPC::SysV qw(IPC_RMID IPC_STAT);
 
-our $VERSION = '1.14_08';
+our $VERSION = '1.14_10';
 
 use constant {
     DEFAULT_SEG_SIZE    => 1024,
