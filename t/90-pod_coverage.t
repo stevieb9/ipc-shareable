@@ -14,9 +14,9 @@ plan skip_all => "Test::Pod::Coverage $min_tpc required for testing POD coverage
     if $@;
 
 my $pc = Pod::Coverage->new(
-    package => 'IPC::Shareable',
+    package  => 'IPC::Shareable',
     pod_from => 'lib/IPC/Shareable.pm',
-    private => [qr/^shlock$/, qr/^shunlock$/, qr/[A-Z]/, qr/^_/],
+    private  => [ qr/^shlock$/, qr/^shunlock$/, qr/[A-Z]/, qr/^_/, qr/^bootstrap$/ ],
 );
 
 is $pc->coverage, 1, "IPC::Shareable pod coverage ok";
