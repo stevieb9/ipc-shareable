@@ -1,6 +1,6 @@
 #!/bin/sh
 # Run IPC::Shareable tests in a local FreeBSD VM (Lima template).
-# Usage: ./ci/freebsd-test.sh [--german] [prove options]
+# Usage: ./ci/freebsd-test.sh [--german] [--perl-version <ver>] [prove options]
 
 set -e
 
@@ -13,34 +13,40 @@ GUEST_REPO="${GUEST_HOME}/ipc-shareable"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 LOCALE="en_US.UTF-8"
+PERL_VERSION=""
 
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [options] [prove options]
 
 Options:
-  --german        Run tests with LC_ALL=de_DE.ISO8859-1 (German locale)
-  -h, --help      Show this help message and exit
+  --german              Run tests with LC_ALL=de_DE.ISO8859-1 (German locale)
+  --perl-version <ver>  Build and test with perlbrew Perl <ver> (e.g. 5.20.3).
+                        Compiles Perl from source on the first run (10-20 min);
+                        subsequent runs reuse the cached build.
+  -h, --help            Show this help message and exit
 
 Environment:
   VM=<name>       Target a different Lima VM (default: freebsd-ipc)
 
 Prove options default to "-v t" (verbose, full suite) when not supplied.
 Examples:
-  $(basename "$0")                        # full suite, English locale
-  $(basename "$0") --german               # full suite, German locale
-  $(basename "$0") t/24-clean.t          # single test file
-  $(basename "$0") --german t/24-clean.t # single test, German locale
-  $(basename "$0") t                     # full suite, no -v
+  $(basename "$0")                                    # full suite, English locale
+  $(basename "$0") --german                           # full suite, German locale
+  $(basename "$0") --perl-version 5.20.3              # full suite, Perl 5.20.3
+  $(basename "$0") --german --perl-version 5.20.3    # German locale + Perl 5.20.3
+  $(basename "$0") t/85-clean.t                      # single test file
+  $(basename "$0") t                                 # full suite, no -v
 EOF
 }
 
 _PROVE_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --german)  LOCALE="de_DE.ISO8859-1"; shift ;;
-        -h|--help) usage; exit 0 ;;
-        *)         _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
+        --german)       LOCALE="de_DE.ISO8859-1"; shift ;;
+        --perl-version) shift; PERL_VERSION="$1"; shift ;;
+        -h|--help)      usage; exit 0 ;;
+        *)              _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
     esac
 done
 PROVE_ARGS="${_PROVE_ARGS# }"
@@ -105,9 +111,55 @@ fi
 echo "==> Installing FreeBSD packages..."
 limactl shell "$VM" -- sh -lc 'sudo pkg install -y perl5 p5-App-cpanminus gmake p5-ExtUtils-MakeMaker p5-JSON p5-String-CRC32 p5-Test-SharedFork p5-Mock-Sub && sudo cpanm --notest Async::Event::Interval'
 
+if [ -n "$PERL_VERSION" ]; then
+    echo "==> Setting up Perl ${PERL_VERSION} via perlbrew (compiles from source on first run)..."
+    limactl shell "$VM" -- sh -lc "
+        set -e
+        sudo pkg install -y gcc gmake curl
+
+        if [ ! -x \"\$HOME/perl5/perlbrew/bin/perlbrew\" ]; then
+            # Install system-wide so App::perlbrew is in the system perl @INC.
+            # Avoids the curl|bash installer (requires bash, external URL).
+            sudo cpanm --notest App::perlbrew
+            # init creates the directory skeleton but does not place the binary;
+            # copy it from where cpanm installed it to the expected stable path.
+            perlbrew init
+            cp \"\$(command -v perlbrew)\" \"\$HOME/perl5/perlbrew/bin/perlbrew\"
+        fi
+
+        PERLBREW=\"\$HOME/perl5/perlbrew/bin/perlbrew\"
+
+        if ! \"\$PERLBREW\" list | grep -qF '${PERL_VERSION}'; then
+            echo '==> Compiling perl-${PERL_VERSION} — this takes 10-20 minutes...'
+            \"\$PERLBREW\" install perl-${PERL_VERSION} --notest -j 2
+        fi
+
+        PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
+
+        if [ ! -x \"\$PERL_BIN/cpanm\" ]; then
+            curl -fsSL https://cpanmin.us -o /tmp/_cpanm_bootstrap.pl
+            \"\$PERL_BIN/perl\" /tmp/_cpanm_bootstrap.pl App::cpanminus
+            rm -f /tmp/_cpanm_bootstrap.pl
+        fi
+
+        \"\$PERL_BIN/cpanm\" --notest JSON String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval
+    "
+fi
+
 echo "==> Copying source into VM..."
 limactl shell "$VM" -- sh -lc "rm -rf '${GUEST_REPO}'"
 scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
 
-echo "==> Running tests in VM (LC_ALL=${LOCALE})..."
-limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 prove -l ${PROVE_ARGS}"
+if [ -n "$PERL_VERSION" ]; then
+    echo "==> Running tests in VM with Perl ${PERL_VERSION} (LC_ALL=${LOCALE})..."
+    limactl shell "$VM" -- sh -lc "
+        PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
+        cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 PATH=\"\$PERL_BIN:\$PATH\" prove -l ${PROVE_ARGS}
+    "
+else
+    echo "==> Running tests in VM (LC_ALL=${LOCALE})..."
+    limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 prove -l ${PROVE_ARGS}"
+fi
+
+echo "==> VM environment info..."
+limactl shell "$VM" -- sh -lc "uname -a && LC_ALL=${LOCALE} locale"

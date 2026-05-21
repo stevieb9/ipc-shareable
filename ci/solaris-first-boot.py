@@ -168,7 +168,16 @@ def main():
 
     # OmniOS TCG boot is slow — allow up to 10 minutes
     print("[first-boot] Waiting for VM to boot (TCG is slow)...")
-    wait_for(sock, "login:", give_up_after=600)
+    # Accept either a login prompt (fresh boot) or root shell (re-run)
+    out = wait_for(sock, "login:", give_up_after=120)
+    if "login:" not in out:
+        # Might already be at a root shell from a previous run
+        out2 = drain(sock)
+        if "root@" in out or "root@" in out2:
+            print("    (already at root shell, skipping login)")
+        else:
+            print("    (no root shell yet, waiting longer for login...)")
+            out = wait_for(sock, "login:", give_up_after=480)
 
     print("[first-boot] Logging in as root...")
     sock.sendall(b"root\n")
@@ -194,8 +203,11 @@ def main():
         delay=120.0)
 
     user_cmds = [
-        "id solaris >/dev/null 2>&1 ||"
-        " useradd -d /export/home/solaris.guest -m -s /bin/sh solaris",
+        "mkdir -p /export/home",
+        "id solaris >/dev/null 2>&1 || {"
+        " useradd -d /export/home/solaris.guest -m -s /bin/sh solaris"
+        " && passwd -N solaris; }",
+        "passwd -s solaris 2>&1 | grep -q LK && passwd -d solaris 2>&1 || true",
         "mkdir -p /export/home/solaris.guest/.ssh",
         f'printf "%s\\n" "{ssh_key}"'
         " > /export/home/solaris.guest/.ssh/authorized_keys",

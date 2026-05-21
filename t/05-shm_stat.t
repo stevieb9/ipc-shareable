@@ -31,6 +31,11 @@ for (@stat_list) {
     is $data, $stats->{$_}, "stats() and stat $_ method data lines up ok";
 }
 
+# Verify segsz matches what we requested (catches platform-specific
+# shmid_ds unpack bugs like the 64-bit Solaris/illumos offset fix).
+cmp_ok $seg->stat->segsz, '>=', IPC::Shareable::SHM_BUFSIZ,
+    'segsz from stat() is at least the requested segment size';
+
 $hv{a} = {b => {c => 1}};
 
 # print Dumper \%hv;

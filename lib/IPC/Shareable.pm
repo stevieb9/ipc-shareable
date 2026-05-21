@@ -8,6 +8,7 @@ require 5.00503;
 use Carp qw(croak confess carp);
 use Config;
 use Data::Dumper;
+use Errno qw(ENOMEM ENOSPC);
 use Digest::MD5 qw(md5_hex);
 use IPC::Semaphore;
 use IPC::Shareable::SharedMem;
@@ -677,9 +678,13 @@ sub shm_segments {
             ? ( $Config{longsize} == 8
             ? unpack('x[48] Q', $stat_buf)   # 64-bit Linux
             : unpack('x[36] L', $stat_buf) ) # 32-bit Linux
-            : ( $^O eq 'freebsd' && $Config{longsize} == 8
+            : $^O eq 'freebsd' && $Config{longsize} == 8
             ? unpack('x[32] Q', $stat_buf)   # 64-bit FreeBSD (key_t=long=8, ipc_perm=32)
-            : unpack('x[24] Q', $stat_buf) );# macOS/32-bit BSD
+            : $^O eq 'solaris'
+            ? ( $Config{longsize} == 8
+            ? unpack('x[32] Q', $stat_buf)   # 64-bit Solaris (ipc_perm=28 + pad 4)
+            : unpack('x[44] L', $stat_buf) ) # 32-bit Solaris (ipc_perm=44)
+            : unpack('x[24] Q', $stat_buf);  # macOS/32-bit BSD
 
         next unless $segsz;
 
@@ -1989,7 +1994,7 @@ IPC::Shareable - Use shared memory backed variables across processes
 
     # Lock with a code reference, which will auto-unlock when the block finishes
 
-    tied(VARIABLE->lock(sub { print "hello!\n"; });
+    tied(VARIABLE)->lock(sub { print "hello!\n"; });
 
     # Ensure only one instance of a script can be run at any time
 
@@ -2012,7 +2017,7 @@ IPC::Shareable - Use shared memory backed variables across processes
     my $seg = tied(%{ $hv{a}->{b} })->seg;
     my $sem = tied(%{ $hv{a}->{b} })->sem;
 
-    # Fetch a printable string representation of the segment and semaphor
+    # Fetch a printable string representation of the segment and semaphore
     # mapping for your data
 
     tied(VARIABLE)->seg_map;
@@ -2128,7 +2133,7 @@ create a new shared memory segment associated with GLUE.  In this
 case, a shared memory segment associated with GLUE must already exist
 or we'll C<croak()>.
 
-Defult: B<false>
+Default: B<false>
 
 =head2 exclusive
 
@@ -2356,7 +2361,7 @@ Optional: See the L</OPTIONS> section for a list of all available options.
 Most often, you'll want to at minimum, send in the B<key> and B<create> options.
 
 It is possible to get a reference to an array or scalar as well. Simply send in
-either C<< var = > 'ARRAY' >> or C<< var => 'SCALAR' >> to do so.
+either C<< var => 'ARRAY' >> or C<< var => 'SCALAR' >> to do so.
 
 Return: A reference to a hash (or array or scalar) which is backed by shared
 memory.
@@ -2658,9 +2663,9 @@ See L<IPC::Semaphore> documentation.
 
 =head2 seg_count
 
-Returns the number of instantiated shared memory segments that currently exist
-on the system. This isn't precise; it simply does a C<wc -l> line count on your
-system's C<ipcs -m> call. It is guaranteed though to produce consistent results.
+Returns the number of shared memory segments that currently exist
+on the system, by counting data lines in your system's C<ipcs -m> output.
+It is guaranteed to produce consistent results.
 
 Return: Integer
 
@@ -2669,7 +2674,8 @@ Return: Integer
 Returns the number of semaphore sets that currently exist on the system, by
 parsing C<ipcs -s>. Since each L<IPC::Shareable> segment is associated with
 exactly one semaphore set (same SysV key), this count moves in lockstep with
-L</seg_count> when segments are created and destroyed cleanly.
+L</seg_count> when L<IPC::Shareable> segments are the only semaphore
+users on the system and are created and destroyed cleanly.
 
 Return: Integer
 
@@ -2741,7 +2747,7 @@ and 'b'), which are stored in the top-level segment.
     {
         '0x2abc0001' => {
             known           => 1,
-            local_process   => 1
+            local_process   => 1,
             content         => 'IPC::Shareable{
                 "a": 1,
                 "b": "hello",
@@ -2767,13 +2773,13 @@ and 'b'), which are stored in the top-level segment.
         },
         '0x000e1b1d' => {
             known           => 1,
-            local_process   => 1
+            local_process   => 1,
             content         => 'IPC::Shareable{"y":20,"x":10}',
             child_keys      => [],
         },
         '0x000097af' => {
             known           => 1,
-            local_process   => 1
+            local_process   => 1,
             content         => 'IPC::Shareable{"p":"foo","q":"bar"}',
             child_keys      => [],
         }
@@ -2918,6 +2924,11 @@ On FreeBSD, reads from C<sysctl kern.ipc>. Example return value:
         shmseg => 128,        # Maximum number of segments per process
         shmall => 131072,     # Maximum total shared memory (pages)
     }
+
+On Solaris (including OmniOS/illumos), the kernel's SysV shared memory
+configuration is not yet read programmatically. This method returns
+C<undef> on Solaris; use system tools such as C<prctl> or
+C<mdb -k> to inspect the kernel IPC limits instead.
 
 Return: Hash reference, or C<undef> if the platform is not supported or no data
 could be read.
@@ -3238,7 +3249,7 @@ data:
 
     {"c": 1}
 
-On decode, any C<__ics__> marker is spotted and a tie with C<create =Egt 0> is
+On decode, any C<__ics__> marker is spotted and a tie with C<create =E<gt> 0> is
 used to re-attach to the existing child segment by that key; no new segment is
 created, it simply reconnects.
 

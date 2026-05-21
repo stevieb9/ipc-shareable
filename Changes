@@ -104,6 +104,14 @@ Revision history for Perl extension IPC::Shareable.
       The fix was to replace the comparisons with $!{ERRNO_CONST} variables
       instead (eg. $!{EEXIST}, $!{ENOMEM}, $!{ENOSPC}) which are
       locale-independent
+    - Add Solaris (including OmniOS/illumos) support for shm_segments(),
+      seg_map(), and SharedMem stat()/stats() methods by providing
+      Solaris-specific shmid_ds unpack templates
+    - Add explicit use Errno so that $!{ENOMEM} and $!{EEXIST} checks work
+      reliably on all platforms (Solaris Perl builds did not populate these
+      keys in the %! tied hash without the module loaded)
+    - Complete VM unit testing framework with scripts and README for FreeBSD,
+      Linux i386 and Solaris (32 and 64 bit)
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

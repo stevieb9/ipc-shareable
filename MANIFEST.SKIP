@@ -42,3 +42,5 @@ agent.txt
 ^cover_db/
 ^ci/
 ^CLAUDE.md$
+.DS_Store$
+^nytprof.out$

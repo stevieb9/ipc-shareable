@@ -7,7 +7,7 @@ use strict;
 # It also regression tests a fix in global_register() where writing to the same
 # hash from two procs didn't update the global_register properly
 
-use IPC::Shareable;
+use IPC::Shareable qw(:lock);
 use Test::More;
 use Test::SharedFork;
 
@@ -33,8 +33,16 @@ use Async::Event::Interval;
         serializer => 'storable',
     };
 
-    my $event_one = Async::Event::Interval->new(0, sub {$shared_data{$$}{called}++});
-    my $event_two = Async::Event::Interval->new(0, sub {$shared_data{$$}{called}++});
+    my $event_one = Async::Event::Interval->new(0, sub {
+        tied(%shared_data)->lock;
+        $shared_data{$$}{called}++;
+        tied(%shared_data)->unlock;
+    });
+    my $event_two = Async::Event::Interval->new(0, sub {
+        tied(%shared_data)->lock;
+        $shared_data{$$}{called}++;
+        tied(%shared_data)->unlock;
+    });
 
     $event_one->start;
     $event_two->start;

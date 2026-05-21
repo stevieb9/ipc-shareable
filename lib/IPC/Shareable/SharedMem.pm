@@ -6,6 +6,7 @@ use strict;
 use Carp qw(carp croak confess);
 use Config;
 use Data::Dumper;
+use Errno qw(EEXIST EPERM);
 use IPC::SysV qw(IPC_RMID IPC_STAT);
 
 our $VERSION = '1.14_08';
@@ -219,6 +220,29 @@ sub stat {
 
         @values{qw(cuid cgid uid gid mode segsz lpid cpid nattch atime dtime ctime)}
             = unpack('L L L L S x[14] Q l l Q q q q', $data);
+    }
+    elsif ($^O eq 'solaris') {
+        if ($Config{longsize} == 8) {
+            # 64-bit Solaris/illumos _LP64 shmid_ds (136 bytes on OmniOS r151058):
+            #   ipc_perm (28 bytes): uid(4) gid(4) cuid(4) cgid(4) mode(4) seq(4) key(4)
+            #   [pad 4] segsz(8) [gap 8] lkcnt(2) [pad 2] lpid(4) cpid(4)
+            #   [pad 4] nattch(8) cnattch(8) atime(8) dtime(8) ctime(8)
+            #   shmatt_t = 8 bytes  mode_t = uint_t = 4 bytes
+            #   Offsets verified on OmniOS r151058 via offsetof().
+
+            @values{qw(uid gid cuid cgid mode segsz lpid cpid nattch atime dtime ctime)}
+                = unpack('L L L L L x[12] Q x[12] l l x[4] Q x[8] q q q', $data);
+        }
+        else {
+            # 32-bit Solaris/illumos shmid_ds (108 bytes):
+            #   ipc_perm (44 bytes): uid(4) gid(4) cuid(4) cgid(4) mode(4) seq(4) key(4) pad[4](16)
+            #   segsz(4) lpid(4) cpid(4) lkcnt(2) [pad 2] nattch(4) cnattch(4)
+            #   atime(4) pad1(4) dtime(4) pad2(4) ctime(4) pad3(4) pad4[4](16)
+            #   mode_t = uint_t = 4 bytes
+
+            @values{qw(uid gid cuid cgid mode segsz lpid cpid nattch atime dtime ctime)}
+                = unpack('L4 L x[24] L l l x[4] L x[4] l x[4] l x[4] l x[20]', $data);
+        }
     }
     else {
         # macOS/BSD shmid_ds / ipc_perm layout:
