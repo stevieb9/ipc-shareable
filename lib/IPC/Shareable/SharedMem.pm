@@ -179,8 +179,8 @@ sub data {
 
     return if ! defined $data;
 
-    # Remove \x{0} (NULL bytes) after end of string
-    $data =~ s/\x00+//;
+    my $pos = index($data, "\x00");
+    $data = $pos >= 0 ? substr($data, 0, $pos) : $data;
 
     return $data;
 }
@@ -273,10 +273,12 @@ sub stats {
     my ($self) = @_;
     my @stat_list = stat_list();
 
+    my $stat = $self->stat;
+
     my %stats;
 
     for (@stat_list) {
-        $stats{$_} = $self->stat->$_;
+        $stats{$_} = $stat->$_;
     }
 
     return \%stats;

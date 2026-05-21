@@ -112,6 +112,10 @@ Revision history for Perl extension IPC::Shareable.
       keys in the %! tied hash without the module loaded)
     - Complete VM unit testing framework with scripts and README for FreeBSD,
       Linux i386 and Solaris (32 and 64 bit)
+    - Replace regex-based null-byte stripping in SharedMem::data() with more
+      efficient index+substr
+    - SharedMem::stats() now calls stat() once and reuses it, avoiding 11
+      redundant shmctl(IPC_STAT) syscalls
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
