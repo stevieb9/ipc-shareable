@@ -8,7 +8,7 @@ use Config;
 use Errno qw(EEXIST EPERM);
 use IPC::SysV qw(IPC_RMID IPC_STAT);
 
-our $VERSION = '1.14';
+our $VERSION = '1.16';
 
 use constant {
     DEFAULT_SEG_SIZE    => 1024,

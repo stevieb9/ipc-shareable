@@ -1,5 +1,8 @@
 Revision history for Perl extension IPC::Shareable.
 
+1.16 UNREL
+    -
+
 1.14     2026-05-22
     - Modify remove() to properly catch a non "0 but true" case when trying
       to destroy segments and semaphores so warnings are displayed properly
