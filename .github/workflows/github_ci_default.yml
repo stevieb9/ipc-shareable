@@ -26,6 +26,7 @@ jobs:
       - run: perl -V
       - run: cpanm ExtUtils::PL2Bat
       - run: cpanm ExtUtils::MakeMaker
+      - run: cpanm --notest Test::SharedFork
       - run: cpanm --installdeps .
       - name: Run tests (no coverage)
         if: ${{ !matrix.coverage }}
