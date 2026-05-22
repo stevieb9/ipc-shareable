@@ -546,3 +546,5 @@ Steve Bertrand <steveb@cpan.org>
 =head1 SEE ALSO
 
 L<IPC::Shareable>, L<IPC::Shareable::SharedMem> L<IPC::ShareLite>
+
+=cut

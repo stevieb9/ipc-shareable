@@ -71,7 +71,7 @@ DESCRIPTION
 OPTIONS
 
     Options are specified by passing a reference to a hash as the third
-    argument to the tie() function that enchants a variable.
+    argument to the tie() function that binds a variable.
 
     The following fields are recognized in the options hash:
 

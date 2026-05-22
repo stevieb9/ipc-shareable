@@ -60,7 +60,7 @@ Revision history for Perl extension IPC::Shareable.
     - _type_int numeric dispatch; string eq comparisons on every operation
       replaced with == against integer constants in STORE, FETCH, and CLEAR
     - Major POD enhancements/cleanup
-     - Renamed ipcs() to se_count() as it's far more explanitory
+    - Renamed ipcs() to seg_count() as it's far more explanatory
     - Add new method sysv_info() which if the system provides it, retrieves all
       information related to the SYSV infrastructure (limits etc)
     - Closes #45; We now accept a hex-based value as the key

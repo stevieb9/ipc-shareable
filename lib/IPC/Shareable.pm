@@ -1828,7 +1828,8 @@ sub _shm_key {
         $key = IPC_PRIVATE;
     }
     elsif ($key_str =~ /^0x[0-9a-fA-F]+$/i) {
-        # User specified an explicit hex string key (e.g. '0xDEADBEEF'); use the
+        # User specified an explicit hex string key (eg. '0xDEADBEEF'); use the
+        
         # bit pattern as-is so the segment key seen by ipcs(1) matches exactly.
         $key = hex($key_str);
         $used_ids{$key}++;
@@ -1861,7 +1862,7 @@ sub _shm_key {
 sub _shm_key_rand {
     my $key;
 
-    # Unfortunatly, the only way I know how to check if a segment exists is
+    # Unfortunately, the only way I know how to check if a segment exists is
     # to actually create it. We must do that here, then remove it just to
     # ensure the slot is available
 
@@ -1921,7 +1922,7 @@ sub _read_check {
     return unless $knot->attributes('enforced_read_locking');
     return unless $knot->attributes('violated_read_lock_warn');
 
-    # getval() can return undef if the semaphore set has been removed (e.g.
+    # getval() can return undef if the semaphore set has been removed (eg.
     # after clean_up_all). The check is advisory only, so silently skip when
     # the semaphore is no longer reachable.
 
@@ -2165,7 +2166,7 @@ version (L<JSON::PP>).
 =head1 OPTIONS
 
 Options are specified by passing a reference to a hash as the third argument to
-the C<tie()> function that enchants a variable. We also call these
+the C<tie()> function that binds a variable. We also call these
 B<attributes>.
 
 The following fields are recognized in the options hash:
@@ -2186,7 +2187,7 @@ The key can be specified as:
 
 =item * A hex string (eg. C<'0xDEADBEEF'>), which we convert to integer form
 
-=item * A hex value (eg. C<0XDEADBEEF>), used as-is as the integer key
+=item * A hex value (eg. C<0xDEADBEEF>), used as-is as the integer key
 
 =item * An integer (eg. C<1234>), used as-is as the integer key
 
@@ -2317,7 +2318,7 @@ Default: B<false>
 By default, we use L<JSON> as the data serializer when writing to or
 reading from the shared memory segments we create. For cross-platform and
 cross-language interoperability this is the recommended choice. Alternatively,
-you can use L<Storable> for richer data type support (e.g. blessed objects).
+you can use L<Storable> for richer data type support (eg. blessed objects).
 
 Send in either C<json> or C<storable> as the value to use the respective
 serializer.
@@ -2498,7 +2499,7 @@ exclusively-locked segment; reads are never blocked, but a warning will be
 emitted if C<violated_read_lock_warn> is also set.
 
 B<Important>: Locks are inherited through forks, which can cause unintended and
-problematic side effects (particularly duplicated C<LOCK_EX> locks. Don't
+problematic side effects (particularly duplicated C<LOCK_EX> locks). Don't
 C<fork()> until all active locks have been released.
 
 The constants C<LOCK_EX>, C<LOCK_SH>, C<LOCK_NB>, and C<LOCK_UN> are available
@@ -2516,7 +2517,7 @@ See L</LOCKING> for further details.
 
 Removes a lock. Takes no parameters, returns C<true> on success.
 
-This is equivalent of calling C<shlock(LOCK_UN)>.
+This is equivalent to calling C<shlock(LOCK_UN)>.
 
 See L</LOCKING> for further details.
 
@@ -2754,7 +2755,7 @@ Return: Integer
     my $segs = IPC::Shareable->shm_segments('0xDEADBEEF');
 
 Class/object method. Scans all existing shared memory segments on the system
-and returns a hash reference mapping the hex key string (e.g. C<'0xdeadbeef'>)
+and returns a hash reference mapping the hex key string (eg. C<'0xdeadbeef'>)
 to the raw literal contents of that segment. Only loads segments that were
 created by L<IPC::Shareable>.
 
@@ -2860,7 +2861,7 @@ and 'b'), which are stored in the top-level segment.
         IPC::Shareable->remove($key);
     }
 
-Class/object method. Returns a list of hex key strings (e.g. C<'0xdeadbeef'>)
+Class/object method. Returns a list of hex key strings (eg. C<'0xdeadbeef'>)
 for all shared memory segments that were created by L<IPC::Shareable> but are
 not currently tied in the calling process.
 
@@ -3030,7 +3031,7 @@ C<:flock>, or C<:all>. The values should be the same as the standard C<flock>
 option arguments.
 
 When attempting to get a blocking lock (eg. C<LOCK_EX> or C<LOCK_SH>) while
-another process has an exclusive write lock (C<LOCK_EX>, your call will block
+another process has an exclusive write lock (C<LOCK_EX>), your call will block
 and wait until the other process releases its exclusive lock. The same thing
 happens if you attempt to get a C<LOCK_EX> if there are any other processes that
 hold a C<LOCK_SH>.
@@ -3496,3 +3497,5 @@ Thanks to all those with comments or bug fixes, especially
 
 L<perltie>, L<Storable>, C<shmget>, C<ipcs>, C<ipcrm> and other SysV IPC manual
 pages.
+
+=cut
