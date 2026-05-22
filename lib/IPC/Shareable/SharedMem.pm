@@ -5,7 +5,6 @@ use strict;
 
 use Carp qw(carp croak confess);
 use Config;
-use Data::Dumper;
 use Errno qw(EEXIST EPERM);
 use IPC::SysV qw(IPC_RMID IPC_STAT);
 

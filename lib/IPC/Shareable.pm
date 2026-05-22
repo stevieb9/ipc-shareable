@@ -7,7 +7,6 @@ require 5.00503;
 
 use Carp qw(croak confess carp);
 use Config;
-use Data::Dumper;
 use Errno qw(ENOMEM ENOSPC);
 use Digest::MD5 qw(md5_hex);
 use IPC::Semaphore;
