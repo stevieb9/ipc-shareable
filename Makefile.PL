@@ -33,7 +33,7 @@ WriteMakefile(
     VERSION_FROM      => 'lib/IPC/Shareable.pm',
     CCFLAGS           => $ccflags,
     LDDLFLAGS         => $lddlflags,
-    ($] >= 5.005 ?
+    ($] >= 5.010 ?
       (ABSTRACT_FROM  => 'lib/IPC/Shareable.pm',
        AUTHOR         => 'Steve Bertrand <steveb@cpan.org>') : ()),
     LIBS              => [],

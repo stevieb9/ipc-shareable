@@ -3,7 +3,7 @@ package IPC::Shareable;
 use warnings;
 use strict;
 
-require 5.00503;
+require 5.010;
 
 use Carp qw(croak confess carp);
 use Config;
