@@ -25,17 +25,13 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION;
-our $_have_xs;
+our $VERSION = '1.14';
 
-BEGIN {
-    $VERSION  = '1.14';
-    $_have_xs = ! $ENV{IPC_SHAREABLE_NO_XS} && eval {
-        require XSLoader;
-        XSLoader::load('IPC::Shareable', $VERSION);
-        1;
-    } // 0;
-}
+our $_have_xs = ! $ENV{IPC_SHAREABLE_NO_XS} && eval {
+    require XSLoader;
+    XSLoader::load('IPC::Shareable', $VERSION);
+    1;
+} // 0;
 
 use constant {
     # Locking
