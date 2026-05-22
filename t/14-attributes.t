@@ -31,7 +31,6 @@ my @attr_list = qw(
     create
     owner
     graceful
-    tidy
     destroy
     enforced_write_locking
     enforced_read_locking
@@ -57,7 +56,6 @@ is $attrs->{mode},      438, "mode is set ok";
 is $attrs->{create},    1, "create is set ok";
 is $attrs->{owner},     $$, "owner is set ok";
 is $attrs->{graceful},  0, "graceful is set ok";
-is $attrs->{tidy},      1, "tidy is set ok";
 is $attrs->{enforced_write_locking},   1, "enforced_write_locking is set ok";
 is $attrs->{enforced_read_locking},    1, "enforced_read_locking is set ok";
 is $attrs->{violated_write_lock_warn}, 1, "violated_write_lock_warn is set ok";

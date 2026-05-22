@@ -144,7 +144,6 @@ my %default_options = (
     limit                       => 1,
     graceful                    => 0,
     warn                        => 0,
-    tidy                        => 1,
     serializer                  => 'json',
     enforced_write_locking      => 1,
     enforced_read_locking       => 1,
@@ -1589,16 +1588,12 @@ sub _magic_tie {
         $child = tie %$val, 'IPC::Shareable', $key, { %opts };
         croak "Could not create inner tie" if ! $child;
 
-        _reset_segment($parent, $identifier) if $opts{tidy};
-
         %$val = %copy;
     }
     elsif ($type eq "ARRAY") {
         my @copy = @$val;
         $child = tie @$val, 'IPC::Shareable', $key, { %opts };
         croak "Could not create inner tie" if ! $child;
-
-        _reset_segment($parent, $identifier) if $opts{tidy};
 
         @$val = @copy;
     }
@@ -1751,36 +1746,6 @@ sub _lock_children {
     }
 
     return \@locked;
-}
-sub _reset_segment {
-    my ($parent, $id) = @_;
-
-    my $parent_type = Scalar::Util::reftype($parent->{_data}) || '';
-
-    if ($parent_type eq 'HASH') {
-        my $data = $parent->{_data};
-        if (exists $data->{$id}) {
-            my $child_type = Scalar::Util::reftype($data->{$id}) || '';
-            if ($child_type eq 'HASH' && tied %{ $data->{$id} }) {
-                (tied %{ $parent->{_data}{$id} })->remove;
-            }
-            elsif ($child_type eq 'ARRAY' && tied @{ $data->{$id} }) {
-                (tied @{ $parent->{_data}{$id} })->remove;
-            }
-        }
-    }
-    elsif ($parent_type eq 'ARRAY') {
-        my $data = $parent->{_data};
-        if (exists $data->[$id]) {
-            my $child_type = Scalar::Util::reftype($data->[$id]) || '';
-            if ($child_type eq 'HASH' && tied %{ $data->[$id] }) {
-                (tied %{ $parent->{_data}[$id] })->remove;
-            }
-            elsif ($child_type eq 'ARRAY' && tied @{ $data->[$id] }) {
-                (tied @{ $parent->{_data}[$id] })->remove;
-            }
-        }
-    }
 }
 sub _shm_data_summary {
     my ($knot) = @_;
@@ -2347,17 +2312,6 @@ it will not be removed upon program completion, even if C<destroy> is set.
 
 Default: B<false>
 
-=head2 tidy
-
-When updating a nested structure, a new segment is created and the updated data
-is stored into it. This option, when set to true will automatically clean up the
-old segment that is no longer needed after the update.
-
-Comes with a slight 2% performance hit, but does prevent an unnecessary
-accumulation of unneeded segments from stressing system resources.
-
-Default: B<true>
-
 =head2 serializer
 
 By default, we use L<JSON> as the data serializer when writing to or
@@ -2435,7 +2389,6 @@ Default values for options are:
     destroy                     => 0,
     graceful                    => 0,
     warn                        => 0,
-    tidy                        => 1,
     serializer                  => 'json',
     enforced_write_locking      => 1,
     enforced_read_locking       => 1,
@@ -3331,7 +3284,7 @@ L<shm_segments()|/shm_segments($key)> documentation to gather this structure wit
 
 When you replace a child with a new reference where the previous value was
 also a reference, a new segment is created and the new data is stored there.
-If C<tidy> is enabled (default), the old segment is automatically removed.
+The old segment is automatically removed.
 
 When a value that is a reference is deleted from the data, the memory segment
 that held that data is automatically cleaned up and freed.

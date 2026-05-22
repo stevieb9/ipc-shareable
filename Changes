@@ -142,6 +142,12 @@ Revision history for Perl extension IPC::Shareable.
       value before overwriting, matching the cleanup that DELETE and CLEAR
       already perform. Extracted the common ref/_is_child/remove pattern into
       _remove_child() to deduplicate across DELETE, CLEAR, and STORE.
+    - Remove the 'tidy' attribute and _reset_segment() internals. Since the
+      STORE fix above now always calls _remove_child() before _magic_tie(),
+      _reset_segment() was reduced to a no-op that only produced spurious
+      "Couldn't remove shm segment" warnings from double-removal. Removing it
+      eliminates dead code and those warnings. t/44-nested_segs_overwrite.t
+      proved tidy=>0 and tidy=>1 produce identical segment counts and data.
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
