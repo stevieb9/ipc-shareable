@@ -1,6 +1,6 @@
 Revision history for Perl extension IPC::Shareable.
 
-1.16 UNREL
+1.15 UNREL
     - Refactor how we initialize $VERSION. It's no longer in a BEGIN block. That
       broke Dist::Mgr
     -
