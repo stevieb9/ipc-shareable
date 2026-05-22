@@ -150,10 +150,6 @@ my %default_options = (
     violated_read_lock_warn     => 1,
 );
 
-# Seed the random number generator
-
-srand();
-
 # Class-level variables
 
 my %global_register;
