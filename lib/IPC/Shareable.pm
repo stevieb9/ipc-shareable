@@ -699,16 +699,18 @@ sub shm_segments {
 
         next unless $segsz;
 
+        # Probe the 14-byte tag first so we don't pull entire foreign
+        # segments (which may be gigabytes) into Perl just to discard them.
+
+        my $head = '';
+        shmread($id, $head, 0, 14) or next;
+        next unless $head eq 'IPC::Shareable';
+
         my $data = '';
         shmread($id, $data, 0, $segsz) or next;
 
         # Strip trailing null bytes
         $data =~ s/\x00+$//;
-
-        # Skip segments not owned by IPC::Shareable (all our segments
-        # are prefixed with the literal string 'IPC::Shareable')
-
-        next unless substr($data, 0, 14) eq 'IPC::Shareable';
 
         my $json_part  = substr($data, 14);
         my @child_keys = ($json_part =~ /"child_key_hex":"([^"]+)"/g);
