@@ -756,8 +756,12 @@ sub seg_count {
     while (my $line = <$ipcs_fh>) {
         # BSD/macOS format: m <shmid> <key> ...
         # Linux format:     <key> <shmid> ...
-        $count++ if $line =~ /^\s*m\s+\d+\s+\S+/;
-        $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
+        if ($line =~ /^\s*m\s+\d+\s+\S+/) {
+            $count++;
+        }
+        elsif ($line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/) {
+            $count++;
+        }
     }
     close $ipcs_fh;
 
@@ -770,8 +774,12 @@ sub sem_count {
     while (my $line = <$ipcs_fh>) {
         # BSD/macOS format: s <semid> <key> ...
         # Linux format:     <key> <semid> ...
-        $count++ if $line =~ /^\s*s\s+\d+\s+\S+/;
-        $count++ if $line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/;
+        if ($line =~ /^\s*s\s+\d+\s+\S+/) {
+            $count++;
+        }
+        elsif ($line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/) {
+            $count++;
+        }
     }
     close $ipcs_fh;
 
