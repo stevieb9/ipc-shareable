@@ -509,8 +509,13 @@ sub lock {
     # Unlock was called
     return $knot->unlock if ($flags & LOCK_UN);
 
-    # Caller already has the lock requested
-    return 1 if ($knot->{_lock} & $flags);
+    # Caller already has the same lock type
+    if ($knot->{_lock} & $flags) {
+        if ($code && $flags == LOCK_EX) {
+            _execute_lock_coderef($knot, $code);
+        }
+        return 1;
+    }
 
     # If they have a different lock than they want, release it first
 
@@ -537,14 +542,9 @@ sub lock {
         }
     }
 
-    if ($flags == LOCK_EX && $lock_success) {
-        if ($code) {
-            my $ok = eval { $code->(); 1 };
-            my $err = $@;
-            $knot->unlock;
-            die $err if ! $ok;
-            return 1;
-        }
+    if ($flags == LOCK_EX && $lock_success && $code) {
+        _execute_lock_coderef($knot, $code);
+        return 1;
     }
     return $lock_success;
 }
@@ -583,6 +583,15 @@ sub unlock {
 
     1;
 }
+
+sub _execute_lock_coderef {
+    my ($knot, $code) = @_;
+    my $ok = eval { $code->(); 1 };
+    my $err = $@;
+    $knot->unlock;
+    die $err if ! $ok;
+}
+
 sub singleton {
 
     # If called with IPC::Shareable::singleton() as opposed to
@@ -2467,7 +2476,7 @@ exclusive write lock.
 Optional, Code reference: If this parameter is sent in, and an exclusive lock
 is asked for, we will set the lock, execute the subroutine, and then call
 C<unlock()> on the segment. The sub is called within an C<eval>, so we will
-C<unlock> and the script will continue on even if the code failed.
+C<unlock>, then C<die> with whatever error your function threw.
 
 B<Note>: Although the C<$flags> and C<$code> parameters appear positional, you
 can send in C<$code> without sending in any C<$flags>. When this occurs,
