@@ -124,8 +124,5 @@ is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
 done_testing;
 
 sub seg_count {
-    my $count = `ipcs -m | wc -l`;
-    chomp $count;
-    $count =~ s/\s+//g;
-    return $count;
+    return IPC::Shareable::seg_count();
 }
