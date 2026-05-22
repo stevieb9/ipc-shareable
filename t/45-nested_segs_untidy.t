@@ -37,13 +37,13 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     is seg_count(), $initial_seg_count + 1, "After initial aref add, seg count ok";
 
     $a[0] = [1, 2];
-    is seg_count(), $initial_seg_count + 2, "Adding a new aref to an existing element doesn't create a new seg ok";
+    is seg_count(), $initial_seg_count + 1, "Overwriting an aref element replaces (doesn't leak) old child seg ok";
 
     $a[0] = [1, 2, 3];
-    is seg_count(), $initial_seg_count + 3, "Same with repurposing the aref again";
+    is seg_count(), $initial_seg_count + 1, "Same with overwriting the aref again";
 
     $a[0] = [1, 2, 3, [26, [30, 31]]];
-    is seg_count(), $initial_seg_count + 6, "Same with repurposing the aref again with nested";
+    is seg_count(), $initial_seg_count + 3, "Overwriting with nested aref adds only net-new children";
 
     is_deeply \@a, \@test_data, "Nested arrays compare ok";
 
@@ -76,19 +76,19 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     is seg_count(), $initial_seg_count + 1, "After initial href add, seg count ok";
 
     $h{a} = {a => 1, b => 2};
-    is seg_count(), $initial_seg_count + 2, "Adding a new href to an existing key doesn't create a new seg ok";
+    is seg_count(), $initial_seg_count + 1, "Overwriting an href element replaces (doesn't leak) old child seg ok";
 
     $h{a} = {a => 1, b => 2, c => 3};
-    is seg_count(), $initial_seg_count + 3, "Same with repurposing the href again";
+    is seg_count(), $initial_seg_count + 1, "Same with overwriting the href again";
 
     $h{a} = {a => 1, b => 2, c => 3, d => {z => 26}};
-    is seg_count(), $initial_seg_count + 5, "Adding a new hash inside of existing does bump seg count";
+    is seg_count(), $initial_seg_count + 2, "Overwriting with nested href adds only net-new children";
 
     $h{a} = {a => 1, b => 2, c => 3, d => {z => 26, y => {yy => 25}}};
-    is seg_count(), $initial_seg_count + 8, "Adding a new hash inside of two level existing does bump seg count";
+    is seg_count(), $initial_seg_count + 4, "Overwriting with deeper nested href adds only net-new children";
 
     $h{a} = {a => 1, b => 2, c => 3, d => {z => 26, y => {yy => 25}}};
-    is seg_count(), $initial_seg_count + 11, "Adding a new hash inside of two level existing twice does bump seg count";
+    is seg_count(), $initial_seg_count + 6, "Overwriting with same structure again adds only net-new children";
 
     is_deeply \%h, \%test_data, "Shared memory hash matches test data ok";
 

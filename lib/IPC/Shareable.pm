@@ -182,16 +182,21 @@ sub STORE {
 
     if ($knot->{_type_int} == TYPE_HASH) {
         my ($key, $val) = @_;
+        _remove_child($knot->{_data}{$key});
         _magic_tie($knot, $val, $key) if ref($val) && $knot->_need_tie($val, $key);
         $knot->{_data}{$key} = $val;
     }
     elsif ($knot->{_type_int} == TYPE_ARRAY) {
         my ($i, $val) = @_;
+        _remove_child($knot->{_data}[$i]);
         _magic_tie($knot, $val, $i) if ref($val) && $knot->_need_tie($val, $i);
         $knot->{_data}[$i] = $val;
     }
     elsif ($knot->{_type_int} == TYPE_SCALAR) {
         my ($val) = @_;
+        if ($knot->{_data} && ref($knot->{_data})) {
+            _remove_child(${$knot->{_data}});
+        }
         _magic_tie($knot, $val) if ref($val) && $knot->_need_tie($val);
         $knot->{_data} = \$val;
     }
@@ -259,20 +264,14 @@ sub CLEAR {
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
 
     if ($knot->{_type_int} == TYPE_HASH) {
-        # Remove any child segments before discarding the data
         for my $val (values %{ $knot->{_data} }) {
-            if (ref($val) && (my $child = _is_child($val))) {
-                $child->remove;
-            }
+            _remove_child($val);
         }
         $knot->{_data} = { };
     }
     elsif ($knot->{_type_int} == TYPE_ARRAY) {
-        # Remove any child segments before discarding the data
         for my $val (@{ $knot->{_data} }) {
-            if (ref($val) && (my $child = _is_child($val))) {
-                $child->remove;
-            }
+            _remove_child($val);
         }
         $knot->{_data} = [ ];
     }
@@ -296,11 +295,7 @@ sub DELETE {
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     my $val = delete $knot->{_data}->{$key};
 
-    # Remove the child segment if the deleted value was a nested tied ref
-
-    if (ref($val) && (my $child = _is_child($val))) {
-        $child->remove;
-    }
+    _remove_child($val);
 
     if ($knot->{_lock} & LOCK_EX) {
         $knot->{_was_changed} = 1;
@@ -1639,6 +1634,12 @@ sub _need_tie {
     }
 
     return $need_tie ? 1 : 0;
+}
+sub _remove_child {
+    my ($val) = @_;
+    if (ref($val) && (my $child = _is_child($val))) {
+        $child->remove;
+    }
 }
 sub _is_child {
     return $_have_xs

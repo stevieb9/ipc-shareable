@@ -133,6 +133,15 @@ Revision history for Perl extension IPC::Shareable.
     - Rewrote _lock_children() from recursive to iterative (manual stack) to
       eliminate Perl call-stack overhead on deeply nested structures; simplified
       interface returns an arrayref instead of passing accumulator/seen refs
+    - Fix STORE child-segment leak: when a hash/array/scalar value containing a
+      tied child segment was overwritten with a non-reference value, STORE
+      silently discarded the old child reference without removing its shm segment
+      or semaphore from the kernel. This caused segment/semaphore count
+      mismatches on FreeBSD 15 where IPC_RMID timing and semget attach semantics
+      differ from Linux and MacOS. STORE now calls _remove_child() on the old
+      value before overwriting, matching the cleanup that DELETE and CLEAR
+      already perform. Extracted the common ref/_is_child/remove pattern into
+      _remove_child() to deduplicate across DELETE, CLEAR, and STORE.
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
