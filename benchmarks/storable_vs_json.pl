@@ -116,7 +116,15 @@ sub storable {
 }
 
 __END__
+
 # As of: 4f53428d
-       Rate store  json
+
+        Rate store  json
 store 196/s    --  -14%
 json  227/s   16%    --
+
+# As of: f3f0868f (after XS changes)
+
+        Rate store  json
+store 248/s    --  -13%
+json  284/s   15%    --

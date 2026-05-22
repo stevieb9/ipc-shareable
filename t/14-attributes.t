@@ -5,13 +5,8 @@ use Data::Dumper;
 use IPC::Shareable;
 use Test::More;
 
-#BEGIN {
-#    if (! $ENV{CI_TESTING}) {
-#        plan skip_all => "Not on a legit CI platform...";
-#    }
-#}
-
-my $segs_before = IPC::Shareable::shm_count();
+my $segs_before = IPC::Shareable::seg_count();
+my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 my $k = tie my $sv, 'IPC::Shareable', 'testing', {create => 1, destroy => 1, serializer => 'storable' };
@@ -36,10 +31,11 @@ my @attr_list = qw(
     create
     owner
     graceful
-    tidy
     destroy
-    enforced_locking
-    violated_lock_warn
+    enforced_write_locking
+    enforced_read_locking
+    violated_write_lock_warn
+    violated_read_lock_warn
 );
 
 is keys %$attrs, scalar @attr_list, "attributes() hash has proper count of keys";
@@ -60,9 +56,10 @@ is $attrs->{mode},      438, "mode is set ok";
 is $attrs->{create},    1, "create is set ok";
 is $attrs->{owner},     $$, "owner is set ok";
 is $attrs->{graceful},  0, "graceful is set ok";
-is $attrs->{tidy},      1, "tidy is set ok";
-is $attrs->{enforced_locking},   1, "enforced_locking is set ok";
-is $attrs->{violated_lock_warn},   0, "violated_lock_warn is set ok";
+is $attrs->{enforced_write_locking},   1, "enforced_write_locking is set ok";
+is $attrs->{enforced_read_locking},    1, "enforced_read_locking is set ok";
+is $attrs->{violated_write_lock_warn}, 1, "violated_write_lock_warn is set ok";
+is $attrs->{violated_read_lock_warn},  1, "violated_read_lock_warn is set ok";
 
 is $k->attributes('no_exist'), undef, "attributes() on an undefined attr is undef";
 
@@ -105,8 +102,10 @@ is $k->attributes('no_exist'), undef, "attributes() on an undefined attr is unde
 
 IPC::Shareable::_end;
 
-my $segs_after = IPC::Shareable::shm_count();
+my $segs_after = IPC::Shareable::seg_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs cleaned up ok";
+my $sems_after = IPC::Shareable::sem_count();
+is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
 
 done_testing;

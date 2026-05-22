@@ -8,7 +8,8 @@ lib/IPC/Shareable/SharedMem.pm
 Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
-README
+README.md
+Shareable.xs
 t/00-base.t
 t/02-create.t
 t/03-new.t
@@ -21,11 +22,13 @@ t/12-hv.t
 t/14-attributes.t
 t/16-ref.t
 t/18-fork_ipc.t
+t/19-lock_recursive.t
 t/20-lock_operation.t
 t/21-lock_coderef.t
 t/22-lock_semaphore.t
 t/23-lock_sh_enforcement.t
-t/24-clean.t
+t/24-lock_fork_blocking.t
+t/25-fetch_read_warn.t
 t/26-ipcav.t
 t/28-ipchv.t
 t/30-ipcref.t
@@ -34,8 +37,8 @@ t/36-ipcobj.t
 t/38-lsync.t
 t/40-tied.t
 t/42-seg_sem.t
-t/44-nested_segs_tidy.t
-t/45-nested_segs_untidy.t
+t/44-nested_segs_overwrite.t
+t/45-private_json_nested.t
 t/47-seg_size.t
 t/48-size_exceeded.t
 t/49-exhaust_shm_slots.t
@@ -48,15 +51,18 @@ t/61-json_fork_dup_rand_keys.t
 t/62-fork_dup_rand_keys.t
 t/63-sig_child_ignore.t
 t/65-clean_protected.t
-t/66-encode_fail.t
 t/66-protected_persist.t
 t/67-storable_fallback.t
+t/68-encode_fail.t
 t/70-global_register.t
 t/71-sysv_info.t
 t/72-shm_segments.t
 t/73-internal.t
 t/74-seg_map.t
+t/75-is_child_xs.t
 t/80-SharedMem.t
+t/85-clean.t
+t/86-exports.t
 t/90-pod_coverage.t
 t/91-pod_linkcheck.t
 t/92-pod.t

@@ -31,5 +31,5 @@ say "";
 say "Both keys resolve to the same segment: "
     . ( (tied %h)->seg->id == (tied %h2)->seg->id ? "YES" : "NO" );
 say "";
-say "Segments live: " . IPC::Shareable::shm_count();
+say "Segments live: " . IPC::Shareable::seg_count();
 say "Clean up with: ipcrm -m $seg_id";

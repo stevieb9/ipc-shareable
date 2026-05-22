@@ -5,21 +5,25 @@ use Data::Dumper;
 use Test::More;
 
 BEGIN {
-    #if (!$ENV{CI_TESTING}) {
-    #    plan skip_all => "Not on a valid CI platform...";
-    #}
     use_ok('IPC::Shareable');
 };
 
-my $segs_before = IPC::Shareable::shm_count();
+my $segs_before = IPC::Shareable::seg_count();
+my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 print "Starting with $segs_before segments\n";
 is $segs_before, $segs_before, "Initial test ok";
 
 tie my %store, 'IPC::Shareable', {key => 'async_tests', create => 1, serializer => 'storable' };
-$store{segs} = $segs_before;
 
+# Measure the baseline AFTER tying and subtract 1 to exclude the async_tests
+# segment/semaphore themselves.  This keeps t/99-end.t's comparison correct
+# even when a stale async_tests semaphore was orphaned by a previous crashed
+# run (segment removed, semaphore not), causing the pre-tie count to be off.
+
+$store{segs} = IPC::Shareable::seg_count() - 1;
+$store{sems} = IPC::Shareable::sem_count() - 1;
 
 {
     my $a = tie my $x, 'IPC::Shareable';
@@ -33,7 +37,7 @@ $store{segs} = $segs_before;
 
 IPC::Shareable::_end;
 
-warn "Segs After: " . IPC::Shareable::shm_count() . "\n" if $ENV{PRINT_SEGS};
-is IPC::Shareable::shm_count(), $segs_before + 1, "No segs left after test suite run ok";
+warn "Segs After: " . IPC::Shareable::seg_count() . "\n" if $ENV{PRINT_SEGS};
+is IPC::Shareable::seg_count(), $segs_before + 1, "No segs left after test suite run ok";
 
 done_testing();

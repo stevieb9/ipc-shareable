@@ -4,13 +4,8 @@ use strict;
 use IPC::Shareable;
 use Test::More;
 
-#BEGIN {
-#    if (! $ENV{CI_TESTING}) {
-#        plan skip_all => "Not on a legit CI platform...";
-#    }
-#}
-
-my $segs_before = IPC::Shareable::shm_count();
+my $segs_before = IPC::Shareable::seg_count();
+my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 tie my $sv, 'IPC::Shareable', {destroy => 1, serializer => 'storable' };
@@ -39,10 +34,37 @@ for my $mod (qw/HASH SCALAR ARRAY/){
     is $sv, undef, "FETCH on never-written scalar returns undef ok";
 }
 
+# STORE edge case: previous value was undef. The TYPE_SCALAR STORE branch
+# (Shareable.pm:189-196) assigns _data = \$val on every store, so after
+# storing undef _data is a scalar-ref whose target is undef. A subsequent
+# STORE then exercises the truthy-but-dereferences-to-undef branch in
+# _remove_child without exploding.
+{
+    my $k = tie my $sv, 'IPC::Shareable', { key => 'sv10f', create => 1, destroy => 1, serializer => 'storable' };
+
+    $sv = undef;
+    is $sv, undef, "scalar tied var assigned undef ok";
+
+    # _data is now \$undef. Force STORE to re-enter so it sees that state.
+    is ref($k->{_data}), 'SCALAR', "...and _data is a SCALAR ref (to an undef value)";
+    is ${ $k->{_data} }, undef,     "...where the underlying value is undef";
+
+    # Store a fresh value over the \$undef — STORE must walk the
+    # ref-to-undef branch of _remove_child without exploding.
+    $sv = 'after_undef';
+    is $sv, 'after_undef', "STORE of plain scalar over previous \\\$undef succeeds";
+
+    # And store a ref over what's now a plain scalar (TYPE_SCALAR branch with a tied child).
+    $sv = { nested => 1 };
+    is $sv->{nested}, 1, "STORE of hash ref over plain scalar succeeds";
+}
+
 IPC::Shareable::_end;
 
-my $segs_after = IPC::Shareable::shm_count();
+my $segs_after = IPC::Shareable::seg_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs, even those created in separate procs, cleaned up ok";
+my $sems_after = IPC::Shareable::sem_count();
+is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
 
 done_testing();

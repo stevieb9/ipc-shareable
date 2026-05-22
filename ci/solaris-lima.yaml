@@ -1,0 +1,44 @@
+# Lima VM config for OmniOS CE r151058 (illumos / Solaris 2.11)
+# Matches the CPAN smoker platform that reports test failures:
+#   osname=solaris, osvers=2.11, archname=i86pc-solaris-64
+#   uname: SunOS 5.11 omnios-r151034
+#
+# Lima has no illumos/Solaris OS type.  os:FreeBSD is the closest match:
+# Lima skips the Linux guest-agent and instead waits for the file-based
+# boot-done marker (/var/run/lima-boot-done), which solaris-first-boot.py
+# writes via the QEMU serial console on the first boot.
+#
+# OmniOS is x86-64 only, so QEMU emulates x86-64 via TCG on Apple Silicon.
+# Expect a slow first boot (~10-20 min); subsequent starts are much faster.
+#
+# Setup (done automatically by solaris-test.sh):
+#   limactl create --name solaris-ipc ci/solaris-lima.yaml
+#   limactl start solaris-ipc
+#
+# Run tests:
+#   ./ci/solaris-test.sh
+#
+# Interactive shell:
+#   limactl shell solaris-ipc
+#
+# Stop / delete:
+#   limactl stop solaris-ipc
+#   limactl delete solaris-ipc
+
+vmType: qemu
+os: FreeBSD
+arch: x86_64
+
+user:
+  name: solaris
+
+images:
+  - location: "https://downloads.omnios.org/media/stable/omnios-r151058.cloud.vmdk"
+    arch: x86_64
+    digest: "sha256:33950fb13741acde2d5c4c3606ac1160a279a096c7e6bdfbb6ca17e39ec0aa91"
+
+cpus: 2
+memory: "2GiB"
+disk: "20GiB"
+
+mounts: []

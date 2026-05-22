@@ -10,7 +10,8 @@ use IPC::Shareable;
 # IPC::Shareable should detect the mismatch, switch to storable for the
 # session, and emit a carp warning.
 
-my $segs_before = IPC::Shareable::shm_count();
+my $segs_before = IPC::Shareable::seg_count();
+my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 # -----------------------------------------------------------------------
@@ -101,6 +102,31 @@ sub capture_warns (&) {
 }
 
 # -----------------------------------------------------------------------
+# 4b. Carp message matches the documented format and serializer attribute
+#     is mutated to 'storable' after fallback.
+# -----------------------------------------------------------------------
+{
+    my $key = 'sf_format';
+
+    tie my %h, 'IPC::Shareable', { key => $key, create => 1, destroy => 1, serializer => 'storable' };
+    $h{f} = 'g';
+
+    my $knot;
+    my @warns = capture_warns {
+        $knot = tie my %h2, 'IPC::Shareable', { key => $key, create => 0, destroy => 1 };
+    };
+
+    my $msg = join '', @warns;
+
+    like $msg,
+        qr/IPC::Shareable: segment 0x[0-9a-f]{8} contains Storable-encoded data; switching serializer to 'storable' for this session\. Re-create the segment to migrate it to JSON\./,
+        'carp message matches the full documented format';
+
+    is $knot->attributes('serializer'), 'storable',
+        'attributes(serializer) mutated to storable post-fallback';
+}
+
+# -----------------------------------------------------------------------
 # 5. No warning when segment was written and read with json
 # -----------------------------------------------------------------------
 {
@@ -116,8 +142,10 @@ sub capture_warns (&) {
 
 IPC::Shareable::_end;
 
-my $segs_after = IPC::Shareable::shm_count();
+my $segs_after = IPC::Shareable::seg_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, 'all segments cleaned up';
+my $sems_after = IPC::Shareable::sem_count();
+is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
 
 done_testing;

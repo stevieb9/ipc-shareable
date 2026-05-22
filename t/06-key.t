@@ -6,13 +6,8 @@ use IPC::Shareable;
 use Mock::Sub;
 use Test::More;
 
-#BEGIN {
-#    if (! $ENV{CI_TESTING}) {
-#        plan skip_all => "Not on a legit CI platform...";
-#    }
-#}
-
-my $segs_before = IPC::Shareable::shm_count();
+my $segs_before = IPC::Shareable::seg_count();
+my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 # deprecated string key param
@@ -211,6 +206,24 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
     }
 }
 
+# _shm_key() croaks when CRC32 returns MAX_KEY_INT_SIZE (post-subtraction key == 0)
+{
+    my $k = tie my $sv, 'IPC::Shareable',
+        { key => 'force_zero_collision', create => 1, destroy => 1, serializer => 'storable' };
+
+    my $m = Mock::Sub->new;
+    my $crc_mock = $m->mock('IPC::Shareable::crc32');
+    $crc_mock->return_value(0x80000000);   # MAX_KEY_INT_SIZE
+
+    my $ok = eval { $k->_shm_key('any string here'); 1 };
+    is $ok, undef, "_shm_key() croaks when CRC32 produces a post-subtraction key of 0";
+    like $@, qr/key which equals 0\. This is a fatal error/,
+        "...and the error message matches the documented format";
+
+    $crc_mock->unmock;
+    IPC::Shareable->clean_up_all;
+}
+
 # _shm_key_rand() collisions (in _mg_tie())
 {
     my $m = Mock::Sub->new;
@@ -237,8 +250,10 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 IPC::Shareable::_end;
 
-my $segs_after = IPC::Shareable::shm_count();
+my $segs_after = IPC::Shareable::seg_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs, even those created in separate procs, cleaned up ok";
+my $sems_after = IPC::Shareable::sem_count();
+is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
 
 done_testing();

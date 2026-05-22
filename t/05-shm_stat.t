@@ -5,7 +5,8 @@ use Data::Dumper;
 use Test::More;
 use IPC::Shareable;
 
-my $segs_before = IPC::Shareable::shm_count();
+my $segs_before = IPC::Shareable::seg_count();
+my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 my $mod = 'IPC::Shareable';
@@ -29,6 +30,11 @@ for (@stat_list) {
 
     is $data, $stats->{$_}, "stats() and stat $_ method data lines up ok";
 }
+
+# Verify segsz matches what we requested (catches platform-specific
+# shmid_ds unpack bugs like the 64-bit Solaris/illumos offset fix).
+cmp_ok $seg->stat->segsz, '>=', IPC::Shareable::SHM_BUFSIZ,
+    'segsz from stat() is at least the requested segment size';
 
 $hv{a} = {b => {c => 1}};
 
@@ -97,9 +103,11 @@ is %hv, '', "hash deleted after clean_up()";
 
 IPC::Shareable::_end;
 
-my $segs_after = IPC::Shareable::shm_count();
+my $segs_after = IPC::Shareable::seg_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs, even those created in separate procs, cleaned up ok";
+my $sems_after = IPC::Shareable::sem_count();
+is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
 
 done_testing();
 

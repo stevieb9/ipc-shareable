@@ -1,0 +1,264 @@
+#!/bin/sh
+# Run IPC::Shareable tests in a local OmniOS CE VM (Lima/QEMU).
+#
+# Targets the CPAN smoker platform:
+#   osname=solaris, osvers=2.11, archname=i86pc-solaris-64
+#
+# Usage: ./ci/solaris-test.sh [prove options]
+
+set -e
+
+VM="${VM:-solaris-ipc}"
+HOST_REPO="$(cd "$(dirname "$0")/.." && pwd)"
+GUEST_USER="solaris"
+GUEST_HOME="/export/home/${GUEST_USER}.guest"
+GUEST_REPO="${GUEST_HOME}/ipc-shareable"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+XS_MODE=0
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [options] [prove options]
+
+Options:
+  -x, --xs      Build and test with XS (default: pure Perl only)
+  -h, --help      Show this help message and exit
+
+Environment:
+  VM=<name>       Target a different Lima VM (default: solaris-ipc)
+
+Prove options default to "-v t" (verbose, full suite) when not supplied.
+Examples:
+  $(basename "$0")                   # full suite
+  $(basename "$0") t/24-clean.t     # single test file
+  $(basename "$0") -v t/24-clean.t  # verbose, single file
+  $(basename "$0") t                # full suite, no -v
+EOF
+}
+
+_PROVE_ARGS=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -x|--xs)      XS_MODE=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *)         _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
+    esac
+done
+PROVE_ARGS="${_PROVE_ARGS# }"
+PROVE_ARGS="${PROVE_ARGS:--v t}"
+
+cleanup() {
+    status=$?
+    echo "==> Shutting down VM '${VM}' cleanly..."
+    # Issue a clean shutdown via SSH so ZFS pool is marked clean.
+    # TCG emulation is slow — the guest may need minutes to sync+halt.
+    ssh -F ~/.lima/"$VM"/ssh.config lima-"$VM" \
+        'sudo shutdown -i5 -g0 -y 2>/dev/null' \
+        </dev/null 2>/dev/null || true
+    # Wait for the VM to actually power off (poll for up to 5 min).
+    echo "==> Waiting for VM to power off..."
+    for _i in $(seq 1 30); do
+        limactl list 2>/dev/null | grep -q "^${VM}[[:space:]].*Running" || break
+        sleep 10
+    done
+    # If still running, let limactl stop send ACPI; last resort force.
+    limactl list 2>/dev/null | grep -q "^${VM}[[:space:]].*Running" && {
+        echo "==> VM still running, asking Lima to stop..."
+        limactl stop "$VM" >/dev/null 2>&1 || true
+        sleep 30
+    }
+    limactl list 2>/dev/null | grep -q "^${VM}[[:space:]].*Running" && {
+        echo "==> Force-stopping VM..."
+        limactl stop --force "$VM" >/dev/null 2>&1 || true
+    }
+    trap - EXIT INT TERM
+    exit "$status"
+}
+
+trap cleanup EXIT INT TERM
+
+# Lima cannot resize VMDK images (qemu-img resize -f vmdk fails).  Download the
+# OmniOS cloud VMDK once, convert it to QCOW2, and cache the result so that
+# subsequent runs skip the download+convert step entirely.
+_prepare_disk_image() {
+    _VMDK_URL="https://downloads.omnios.org/media/stable/omnios-r151058.cloud.vmdk"
+    _QCOW2_CACHE="${HOME}/.lima/_cache/omnios-r151058.qcow2"
+
+    mkdir -p "${HOME}/.lima/_cache"
+
+    if [ ! -f "$_QCOW2_CACHE" ]; then
+        _VMDK_TMP="$(mktemp /tmp/omnios-XXXXXX.vmdk)"
+        echo "==> Downloading OmniOS VMDK (one-time, ~1 GB)..." >&2
+        curl -L --progress-bar --retry 3 -o "$_VMDK_TMP" "$_VMDK_URL"
+        echo "==> Converting VMDK to QCOW2 (one-time)..." >&2
+        qemu-img convert -f vmdk -O qcow2 "$_VMDK_TMP" "$_QCOW2_CACHE"
+        rm -f "$_VMDK_TMP"
+    fi
+
+    echo "$_QCOW2_CACHE"
+}
+
+if ! limactl list 2>/dev/null | awk '{print $1}' | grep -qx "$VM"; then
+    _QCOW2="$(_prepare_disk_image)"
+    echo "==> Creating VM '${VM}' from Lima template..."
+    _TEMP_YAML="$(mktemp /tmp/solaris-lima-XXXXXX.yaml)"
+    # Rewrite the images section to point at the local QCOW2 instead of the
+    # remote VMDK, and drop the arch/digest sub-keys (not needed for file://).
+    python3 - "${SCRIPT_DIR}/solaris-lima.yaml" "$_QCOW2" > "$_TEMP_YAML" <<'PYEOF'
+import sys, re
+yaml_file, qcow2_path = sys.argv[1], sys.argv[2]
+with open(yaml_file) as f:
+    lines = f.readlines()
+out = []
+skip_image_subkeys = False
+for line in lines:
+    if re.match(r'  - location:', line):
+        out.append(f'  - location: "file://{qcow2_path}"\n')
+        skip_image_subkeys = True
+        continue
+    if skip_image_subkeys and re.match(r'    (arch|digest):', line):
+        continue
+    skip_image_subkeys = False
+    out.append(line)
+sys.stdout.write(''.join(out))
+PYEOF
+    limactl create --name "$VM" --tty=false "$_TEMP_YAML"
+    rm -f "$_TEMP_YAML"
+fi
+
+if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then
+    echo "==> Starting VM '${VM}'..."
+    limactl start "$VM" &
+    _LIMA_PID=$!
+
+    # OmniOS cloud images do not run Lima's cloud-init, so SSH and the
+    # boot-done marker are set up via the serial console.
+    #
+    # Strategy: poll both SSH and the serial log.  If "login:" appears
+    # in the serial log, the VM has booted far enough for first-boot.py
+    # to work — run it immediately instead of waiting for SSH to time out.
+    # A ZFS device scan after unclean shutdown can add hours; if we see the
+    # scan notice, we skip the VM wait and proceed straight to first-boot
+    # (the serial console will be available once the scan finishes).
+    _SSH_OK=0
+    _SERIAL_LOG="${HOME}/.lima/${VM}/serial.log"
+    _SSH_ELAPSED=0
+    _SCAN_WARNED=0
+    echo "==> Waiting for SSH (monitoring serial console)..."
+    for _I in $(seq 1 600); do
+        if ssh -F ~/.lima/"$VM"/ssh.config lima-"$VM" true 2>/dev/null; then
+            _SSH_OK=1; break
+        fi
+        sleep 10
+        _SSH_ELAPSED=$(( _SSH_ELAPSED + 10 ))
+        # If the serial log shows a login prompt, the VM is ready for first-boot.
+        if [ -f "$_SERIAL_LOG" ] && grep -q 'login:' "$_SERIAL_LOG" 2>/dev/null; then
+            echo "    ...login prompt detected on serial console ($(( _SSH_ELAPSED / 60 )) min)"
+            break
+        fi
+        # Warn once about an in-progress ZFS scan (known to be very slow on TCG).
+        if [ "$_SCAN_WARNED" = "0" ] && [ -f "$_SERIAL_LOG" ] \
+            && grep -q 'Performing full ZFS device scan' "$_SERIAL_LOG" 2>/dev/null
+        then
+            echo "    ...ZFS pool scan in progress (unclean shutdown); this may take hours on TCG"
+            _SCAN_WARNED=1
+        fi
+        # Print a progress dot every 60 s so the terminal doesn't look hung.
+        [ $(( _SSH_ELAPSED % 60 )) -eq 0 ] && printf "    ...%d min elapsed\n" $(( _SSH_ELAPSED / 60 ))
+    done
+
+    if [ "$_SSH_OK" = "0" ]; then
+        echo "==> SSH not up — running first-boot setup (one-time)..."
+        python3 "${SCRIPT_DIR}/solaris-first-boot.py" "$VM"
+    fi
+
+    # Lima generates a fresh instance-id on each start.  Write it to the
+    # boot-done marker so limactl start (running in the background) exits.
+    _write_boot_done() {
+        _IID=$(python3 -c "
+import os, subprocess
+iso = os.path.expanduser('~/.lima/${VM}/cidata.iso')
+mnt = '/tmp/_iid_mnt'
+os.makedirs(mnt, exist_ok=True)
+subprocess.run(['hdiutil','attach',iso,'-mountpoint',mnt,'-readonly','-quiet'], check=True)
+with open(f'{mnt}/meta-data') as f:
+    for line in f:
+        if line.startswith('instance-id:'):
+            print(line.split(':',1)[1].strip())
+subprocess.run(['hdiutil','detach',mnt,'-quiet'])
+" 2>/dev/null)
+        [ -n "$_IID" ] && ssh -F ~/.lima/"$VM"/ssh.config lima-"$VM" \
+            "sudo sh -c 'echo ${_IID} > /var/run/lima-boot-done && echo INSTANCE_ID=${_IID} > /etc/lima/boot-done-id'" \
+            2>/dev/null || true
+    }
+    _write_boot_done
+
+    wait "$_LIMA_PID" || true
+
+    limactl list | grep -q "^${VM}[[:space:]].*Running" || {
+        echo "ERROR: VM '${VM}' is not Running after start"; exit 1; }
+fi
+
+# If sudo is missing the VM predates the first-boot install step; redo it.
+if ! limactl shell "$VM" -- sh -lc 'command -v sudo >/dev/null 2>&1'; then
+    echo "==> sudo not found – running first-boot setup..."
+    python3 "${SCRIPT_DIR}/solaris-first-boot.py" "$VM"
+fi
+
+echo "==> Installing OmniOS packages and CPAN deps..."
+limactl shell "$VM" -- sh -lc '
+    set -e
+    # System packages (pkg is idempotent for already-installed packages)
+    sudo pkg install --accept -q \
+        runtime/perl developer/gcc14 developer/build/gnu-make \
+        web/curl 2>&1 | grep -v "^$" || true
+
+    # Ensure cc is in PATH (OmniOS gcc14 installs as gcc, not cc)
+    export PATH=/usr/gcc/14/bin:/usr/gnu/bin:/usr/bin:$PATH
+    command -v cc >/dev/null 2>&1 || {
+        for _cc in gcc cc; do
+            _found=$(find /usr/gcc -name "$_cc" -type f 2>/dev/null | head -1)
+            [ -n "$_found" ] && sudo ln -sf "$_found" /usr/bin/cc && break
+        done
+    }
+
+    # cpanm (skip if already installed)
+    command -v cpanm >/dev/null 2>&1 || {
+        curl -sL https://cpanmin.us -o /tmp/cpanm.pl
+        sudo perl /tmp/cpanm.pl App::cpanminus
+        # cpanm may land outside PATH on OmniOS; find and symlink it
+        CPANM=$(find /usr/perl5 /opt -name cpanm -type f 2>/dev/null | head -1)
+        [ -n "$CPANM" ] && sudo ln -sf "$CPANM" /usr/bin/cpanm
+    }
+
+    # CPAN deps — use gmake so ExtUtils::MakeMaker gets GNU make.
+    # Install String::CRC32 separately first (C module, needs compiler
+    # discovery); cpanm exits 1 on build failure so we || true past it.
+    sudo env MAKE=gmake cpanm --notest String::CRC32 2>&1 || true
+    sudo env MAKE=gmake cpanm --notest \
+        JSON Test::SharedFork Mock::Sub Async::Event::Interval 2>&1 || true
+'
+
+echo "==> Copying source into VM..."
+limactl shell "$VM" -- sh -lc "rm -rf '${GUEST_REPO}'"
+scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
+# Strip macOS resource-fork files (._*).
+limactl shell "$VM" -- sh -lc "find '${GUEST_REPO}' -name '._*' -delete" 2>/dev/null || true
+
+if [ $XS_MODE -eq 1 ]; then
+    echo "==> Building and running tests in VM (XS)..."
+    limactl shell "$VM" -- sh -lc "
+        export PATH=/usr/gnu/bin:/usr/bin:\$PATH
+        cd '${GUEST_REPO}' && perl Makefile.PL && make && ASYNC_TESTING=1 prove -l -Iblib/arch ${PROVE_ARGS}
+    "
+else
+    echo "==> Running tests in VM (pure Perl)..."
+    limactl shell "$VM" -- sh -lc "
+        export PATH=/usr/gnu/bin:/usr/bin:\$PATH
+        cd '${GUEST_REPO}' && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}
+    "
+fi
+
+echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"

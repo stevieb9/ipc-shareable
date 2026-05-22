@@ -6,13 +6,8 @@ use IPC::Shareable;
 use Test::More;
 use Test::SharedFork;
 
-#BEGIN {
-#    if (! $ENV{CI_TESTING}) {
-#        plan skip_all => "Not on a legit CI platform...";
-#    }
-#}
-
-my $segs_before = IPC::Shareable::shm_count();
+my $segs_before = IPC::Shareable::seg_count();
+my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
 
 my $mod = 'IPC::Shareable';
@@ -44,15 +39,15 @@ if ($pid == 0) {
 
     my $ph = $mod->new(key => 'hash2', create => 1, destroy => 1);
     like tied(%$ph), qr/IPC::Shareable/, "new() tied hash is proper object ok";
-    like tied(%$ph)->can('shm_count'), qr/CODE/, "...and it can call its methods ok";
+    like tied(%$ph)->can('seg_count'), qr/CODE/, "...and it can call its methods ok";
 
     my $pa = $mod->new(key => 'array2', create => 1, destroy => 1, var => 'ARRAY');
     like tied(@$pa), qr/IPC::Shareable/, "new() tied array is proper object ok";
-    like tied(@$pa)->can('shm_count'), qr/CODE/, "...and it can call its methods ok";
+    like tied(@$pa)->can('seg_count'), qr/CODE/, "...and it can call its methods ok";
 
     my $ps = $mod->new(key => 'scalar2', create => 1, destroy => 1, var => 'SCALAR');
     like tied($$ps), qr/IPC::Shareable/, "new() tied scalar is proper object ok";
-    like tied($$ps)->can('shm_count'), qr/CODE/, "...and it can call its methods ok";
+    like tied($$ps)->can('seg_count'), qr/CODE/, "...and it can call its methods ok";
 
     kill ALRM => $pid;
     waitpid($pid, 0);
@@ -72,9 +67,11 @@ if ($pid == 0) {
 
     IPC::Shareable->clean_up_all;
 
-    my $segs_after = IPC::Shareable::shm_count();
+    my $segs_after = IPC::Shareable::seg_count();
     warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
     is $segs_after, $segs_before, "All segs, even those created in separate procs, cleaned up ok";
+    my $sems_after = IPC::Shareable::sem_count();
+    is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
 
     done_testing();
 }

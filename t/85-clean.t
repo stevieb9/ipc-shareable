@@ -9,27 +9,16 @@ use Mock::Sub;
 use Test::More;
 use Test::SharedFork;
 
-#BEGIN {
-#    if (! $ENV{CI_TESTING}) {
-#        plan skip_all => "Not on a legit CI platform...";
-#    }
-#}
-
-my $segs_before = IPC::Shareable::shm_count();
+my $segs_before = IPC::Shareable::seg_count();
+my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
 sub shm_cleaned {
-    # --- shmread should barf if the segment has really been cleaned
+    # shmread fails with EINVAL when the segment has been removed
     my $id = shift;
     my $data = '';
-
-    eval { shmread($id, $data, 0, 6) or die "$!" };
-
-    if ($@ && ($@ =~ /Invalid/ || $@ =~ /removed/)) {
-        return 1;
-    }
-
-    return 0;
+    shmread($id, $data, 0, 6);
+    return $!{EINVAL} ? 1 : 0;
 }
 
 # create not sent in
@@ -199,9 +188,11 @@ my ($z, $y, $x, $w);
 
 IPC::Shareable::_end;
 
-my $segs_after = IPC::Shareable::shm_count();
+my $segs_after = IPC::Shareable::seg_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs cleaned up ok";
+my $sems_after = IPC::Shareable::sem_count();
+is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
 
 # remove($key) warns when shmget fails for a non-existent key
 {
@@ -219,10 +210,12 @@ is $segs_after, $segs_before, "All segs cleaned up ok";
 # remove() (object form) warns when sem->remove fails
 {
     # destroy => 0: the shm segment is already gone after $k->remove, so no
-    # double-remove on scope exit.  The semaphore leaks (mock prevents cleanup)
-    # but shm_count() only counts shm segments so the final count check is fine.
+    # double-remove on scope exit.  Save the semaphore before mocking so we can
+    # clean it up manually after the block (mock prevents normal cleanup).
     my $k = tie my %h, 'IPC::Shareable', { key => 'TE', create => 1, destroy => 0 , serializer => 'storable' };
     $h{a} = 1;
+
+    my $orphan_sem = $k->sem;
 
     my @seen_warnings;
     local $SIG{__WARN__} = sub { push @seen_warnings, @_ };
@@ -232,6 +225,9 @@ is $segs_after, $segs_before, "All segs cleaned up ok";
         my $sem_mock = $mock->mock('IPC::Semaphore::remove', return_value => undef);
         $k->remove;
     }
+
+    # Mock is now out of scope; remove the orphaned semaphore that the mock left behind.
+    $orphan_sem->remove;
 
     # undef return from sem->remove also triggers two 'uninitialized value'
     # warnings (from != and ne comparisons), so filter to the one we care about.

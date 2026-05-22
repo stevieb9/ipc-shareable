@@ -1,0 +1,38 @@
+# Lima VM config for 32-bit i386 Linux testing.
+# Modern Debian/Ubuntu do not publish i386 cloud images, so this uses a
+# Debian 12 amd64 host VM.  linux-i386-test.sh creates an i386 debootstrap
+# chroot inside the VM and runs tests under systemd-nspawn.  The x86_64
+# kernel (even under QEMU TCG on Apple Silicon) natively executes 32-bit
+# i386 binaries, so this gives genuine 32-bit Perl execution.
+#
+# Setup (one-time, done automatically by linux-i386-test.sh):
+#   limactl create --name linux-i386 ci/linux-i386-lima.yaml
+#   limactl start linux-i386
+#
+# Run tests:
+#   ./ci/linux-i386-test.sh
+#
+# Interactive shell:
+#   limactl shell linux-i386
+#
+# Stop / delete:
+#   limactl stop linux-i386
+#   limactl delete linux-i386
+
+vmType: qemu
+os: Linux
+arch: x86_64
+
+images:
+  - location: "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2"
+    arch: x86_64
+
+cpus: 2
+memory: "2GiB"
+disk: "20GiB"
+
+mounts: []
+
+containerd:
+  system: false
+  user: false
