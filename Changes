@@ -155,6 +155,7 @@ Revision history for Perl extension IPC::Shareable.
       tie, STORE scalar-ref over previous \$undef
     - Fix t/73-internal.t cross-version: qr// reftype differs between 5.10 and
       5.12+, so use a CODE ref to exercise the _encode_json_prepare fallthrough
+    - Bump prereq of Test::More to 0.98 due to 5.10.1 using 0.94 by default
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
