@@ -198,4 +198,61 @@ is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
     $leaked_sem->remove if defined $leaked_sem;
 }
 
+
+# Type guards: array-only methods on a hash knot
+
+{
+    my $key = int(rand(99999));
+    tie my %h, 'IPC::Shareable', { key => $key, create => 1, destroy => 1 };
+    my $knot = tied(%h);
+
+    is eval { $knot->PUSH('x'); 1 }, undef,
+        "PUSH on hash knot croaks";
+    like $@, qr/Cannot push to a non-array/,
+        "PUSH on hash knot: error message correct";
+
+    is eval { $knot->POP; 1 }, undef,
+        "POP on hash knot croaks";
+    like $@, qr/Cannot pop from a non-array/,
+        "POP on hash knot: error message correct";
+
+    is eval { $knot->SHIFT; 1 }, undef,
+        "SHIFT on hash knot croaks";
+    like $@, qr/Cannot shift from a non-array/,
+        "SHIFT on hash knot: error message correct";
+
+    is eval { $knot->UNSHIFT('x'); 1 }, undef,
+        "UNSHIFT on hash knot croaks";
+    like $@, qr/Cannot unshift a non-array/,
+        "UNSHIFT on hash knot: error message correct";
+
+    is eval { $knot->SPLICE(0, 0); 1 }, undef,
+        "SPLICE on hash knot croaks";
+    like $@, qr/Cannot splice a non-array/,
+        "SPLICE on hash knot: error message correct";
+
+    is eval { $knot->FETCHSIZE; 1 }, undef,
+        "FETCHSIZE on hash knot croaks";
+    like $@, qr/Cannot fetchsize on a non-array/,
+        "FETCHSIZE on hash knot: error message correct";
+
+    is eval { $knot->STORESIZE(5); 1 }, undef,
+        "STORESIZE on hash knot croaks";
+    like $@, qr/Cannot storesize on a non-array/,
+        "STORESIZE on hash knot: error message correct";
+}
+
+# Type guard: DELETE on an array knot
+
+{
+    my $key = int(rand(99999));
+    tie my @a, 'IPC::Shareable', { key => $key, create => 1, destroy => 1 };
+    my $knot = tied(@a);
+
+    is eval { $knot->DELETE('foo'); 1 }, undef,
+        "DELETE on array knot croaks";
+    like $@, qr/Cannot delete from a non-hash/,
+        "DELETE on array knot: error message correct";
+}
+
 done_testing();

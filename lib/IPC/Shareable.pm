@@ -97,6 +97,7 @@ our %EXPORT_TAGS = (
     flock       => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
     semaphores  => [qw( SEM_MARKER SEM_READERS SEM_WRITERS SEM_PROTECTED )],
 );
+
 # Locking scheme copied from IPC::ShareLite (with minor modifications)
 
 my %semop_args = (
@@ -181,7 +182,6 @@ sub STORE {
 
     if ($knot->{_type_int} == TYPE_HASH) {
         my ($key, $val) = @_;
-        # If $val is a reference, we need to create a new segment
         _magic_tie($knot, $val, $key) if ref($val) && $knot->_need_tie($val, $key);
         $knot->{_data}{$key} = $val;
     }
@@ -200,9 +200,7 @@ sub STORE {
         $knot->{_was_changed} = 1;
     }
     else {
-        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
-            croak "Could not write to shared memory: $!\n";
-        }
+        _write_to_seg($knot);
     }
 
     return 1;
@@ -283,14 +281,15 @@ sub CLEAR {
         $knot->{_was_changed} = 1;
     }
     else {
-        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
-            croak "Could not write to shared memory: $!";
-        }
+        _write_to_seg($knot);
     }
 }
 sub DELETE {
     my $knot = shift;
     my $key  = shift;
+
+    croak "Cannot delete from a non-hash tied variable"
+        unless $knot->{_type_int} == TYPE_HASH;
 
     return if ! _write_permitted($knot);
 
@@ -307,9 +306,7 @@ sub DELETE {
         $knot->{_was_changed} = 1;
     }
     else {
-        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
-            croak "Could not write to shared memory: $!";
-        }
+        _write_to_seg($knot);
     }
 
     return $val;
@@ -323,11 +320,8 @@ sub EXISTS {
 }
 sub FIRSTKEY {
     my $knot = shift;
-
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
-
     $knot->{_hkey_list} = [ keys %{$knot->{_data}} ];
-
     return $knot->NEXTKEY;
 }
 sub NEXTKEY {
@@ -346,6 +340,9 @@ sub EXTEND {
 sub PUSH {
     my $knot = shift;
 
+    croak "Cannot push to a non-array tied variable"
+        unless $knot->{_type_int} == TYPE_ARRAY;
+
     return if ! _write_permitted($knot);
 
     $knot->{_data} = $knot->_decode($knot->seg, $knot->{_data}) unless $knot->{_lock};
@@ -355,13 +352,14 @@ sub PUSH {
         $knot->{_was_changed} = 1;
     }
     else {
-        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
-            croak "Could not write to shared memory: $!";
-        };
+        _write_to_seg($knot);
     }
 }
 sub POP {
     my $knot = shift;
+
+    croak "Cannot pop from a non-array tied variable"
+        unless $knot->{_type_int} == TYPE_ARRAY;
 
     return if ! _write_permitted($knot);
 
@@ -372,14 +370,15 @@ sub POP {
         $knot->{_was_changed} = 1;
     }
     else {
-        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
-            croak "Could not write to shared memory: $!";
-        }
+        _write_to_seg($knot);
     }
     return $val;
 }
 sub SHIFT {
     my $knot = shift;
+
+    croak "Cannot shift from a non-array tied variable"
+        unless $knot->{_type_int} == TYPE_ARRAY;
 
     return if ! _write_permitted($knot);
 
@@ -389,14 +388,15 @@ sub SHIFT {
         $knot->{_was_changed} = 1;
     }
     else {
-        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
-            croak "Could not write to shared memory: $!";
-        }
+        _write_to_seg($knot);
     }
     return $val;
 }
 sub UNSHIFT {
     my $knot = shift;
+
+    croak "Cannot unshift a non-array tied variable"
+        unless $knot->{_type_int} == TYPE_ARRAY;
 
     return if ! _write_permitted($knot);
 
@@ -406,14 +406,15 @@ sub UNSHIFT {
         $knot->{_was_changed} = 1;
     }
     else {
-        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
-            croak "Could not write to shared memory: $!";
-        }
+        _write_to_seg($knot);
     }
     return $val;
 }
 sub SPLICE {
     my($knot, $off, $n, @av) = @_;
+
+    croak "Cannot splice a non-array tied variable"
+        unless $knot->{_type_int} == TYPE_ARRAY;
 
     return if ! _write_permitted($knot);
 
@@ -423,14 +424,15 @@ sub SPLICE {
         $knot->{_was_changed} = 1;
     }
     else {
-        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
-            croak "Could not write to shared memory: $!";
-        }
+        _write_to_seg($knot);
     }
     return @val;
 }
 sub FETCHSIZE {
     my $knot = shift;
+
+    croak "Cannot fetchsize on a non-array tied variable"
+        unless $knot->{_type_int} == TYPE_ARRAY;
 
     $knot->{_data} = $knot->_decode($knot->seg) unless $knot->{_lock};
     return scalar(@{$knot->{_data}});
@@ -438,6 +440,9 @@ sub FETCHSIZE {
 sub STORESIZE {
     my $knot = shift;
     my $n    = shift;
+
+    croak "Cannot storesize on a non-array tied variable"
+        unless $knot->{_type_int} == TYPE_ARRAY;
 
     return if ! _write_permitted($knot);
 
@@ -447,9 +452,7 @@ sub STORESIZE {
         $knot->{_was_changed} = 1;
     }
     else {
-        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
-            croak "Could not write to shared memory: $!";
-        }
+        _write_to_seg($knot);
     }
     return $n;
 }
@@ -467,15 +470,15 @@ sub new {
     my $type = $opts{var} || 'HASH';
 
     if ($type eq 'HASH') {
-        my $k = tie my %h, 'IPC::Shareable', \%opts;
+        tie my %h, 'IPC::Shareable', \%opts;
         return \%h;
     }
     if ($type eq 'ARRAY') {
-        my $k = tie my @a, 'IPC::Shareable', \%opts;
+        tie my @a, 'IPC::Shareable', \%opts;
         return \@a;
     }
     if ($type eq 'SCALAR') {
-        my $k = tie my $s, 'IPC::Shareable', \%opts;
+        tie my $s, 'IPC::Shareable', \%opts;
         return \$s;
     }
 }
@@ -498,13 +501,15 @@ sub lock {
     }
 
     if (defined $code && ref $code ne 'CODE') {
-        croak "\$code param to lock() must be a code ref"
+        croak "\$code param to lock() must be a code reference"
     }
 
     $flags = LOCK_EX if ! defined $flags;
 
+    # Unlock was called
     return $knot->unlock if ($flags & LOCK_UN);
 
+    # Caller already has the lock requested
     return 1 if ($knot->{_lock} & $flags);
 
     # If they have a different lock than they want, release it first
@@ -549,15 +554,13 @@ sub unlock {
     return 1 unless $knot->{_lock};
 
     if ($knot->{_was_changed}) {
-        if (! defined $knot->_encode($knot->seg, $knot->{_data})){
-            croak "Could not write to shared memory: $!\n";
-        }
+        _write_to_seg($knot);
         $knot->{_was_changed} = 0;
     }
 
     for my $child (reverse @{ $knot->{_locked_children} // [] }) {
         if ($child->{_was_changed}) {
-            $child->_encode($child->seg, $child->{_data});
+            _write_to_seg($child);
             $child->{_was_changed} = 0;
         }
         my $child_flags = $child->{_lock} | LOCK_UN;
@@ -1106,6 +1109,15 @@ sub _encode {
 
     return _encode_json($seg, $data);
 }
+
+sub _write_to_seg {
+    my ($knot) = @_;
+    my $seg_id = $knot->seg->id;
+    if (! defined $knot->_encode($knot->seg, $knot->{_data})) {
+        croak "Could not write to shared memory segment $seg_id: $!";
+    }
+}
+
 sub _decode {
     my ($knot, $seg) = @_;
 
@@ -1316,6 +1328,8 @@ sub _freeze {
     my $water = shift;
 
     my $ice = freeze $water;
+    croak "Could not serialize data for shared memory"
+        unless defined $ice;
     substr $ice, 0, 0, 'IPC::Shareable';
 
     if (length($ice) > $seg->size) {
