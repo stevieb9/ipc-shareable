@@ -182,6 +182,41 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     is $h2{a}, 99, "LOCK_EX regression - k2 write succeeds after k1 unlocks";
 }
 
+# --- Both write-locking flags disabled: write succeeds silently while
+#     another knot holds LOCK_EX (no warning, no block) ---
+{
+    my $k1 = tie my %h1, 'IPC::Shareable', {
+        key                       => 'SLCK5',
+        create                    => 1,
+        destroy                   => 1,
+        enforced_write_locking    => 0,
+        violated_write_lock_warn  => 0,
+        enforced_read_locking     => 0,
+        violated_read_lock_warn   => 0,
+        serializer                => 'storable',
+    };
+    my $k2 = tie my %h2, 'IPC::Shareable', {
+        key                       => 'SLCK5',
+        enforced_write_locking    => 0,
+        violated_write_lock_warn  => 0,
+        enforced_read_locking     => 0,
+        violated_read_lock_warn   => 0,
+        serializer                => 'storable',
+    };
+
+    $h1{a} = 10;
+    $k1->lock(LOCK_EX);
+
+    {
+        local $SIG{__WARN__} = sub { fail "EW=0 VW=0: unexpected warning: $_[0]" };
+        $h2{a} = 99;
+    }
+    pass "EW=0 VW=0: no warning when both write-locking flags are disabled";
+    is $h2{a}, 99, "EW=0 VW=0: write succeeds while another knot holds LOCK_EX";
+
+    $k1->unlock;
+}
+
 IPC::Shareable::_end;
 
 my $segs_after = IPC::Shareable::seg_count();

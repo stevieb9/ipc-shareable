@@ -223,6 +223,51 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
         "hex string key: gone after IPC::Shareable->remove('0x1B0B00E0')";
 }
 
+# -----------------------------------------------------------------------
+# unknown_segments() - fork-and-exit produces a real orphan from the
+# parent's point of view. The child creates a tied segment with
+# destroy => 0 and exits; the parent never tied the key, so its
+# global_register has no entry for it.
+# -----------------------------------------------------------------------
+
+{
+    my $orphan_key = '0x1B0B00F0';
+    my $orphan_hex = lc $orphan_key;
+
+    pipe(my $r, my $w) or die "pipe: $!";
+
+    my $pid = fork;
+    defined $pid or die "fork: $!";
+
+    if ($pid == 0) {
+        close $r;
+        tie my %h, 'IPC::Shareable', {
+            key        => $orphan_key,
+            create     => 1,
+            exclusive  => 1,
+            destroy    => 0,
+            serializer => 'storable',
+        };
+        $h{leftover} = 1;
+        print $w "created\n";
+        close $w;
+        exit 0;
+    }
+
+    close $w;
+    my $line = <$r>;
+    close $r;
+    waitpid($pid, 0);
+
+    my @unknown = IPC::Shareable->unknown_segments;
+    ok scalar(grep { $_ eq $orphan_hex } @unknown),
+        "unknown_segments(): fork+exit orphan key present from parent's view";
+
+    IPC::Shareable->remove($orphan_key);
+    ok !exists(IPC::Shareable->shm_segments->{$orphan_hex}),
+        "fork+exit orphan: removed via remove(\$key) ok";
+}
+
 IPC::Shareable::_end;
 
 my $segs_after = IPC::Shareable::seg_count();

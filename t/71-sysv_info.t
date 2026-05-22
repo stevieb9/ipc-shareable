@@ -163,4 +163,19 @@ is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
         "freebsd branch (mocked): non-shm kern.ipc keys are filtered out";
 }
 
+# -----------------------------------------------------------------------
+# Solaris branch - not implemented; sysv_info() returns undef
+# -----------------------------------------------------------------------
+
+{
+    my $info;
+    {
+        local $^O = 'solaris';
+        $info = IPC::Shareable->sysv_info;
+    }
+
+    is $info, undef,
+        "solaris branch (mocked): sysv_info() returns undef (unsupported platform)";
+}
+
 done_testing();

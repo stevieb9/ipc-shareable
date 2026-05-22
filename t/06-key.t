@@ -206,6 +206,24 @@ warn "Segs Before $segs_before\n" if $ENV{PRINT_SEGS};
     }
 }
 
+# _shm_key() croaks when CRC32 returns MAX_KEY_INT_SIZE (post-subtraction key == 0)
+{
+    my $k = tie my $sv, 'IPC::Shareable',
+        { key => 'force_zero_collision', create => 1, destroy => 1, serializer => 'storable' };
+
+    my $m = Mock::Sub->new;
+    my $crc_mock = $m->mock('IPC::Shareable::crc32');
+    $crc_mock->return_value(0x80000000);   # MAX_KEY_INT_SIZE
+
+    my $ok = eval { $k->_shm_key('any string here'); 1 };
+    is $ok, undef, "_shm_key() croaks when CRC32 produces a post-subtraction key of 0";
+    like $@, qr/key which equals 0\. This is a fatal error/,
+        "...and the error message matches the documented format";
+
+    $crc_mock->unmock;
+    IPC::Shareable->clean_up_all;
+}
+
 # _shm_key_rand() collisions (in _mg_tie())
 {
     my $m = Mock::Sub->new;

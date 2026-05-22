@@ -1854,7 +1854,7 @@ sub _shm_key {
 
     $used_ids{$key}++;
 
-    if ($key > MAX_KEY_INT_SIZE) {
+    if ($key >= MAX_KEY_INT_SIZE) {
         $key = $key - MAX_KEY_INT_SIZE;
 
         if ($key == 0) {

@@ -102,6 +102,31 @@ sub capture_warns (&) {
 }
 
 # -----------------------------------------------------------------------
+# 4b. Carp message matches the documented format and serializer attribute
+#     is mutated to 'storable' after fallback.
+# -----------------------------------------------------------------------
+{
+    my $key = 'sf_format';
+
+    tie my %h, 'IPC::Shareable', { key => $key, create => 1, destroy => 1, serializer => 'storable' };
+    $h{f} = 'g';
+
+    my $knot;
+    my @warns = capture_warns {
+        $knot = tie my %h2, 'IPC::Shareable', { key => $key, create => 0, destroy => 1 };
+    };
+
+    my $msg = join '', @warns;
+
+    like $msg,
+        qr/IPC::Shareable: segment 0x[0-9a-f]{8} contains Storable-encoded data; switching serializer to 'storable' for this session\. Re-create the segment to migrate it to JSON\./,
+        'carp message matches the full documented format';
+
+    is $knot->attributes('serializer'), 'storable',
+        'attributes(serializer) mutated to storable post-fallback';
+}
+
+# -----------------------------------------------------------------------
 # 5. No warning when segment was written and read with json
 # -----------------------------------------------------------------------
 {
