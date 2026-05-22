@@ -8,7 +8,7 @@ lib/IPC/Shareable/SharedMem.pm
 Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
-README
+README.md
 Shareable.xs
 t/00-base.t
 t/02-create.t
@@ -38,6 +38,7 @@ t/38-lsync.t
 t/40-tied.t
 t/42-seg_sem.t
 t/44-nested_segs_overwrite.t
+t/45-private_json_nested.t
 t/47-seg_size.t
 t/48-size_exceeded.t
 t/49-exhaust_shm_slots.t
@@ -50,9 +51,9 @@ t/61-json_fork_dup_rand_keys.t
 t/62-fork_dup_rand_keys.t
 t/63-sig_child_ignore.t
 t/65-clean_protected.t
-t/66-encode_fail.t
 t/66-protected_persist.t
 t/67-storable_fallback.t
+t/68-encode_fail.t
 t/70-global_register.t
 t/71-sysv_info.t
 t/72-shm_segments.t

@@ -29,12 +29,16 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     cmp_ok $result, '<', 0x80000000, "_key_str_to_int: 'foo' result was reduced below MAX_KEY_INT_SIZE";
 }
 
-# _encode_json_prepare: fallthrough return for non-HASH/ARRAY/SCALAR/REF ref type
+# _encode_json_prepare: fallthrough return for non-HASH/ARRAY/SCALAR/REF ref type.
+# We use a CODE ref here because its reftype is 'CODE' on every Perl version.
+# Regexp refs report reftype 'SCALAR' on 5.10.1 and 'Regexp' from 5.12 onwards,
+# which would steer this test through the SCALAR/REF branch on old Perls.
 {
-    my $re     = qr/foo/;   # reftype = 'Regexp' — none of the handled types
-    my $result = IPC::Shareable::_encode_json_prepare($re);
-    is ref($result), 'Regexp',
+    my $code   = sub { 42 };
+    my $result = IPC::Shareable::_encode_json_prepare($code);
+    is ref($result), 'CODE',
         "_encode_json_prepare: non-HASH/ARRAY/SCALAR/REF ref returned unchanged";
+    is $result->(), 42, "_encode_json_prepare: returned coderef is the same one passed in";
 }
 
 # _decode_json: returns undef when segment data lacks the IPC::Shareable tag

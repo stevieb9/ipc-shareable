@@ -141,6 +141,20 @@ Revision history for Perl extension IPC::Shareable.
       made _reset_segment() a no-op that only produced double-removal warnings.
     - Fix t/25-fetch_read_warn.t pipe synchronization so the parent blocks until
       the child confirms LOCK_EX, instead of a blind sleep
+    - shm_segments() now probes the 14-byte 'IPC::Shareable' tag before pulling
+      the full segment into Perl, avoiding gigabyte allocations for foreign segs
+    - Drop unconditional use-time srand(); _shm_key_rand collisions are already
+      caught by the IPC_EXCL re-check loop, so reseeding callers' RNG is needless
+    - Remove redundant Data::Dumper imports from Shareable.pm and SharedMem.pm
+    - Fix _shm_key() off-by-one: overflow-correction now triggers on
+      crc32 == MAX_KEY_INT_SIZE, making the post-subtraction key==0 croak
+      actually reachable
+    - Test coverage additions: unknown_segments() via fork+exit, sysv_info() on
+      Solaris, JSON->Storable carp format, both write-lock flags disabled,
+      _shm_key() key==0 croak (Mock::Sub on crc32), IPC_PRIVATE + JSON nested
+      tie, STORE scalar-ref over previous \$undef
+    - Fix t/73-internal.t cross-version: qr// reftype differs between 5.10 and
+      5.12+, so use a CODE ref to exercise the _encode_json_prepare fallthrough
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting
