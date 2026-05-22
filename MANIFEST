@@ -39,6 +39,7 @@ t/40-tied.t
 t/42-seg_sem.t
 t/44-nested_segs_tidy.t
 t/45-nested_segs_untidy.t
+t/46-nested_segs_tidy_deprecate.t
 t/47-seg_size.t
 t/48-size_exceeded.t
 t/49-exhaust_shm_slots.t
@@ -62,6 +63,7 @@ t/74-seg_map.t
 t/75-is_child_xs.t
 t/80-SharedMem.t
 t/85-clean.t
+t/86-exports.t
 t/90-pod_coverage.t
 t/91-pod_linkcheck.t
 t/92-pod.t

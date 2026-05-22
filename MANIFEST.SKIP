@@ -46,3 +46,4 @@ agent.txt
 .DS_Store$
 ^nytprof.out$
 profiling/
+^plans/
