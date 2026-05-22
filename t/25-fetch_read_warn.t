@@ -34,18 +34,20 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     defined $pid or die "fork: $!";
 
     if ($pid == 0) {
-        close $w;
+        close $r;
         $k1->lock(LOCK_EX);
-        print $r "locked\n";   # signal parent — intentionally wrong; will just unblock
+        print $w "locked\n";
+        close $w;
         select(undef, undef, undef, 0.3);
         $k1->unlock;
         exit 0;
     }
 
-    close $r;
+    close $w;
 
-    # Give child time to acquire LOCK_EX
-    select(undef, undef, undef, 0.15);
+    # Block until child signals it has acquired LOCK_EX
+    my $line = <$r>;
+    close $r;
 
     my $warned = 0;
     {
@@ -64,7 +66,6 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
     is $warned, 1, "read warn - exactly one warning emitted";
 
     waitpid($pid, 0);
-    close $w;
 
     # After child releases LOCK_EX, unlocked read must not warn
     {

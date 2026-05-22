@@ -133,21 +133,14 @@ Revision history for Perl extension IPC::Shareable.
     - Rewrote _lock_children() from recursive to iterative (manual stack) to
       eliminate Perl call-stack overhead on deeply nested structures; simplified
       interface returns an arrayref instead of passing accumulator/seen refs
-    - Fix STORE child-segment leak: when a hash/array/scalar value containing a
-      tied child segment was overwritten with a non-reference value, STORE
-      silently discarded the old child reference without removing its shm segment
-      or semaphore from the kernel. This caused segment/semaphore count
-      mismatches on FreeBSD 15 where IPC_RMID timing and semget attach semantics
-      differ from Linux and MacOS. STORE now calls _remove_child() on the old
-      value before overwriting, matching the cleanup that DELETE and CLEAR
-      already perform. Extracted the common ref/_is_child/remove pattern into
+    - Fix STORE child-segment leak: old child references were silently
+      discarded without removing shm segments/semaphores. STORE now calls
+      _remove_child() before overwriting. Extracted the common pattern into
       _remove_child() to deduplicate across DELETE, CLEAR, and STORE.
-    - Remove the 'tidy' attribute and _reset_segment() internals. Since the
-      STORE fix above now always calls _remove_child() before _magic_tie(),
-      _reset_segment() was reduced to a no-op that only produced spurious
-      "Couldn't remove shm segment" warnings from double-removal. Removing it
-      eliminates dead code and those warnings. t/44-nested_segs_overwrite.t
-      proved tidy=>0 and tidy=>1 produce identical segment counts and data.
+    - Remove the 'tidy' attribute and _reset_segment() internals. The STORE fix
+      made _reset_segment() a no-op that only produced double-removal warnings.
+    - Fix t/25-fetch_read_warn.t pipe synchronization so the parent blocks until
+      the child confirms LOCK_EX, instead of a blind sleep
 
 1.13    2022-10-11
     - In singleton(), do a check whether class was sent in. There was a shifting

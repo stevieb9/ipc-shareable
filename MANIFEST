@@ -37,9 +37,7 @@ t/36-ipcobj.t
 t/38-lsync.t
 t/40-tied.t
 t/42-seg_sem.t
-t/44-nested_segs_tidy.t
-t/45-nested_segs_untidy.t
-t/46-nested_segs_tidy_deprecate.t
+t/44-nested_segs_overwrite.t
 t/47-seg_size.t
 t/48-size_exceeded.t
 t/49-exhaust_shm_slots.t
