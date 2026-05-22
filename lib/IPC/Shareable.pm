@@ -89,12 +89,14 @@ our @EXPORT_OK = qw(
     SEM_PROTECTED
 );
 our %EXPORT_TAGS = (
-    all     => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
-    lock    => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
-    flock   => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
+    all         => [
+        qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN ),
+        qw( SEM_MARKER SEM_READERS SEM_WRITERS SEM_PROTECTED ),
+    ],
+    lock        => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
+    flock       => [qw( LOCK_EX LOCK_SH LOCK_NB LOCK_UN )],
+    semaphores  => [qw( SEM_MARKER SEM_READERS SEM_WRITERS SEM_PROTECTED )],
 );
-Exporter::export_ok_tags('all', 'lock', 'flock');
-
 # Locking scheme copied from IPC::ShareLite (with minor modifications)
 
 my %semop_args = (
@@ -3389,6 +3391,32 @@ the signal handler precaution above.
 =head2 See also
 
 See L</METHODS - MANUAL CLEANUP> for further information.
+
+
+=head1 EXPORTS
+
+We do not export anything by default. You must request an item individually, or
+by tag.
+
+=head2 Tags
+
+=head3 :lock
+
+Aliases: C<:flock>
+
+Includes: C<LOCK_EX>, C<LOCK_SH>, C<LOCK_NB> and C<LOCK_UN>.
+
+=head3 :flock
+
+Simple legacy alias for C<:lock>.
+
+=head3 :semaphores
+
+Includes: C<SEM_MARKER>, C<SEM_READERS>, C<SEM_WRITERS> and C<SEM_PROTECTED>.
+
+=head3 :all
+
+Includes L</:lock> and L</:semaphores>.
 
 
 =head1 AUTHORS
