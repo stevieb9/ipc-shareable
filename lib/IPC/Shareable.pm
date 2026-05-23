@@ -693,7 +693,9 @@ sub shm_segments {
             ? ( $Config{longsize} == 8
             ? unpack('x[32] Q', $stat_buf)   # 64-bit Solaris (ipc_perm=28 + pad 4)
             : unpack('x[44] L', $stat_buf) ) # 32-bit Solaris (ipc_perm=44)
-            : unpack('x[24] Q', $stat_buf);  # macOS/32-bit BSD
+            : $^O eq 'openbsd' && $Config{longsize} == 8
+            ? unpack('x[32] Q', $stat_buf)   # 64-bit OpenBSD (ipc_perm=32)
+            : unpack('x[24] Q', $stat_buf);  # macOS
 
         next unless $segsz;
 

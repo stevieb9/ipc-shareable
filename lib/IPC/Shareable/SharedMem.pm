@@ -243,8 +243,18 @@ sub stat {
                 = unpack('L4 L x[24] L l l x[4] L x[4] l x[4] l x[4] l x[20]', $data);
         }
     }
+    elsif ($^O eq 'openbsd' && $Config{longsize} == 8) {
+        # 64-bit OpenBSD: ipc_perm is 32 bytes.
+        #   ipc_perm: uid(4) gid(4) cuid(4) cgid(4) mode(4/int)
+        #             seq(2) pad(2) key(8/long)
+        # shmid_ds: segsz(8) lpid(4) cpid(4) nattch(4/int) [pad 4]
+        #           atime(8) dtime(8) ctime(8)
+
+        @values{qw(uid gid cuid cgid mode segsz lpid cpid nattch atime dtime ctime)}
+            = unpack('L L L L L x[4] x[8] Q l l L x[4] q q q', $data);
+    }
     else {
-        # macOS/BSD shmid_ds / ipc_perm layout:
+        # macOS shmid_ds / ipc_perm layout (XNU kernel):
         #
         # ipc_perm (24 bytes): uid(4) gid(4) cuid(4) cgid(4) mode(2/ushort) seq(2) key(4)
         # shmid_ds: segsz(8) lpid(4) cpid(4) nattch(2/ushort) [pad 2] atime(8) dtime(8) ctime(8)

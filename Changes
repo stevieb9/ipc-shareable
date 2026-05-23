@@ -5,6 +5,11 @@ Revision history for Perl extension IPC::Shareable.
       broke Dist::Mgr
     - Fixes #60: Fix FETCH deadlock when inner child re-decode acquires SH lock
       against LOCK_EX cascade held by _lock_children
+    - Fix OpenBSD 64-bit shmid_ds binary layout in SharedMem::stat() and
+      shm_segments(); the macOS fallback unpack was reading garbage for mode,
+      segsz, nattch, lpid, and cpid on this platform
+    - t/20-lock_operation.t: probe for adequate semaphore resources before
+      running, skip gracefully on low-limit platforms (OpenBSD semmni=10)
 
 1.14     2026-05-22
     - Modify remove() to properly catch a non "0 but true" case when trying

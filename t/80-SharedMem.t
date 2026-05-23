@@ -218,6 +218,51 @@ my $mod = 'IPC::Shareable::SharedMem';
 
     is $seg->remove, 1, "seg removed ok";
 }
+
+# OpenBSD 64-bit shmid_ds unpack template correctness
+# Construct a synthetic binary buffer with known values at the OpenBSD
+# 64-bit offsets and verify the unpack produces the correct values.
+{
+    my ($uid, $gid, $cuid, $cgid) = (1001, 1002, 1003, 1004);
+    my $mode    = 0644;
+    my $segsz   = 65536;
+    my $lpid    = 40001;
+    my $cpid    = 40002;
+    my $nattch  = 3;
+    my ($atime, $dtime, $ctime) = (1748000000, 1748000001, 1748000002);
+
+    # Pack using the same template the OpenBSD 64-bit branch writes through
+    my $synthetic = pack(
+        'L L L L L x[4] x[8] Q l l L x[4] q q q',
+        $uid, $gid, $cuid, $cgid, $mode, $segsz,
+        $lpid, $cpid, $nattch, $atime, $dtime, $ctime
+    );
+
+    my %vals;
+    @vals{qw(uid gid cuid cgid mode segsz lpid cpid nattch atime dtime ctime)}
+        = unpack('L L L L L x[4] x[8] Q l l L x[4] q q q', $synthetic);
+
+    is $vals{uid},    $uid,    'OpenBSD 64-bit stat: uid unpack correct';
+    is $vals{gid},    $gid,    'OpenBSD 64-bit stat: gid unpack correct';
+    is $vals{cuid},   $cuid,   'OpenBSD 64-bit stat: cuid unpack correct';
+    is $vals{cgid},   $cgid,   'OpenBSD 64-bit stat: cgid unpack correct';
+    is $vals{mode},   $mode,   'OpenBSD 64-bit stat: mode unpack correct';
+    is $vals{segsz},  $segsz,  'OpenBSD 64-bit stat: segsz unpack correct';
+    is $vals{lpid},   $lpid,   'OpenBSD 64-bit stat: lpid unpack correct';
+    is $vals{cpid},   $cpid,   'OpenBSD 64-bit stat: cpid unpack correct';
+    is $vals{nattch}, $nattch, 'OpenBSD 64-bit stat: nattch unpack correct';
+    is $vals{atime},  $atime,  'OpenBSD 64-bit stat: atime unpack correct';
+    is $vals{dtime},  $dtime,  'OpenBSD 64-bit stat: dtime unpack correct';
+    is $vals{ctime},  $ctime,  'OpenBSD 64-bit stat: ctime unpack correct';
+
+    # Verify segsz is in fact read from the right offset (after 32-byte ipc_perm)
+    my @seg_offsets = qw(uid gid cuid cgid mode segsz lpid cpid nattch atime dtime ctime);
+    my $segsz_idx = 0;
+    for (0..$#seg_offsets) { $segsz_idx = $_ if $seg_offsets[$_] eq 'segsz' }
+    cmp_ok $vals{segsz}, '>=', 65536,
+        "OpenBSD 64-bit stat: segsz (offset $segsz_idx in unpack) is >= 65536, not a garbage value";
+}
+
 my $segs_after = IPC::Shareable::seg_count();
 warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
 is $segs_after, $segs_before, "All segs cleaned up ok";

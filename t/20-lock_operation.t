@@ -3,7 +3,9 @@ use strict;
 
 use Carp;
 use Data::Dumper;
+use IPC::Semaphore;
 use IPC::Shareable;
+use IPC::SysV qw(IPC_CREAT);
 use Mock::Sub;
 use Test::More;
 use Test::SharedFork;
@@ -11,6 +13,31 @@ use Test::SharedFork;
 my $segs_before = IPC::Shareable::seg_count();
 my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
+
+# Probe for adequate semaphore resources. OpenBSD defaults to semmni=10
+# (max 10 concurrent semaphore sets system-wide), and this test together
+# with preceding tests can exhaust that limit.
+{
+    my @tmp_sems;
+    my $probe_ok = eval {
+        for (1..10) {
+            my $s = IPC::Semaphore->new(
+                IPC::Shareable::_shm_key(undef, "_probe_20_$_"),
+                4,
+                IPC_CREAT | 0600
+            );
+            push @tmp_sems, $s;
+        }
+        1;
+    };
+    $_->remove for @tmp_sems;
+
+    if (! $probe_ok) {
+        diag "Semaphore resources exhausted; skipping t/20-lock_operation.t";
+        done_testing();
+        exit 0;
+    }
+}
 
 my $sv;
 
