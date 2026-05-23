@@ -240,8 +240,10 @@ sub FETCH {
             $global_register{$inner->seg->id} = $inner;
         }
 
-        my $s = $inner->seg;
-        $inner->{_data} = $knot->_decode($s);
+        unless ($inner->{_lock}) {
+            my $s = $inner->seg;
+            $inner->{_data} = $knot->_decode($s);
+        }
     }
     return $val;
 
