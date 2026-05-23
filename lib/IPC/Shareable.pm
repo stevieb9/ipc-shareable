@@ -25,17 +25,13 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION;
-our $_have_xs;
+our $VERSION = '1.15';
 
-BEGIN {
-    $VERSION  = '1.14';
-    $_have_xs = ! $ENV{IPC_SHAREABLE_NO_XS} && eval {
-        require XSLoader;
-        XSLoader::load('IPC::Shareable', $VERSION);
-        1;
-    } // 0;
-}
+our $_have_xs = ! $ENV{IPC_SHAREABLE_NO_XS} && eval {
+    require XSLoader;
+    XSLoader::load('IPC::Shareable', $VERSION);
+    1;
+} // 0;
 
 use constant {
     # Locking
@@ -244,8 +240,10 @@ sub FETCH {
             $global_register{$inner->seg->id} = $inner;
         }
 
-        my $s = $inner->seg;
-        $inner->{_data} = $knot->_decode($s);
+        unless ($inner->{_lock}) {
+            my $s = $inner->seg;
+            $inner->{_data} = $knot->_decode($s);
+        }
     }
     return $val;
 
