@@ -1,0 +1,38 @@
+# Lima VM config for OpenBSD 7.x amd64
+# Tests the platform-specific shmid_ds unpack fix for OpenBSD 64-bit.
+#
+# OpenBSD does not publish pre-built cloud images, so this config uses a
+# cached QCOW2 extracted from the generic/openbsd7 Vagrant box (Roboxes).
+# openbsd-test.sh handles the one-time download and extraction.
+#
+# Setup (one-time, done automatically by openbsd-test.sh):
+#   ./ci/openbsd-test.sh
+#
+# Run tests directly:
+#   ./ci/openbsd-test.sh
+#
+# Interactive shell (after VM is created and first-boot completed):
+#   limactl shell openbsd-ipc
+#
+# Stop / delete:
+#   limactl stop openbsd-ipc
+#   limactl delete openbsd-ipc
+
+vmType: qemu
+os: FreeBSD
+arch: x86_64
+firmware:
+  legacyBIOS: true
+
+user:
+  name: vagrant
+
+images:
+  - location: "~/.lima/_cache/openbsd7.qcow2"
+    arch: x86_64
+
+cpus: 2
+memory: "2GiB"
+disk: "128GiB"
+
+mounts: []
