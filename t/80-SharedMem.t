@@ -221,7 +221,14 @@ my $mod = 'IPC::Shareable::SharedMem';
 
 # OpenBSD 64-bit shmid_ds unpack template correctness
 # Construct a synthetic binary buffer with known values at the OpenBSD
-# 64-bit offsets and verify the unpack produces the correct values.
+# 64-bit offsets (verified against offsetof() on OpenBSD 7.4 amd64).
+#
+# struct shmid_ds layout (104 bytes):
+#   ipc_perm (32): uid(4) gid(4) cuid(4) cgid(4) mode(4) + 12 pad
+#   segsz(4/int) lpid(4/pid_t) cpid(4/pid_t) nattch(2/shmatt_t) [pad 2]
+#   atime(8/time_t) __shm_atimensec(8)
+#   dtime(8/time_t) __shm_dtimensec(8)
+#   ctime(8/time_t) __shm_ctimensec(8) + shm_internal(8)
 {
     my ($uid, $gid, $cuid, $cgid) = (1001, 1002, 1003, 1004);
     my $mode    = 0644;
@@ -231,16 +238,15 @@ my $mod = 'IPC::Shareable::SharedMem';
     my $nattch  = 3;
     my ($atime, $dtime, $ctime) = (1748000000, 1748000001, 1748000002);
 
-    # Pack using the same template the OpenBSD 64-bit branch writes through
     my $synthetic = pack(
-        'L L L L L x[4] x[8] Q l l L x[4] q q q',
+        'L L L L L x[12] L l l S x[2] q x[8] q x[8] q x[16]',
         $uid, $gid, $cuid, $cgid, $mode, $segsz,
         $lpid, $cpid, $nattch, $atime, $dtime, $ctime
     );
 
     my %vals;
     @vals{qw(uid gid cuid cgid mode segsz lpid cpid nattch atime dtime ctime)}
-        = unpack('L L L L L x[4] x[8] Q l l L x[4] q q q', $synthetic);
+        = unpack('L L L L L x[12] L l l S x[2] q x[8] q x[8] q', $synthetic);
 
     is $vals{uid},    $uid,    'OpenBSD 64-bit stat: uid unpack correct';
     is $vals{gid},    $gid,    'OpenBSD 64-bit stat: gid unpack correct';
@@ -255,12 +261,18 @@ my $mod = 'IPC::Shareable::SharedMem';
     is $vals{dtime},  $dtime,  'OpenBSD 64-bit stat: dtime unpack correct';
     is $vals{ctime},  $ctime,  'OpenBSD 64-bit stat: ctime unpack correct';
 
-    # Verify segsz is in fact read from the right offset (after 32-byte ipc_perm)
     my @seg_offsets = qw(uid gid cuid cgid mode segsz lpid cpid nattch atime dtime ctime);
     my $segsz_idx = 0;
     for (0..$#seg_offsets) { $segsz_idx = $_ if $seg_offsets[$_] eq 'segsz' }
     cmp_ok $vals{segsz}, '>=', 65536,
         "OpenBSD 64-bit stat: segsz (offset $segsz_idx in unpack) is >= 65536, not a garbage value";
+}
+
+# Verify the pack template produces exactly 104 bytes (the real sizeof(shmid_ds))
+{
+    my $buf = pack('L L L L L x[12] L l l S x[2] q x[8] q x[8] q x[16]',
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
+    is length($buf), 104, 'OpenBSD 64-bit: synthetic shmid_ds is 104 bytes';
 }
 
 my $segs_after = IPC::Shareable::seg_count();

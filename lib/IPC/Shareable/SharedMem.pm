@@ -244,14 +244,17 @@ sub stat {
         }
     }
     elsif ($^O eq 'openbsd' && $Config{longsize} == 8) {
-        # 64-bit OpenBSD: ipc_perm is 32 bytes.
-        #   ipc_perm: uid(4) gid(4) cuid(4) cgid(4) mode(4/int)
-        #             seq(2) pad(2) key(8/long)
-        # shmid_ds: segsz(8) lpid(4) cpid(4) nattch(4/int) [pad 4]
-        #           atime(8) dtime(8) ctime(8)
+        # 64-bit OpenBSD shmid_ds (104 bytes), struct layout from sys/shm.h:
+        #   ipc_perm (32 bytes): uid(4) gid(4) cuid(4) cgid(4) mode(4/int)
+        #             +12 bytes (key/seq/pad)
+        #   segsz(4/int) lpid(4/pid_t) cpid(4/pid_t) nattch(2/shmatt_t) [pad 2]
+        #   atime(8/time_t) __shm_atimensec(8/long)
+        #   dtime(8/time_t) __shm_dtimensec(8/long)
+        #   ctime(8/time_t) __shm_ctimensec(8/long)
+        #   shm_internal(8/ptr)
 
         @values{qw(uid gid cuid cgid mode segsz lpid cpid nattch atime dtime ctime)}
-            = unpack('L L L L L x[4] x[8] Q l l L x[4] q q q', $data);
+            = unpack('L L L L L x[12] L l l S x[2] q x[8] q x[8] q', $data);
     }
     else {
         # macOS shmid_ds / ipc_perm layout (XNU kernel):
