@@ -25,6 +25,7 @@ my @attr_list = qw(
     serializer
     size
     protected
+    testing
     limit
     magic
     mode
@@ -50,6 +51,7 @@ is $attrs->{key},       'testing', "key is set ok";
 is $attrs->{serializer},'storable', "serializer is set ok";
 is $attrs->{size},      65536, "size is set ok";
 is $attrs->{protected}, 0, "protected is set ok";
+is $attrs->{testing},   0, "testing is set ok";
 is $attrs->{limit},     1, "limit is set ok";
 is $attrs->{magic},     0, "magic is set ok";
 is $attrs->{mode},      438, "mode is set ok";
