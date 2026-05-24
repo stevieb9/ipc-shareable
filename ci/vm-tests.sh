@@ -5,6 +5,7 @@
 #
 #   -f, --freebsd     Run FreeBSD tests
 #   -l, --linux       Run 32-bit Linux (i386) tests
+#   -o, --openbsd     Run OpenBSD tests
 #   -s, --solaris     Run Solaris/OmniOS tests
 #   -a, --all         Run all VMs (default)
 #   -k, --keep-logs   Keep log files (default: deleted after run)
@@ -33,6 +34,7 @@ trap cleanup EXIT
 
 RUN_FREEBSD=0
 RUN_LINUX=0
+RUN_OPENBSD=0
 RUN_SOLARIS=0
 
 usage() {
@@ -42,6 +44,7 @@ Usage: $(basename "$0") [options] [prove options]
 Options:
   -f, --freebsd     Run FreeBSD tests
   -l, --linux       Run 32-bit Linux (i386) tests
+  -o, --openbsd     Run OpenBSD tests
   -s, --solaris     Run Solaris/OmniOS tests
   -a, --all         Run all VMs (default)
   -k, --keep-logs   Keep log files after the run (default: delete on success)
@@ -65,8 +68,9 @@ while [ $# -gt 0 ]; do
     case "$1" in
         -f|--freebsd)  RUN_FREEBSD=1; shift ;;
         -l|--linux)    RUN_LINUX=1; shift ;;
+        -o|--openbsd)  RUN_OPENBSD=1; shift ;;
         -s|--solaris)  RUN_SOLARIS=1; shift ;;
-        -a|--all)      RUN_FREEBSD=1; RUN_LINUX=1; RUN_SOLARIS=1; shift ;;
+        -a|--all)      RUN_FREEBSD=1; RUN_LINUX=1; RUN_OPENBSD=1; RUN_SOLARIS=1; shift ;;
         -k|--keep-logs) KEEP_LOGS=1; shift ;;
         -x|--xs)       XS_MODE=1; shift ;;
         -D|--display)  DISPLAY_MODE=1; shift ;;
@@ -75,8 +79,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ $RUN_FREEBSD -eq 0 ] && [ $RUN_LINUX -eq 0 ] && [ $RUN_SOLARIS -eq 0 ]; then
-    RUN_FREEBSD=1; RUN_LINUX=1; RUN_SOLARIS=1
+if [ $RUN_FREEBSD -eq 0 ] && [ $RUN_LINUX -eq 0 ] && [ $RUN_OPENBSD -eq 0 ] && [ $RUN_SOLARIS -eq 0 ]; then
+    RUN_FREEBSD=1; RUN_LINUX=1; RUN_OPENBSD=1; RUN_SOLARIS=1
 fi
 
 PROVE_ARGS="${_PROVE_ARGS# }"
@@ -157,6 +161,7 @@ fi
 printf "    targets: "
 [ $RUN_FREEBSD -eq 1 ] && printf "freebsd "
 [ $RUN_LINUX -eq 1 ]   && printf "linux-i386 "
+[ $RUN_OPENBSD -eq 1 ] && printf "openbsd "
 [ $RUN_SOLARIS -eq 1 ] && printf "solaris"
 echo ""
 
@@ -168,6 +173,10 @@ fi
 
 if [ $RUN_LINUX -eq 1 ]; then
     run_vm "linux-i386" "linux-i386-test.sh" || OVERALL=1
+fi
+
+if [ $RUN_OPENBSD -eq 1 ]; then
+    run_vm "openbsd" "openbsd-test.sh" || OVERALL=1
 fi
 
 if [ $RUN_SOLARIS -eq 1 ]; then
@@ -182,13 +191,13 @@ echo " RESULTS SUMMARY"
 echo "============================================================"
 echo ""
 
-for _label in freebsd linux-i386 solaris; do
+for _label in freebsd linux-i386 openbsd solaris; do
     print_result "$_label"
 done
 
 if [ $DISPLAY_MODE -eq 0 ]; then
     _any_failures=0
-    for _label in freebsd linux-i386 solaris; do
+    for _label in freebsd linux-i386 openbsd solaris; do
         _status_file="${RESULTS_DIR}/${_label}"
         [ -f "$_status_file" ] || continue
         case "$(cat "$_status_file")" in
@@ -207,7 +216,7 @@ if [ $DISPLAY_MODE -eq 0 ]; then
     fi
 else
     echo ""
-    for _label in freebsd linux-i386 solaris; do
+    for _label in freebsd linux-i386 openbsd solaris; do
         _status_file="${RESULTS_DIR}/${_label}"
         [ -f "$_status_file" ] || continue
         case "$(cat "$_status_file")" in

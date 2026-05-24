@@ -8,6 +8,7 @@ Scripts for running IPC::Shareable tests inside local VMs via
 - [Lima basics](#lima-basics)
 - [Unified test runner (`vm-tests.sh`)](#unified-test-runner-vm-testssh)
 - [FreeBSD CI](#freebsd-ci)
+- [OpenBSD CI](#openbsd-ci)
 - [Linux i386 CI](#linux-i386-ci)
 - [OmniOS CE (Solaris) CI](#omnios-ce-solaris-ci)
 
@@ -77,6 +78,7 @@ test details.
 |------|-------------|
 | `-f`, `--freebsd` | Run FreeBSD tests |
 | `-l`, `--linux` | Run 32-bit Linux (i386) tests |
+| `-o`, `--openbsd` | Run OpenBSD tests |
 | `-s`, `--solaris` | Run Solaris/OmniOS tests |
 | `-a`, `--all` | Run all VMs (default) |
 | `-k`, `--keep-logs` | Keep log files after the run |
@@ -193,6 +195,88 @@ VM=my-other-freebsd ./ci/freebsd-test.sh
 >    console, creates the SSH user, and installs a small rc.d service that
 >    writes Lima's boot-done marker on every subsequent boot. This one-time
 >    setup takes a few minutes. After it completes, later starts are fast.
+
+---
+
+## OpenBSD CI
+
+Local OpenBSD testing via Lima and QEMU. Targets the CPAN smoker platform:
+
+- `osname=openbsd`, `osvers=7.8`, `archname=OpenBSD.amd64-openbsd`
+
+OpenBSD does not publish pre-built cloud images, so this setup uses the
+`generic/openbsd7` Vagrant box (Roboxes). The QCOW2 is extracted once and
+cached at `~/.lima/_cache/openbsd7.qcow2`.
+
+Lima has no OpenBSD OS type. The config uses `os:FreeBSD` so that Lima waits
+for the file-based boot-done marker instead of the Linux guest agent.
+`openbsd-first-boot.py` bootstraps the VM via the QEMU serial console and
+installs an rc.d service that writes the marker on every subsequent boot.
+
+### One-time VM setup
+
+Done automatically by `openbsd-test.sh`. To do it manually:
+
+```bash
+limactl create --name openbsd-ipc ci/openbsd-lima.yaml
+limactl start openbsd-ipc
+```
+
+> **Note:** The first run downloads the Vagrant box (~1.1 GB) and extracts the
+> QCOW2. This is cached in `~/.lima/_cache/` for subsequent runs. The first
+> boot also runs `openbsd-first-boot.py` via the serial console to install the
+> Lima SSH key and the boot-done rc.d service (one-time, takes ~1-2 minutes).
+
+### Logging into the VM
+
+```bash
+limactl shell openbsd-ipc
+```
+
+Or with SSH directly:
+
+```bash
+ssh -F ~/.lima/openbsd-ipc/ssh.config lima-openbsd-ipc
+```
+
+### Shutting down the VM
+
+```bash
+limactl stop openbsd-ipc
+limactl delete openbsd-ipc       # also removes disk image
+```
+
+### Running the test suite
+
+`openbsd-test.sh` follows the same lifecycle as `freebsd-test.sh`: create VM
+if absent, start it, run first-boot setup on the first run, copy source, run
+tests, stop the VM on exit.
+
+```bash
+./ci/openbsd-test.sh [options] [prove options]
+```
+
+**Options:**
+
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only)
+- `-h`, `--help` — Print usage and exit.
+
+Same prove argument override syntax applies:
+
+```bash
+./ci/openbsd-test.sh t/85-clean.t
+./ci/openbsd-test.sh t
+
+VM=my-other-openbsd ./ci/openbsd-test.sh
+```
+
+> **Note:** The first run is slow for two reasons:
+>
+> 1. The Vagrant box is downloaded (~1.1 GB; the extracted QCOW2 is cached
+>    at `~/.lima/_cache/openbsd7.qcow2` for subsequent runs).
+> 2. The first boot runs `openbsd-first-boot.py` via the QEMU serial console
+>    to install the Lima SSH key and a persistent boot-done rc.d service.
+>    Subsequent starts are fast.
 
 ---
 
