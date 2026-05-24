@@ -15,7 +15,9 @@ Revision history for Perl extension IPC::Shareable.
       Added periodic _end() cleanup calls so peak semaphore usage stays within
       the default limit on OpenBSD.
     - Added 'testing' flag; allows bulk cleanup of leaked segs/sems from a
-      previous test run
+      previous test run. This was implemented in this distribution's unit test
+      suite
+    -
 
 1.14     2026-05-22
     - Modify remove() to properly catch a non "0 but true" case when trying
