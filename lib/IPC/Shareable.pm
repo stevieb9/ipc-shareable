@@ -2032,7 +2032,7 @@ sub testing_set {
     $_testing_dist = $dist_name;
 }
 sub clean_up_testing {
-    shift if ! ref $_[0] && defined $_[0] && UNIVERSAL::isa($_[0], __PACKAGE__);
+    shift if @_ > 1 && ! ref $_[0] && defined $_[0] && UNIVERSAL::isa($_[0], __PACKAGE__);
 
     my ($dist_name) = @_;
 
