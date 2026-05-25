@@ -154,17 +154,32 @@ scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
 limactl shell "$VM" -- sh -lc "find '${GUEST_REPO}' -name '._*' -delete" \
     2>/dev/null || true
 
+# ── clean up stale IPC from previous runs ────────────────────────────────────
+
+echo "==> Cleaning up stale IPC segments/semaphores from previous runs..."
+limactl shell "$VM" -- sh -lc "
+    for id in \$(ipcs -m 2>/dev/null | awk '/${GUEST_USER}/ {print \$2}'); do
+        ipcrm -m \$id 2>/dev/null || true
+    done
+    for id in \$(ipcs -s 2>/dev/null | awk '/${GUEST_USER}/ {print \$2}'); do
+        ipcrm -s \$id 2>/dev/null || true
+    done
+" || true
+
 # ── run tests ───────────────────────────────────────────────────────────────
 
 if [ $XS_MODE -eq 1 ]; then
     echo "==> Building and running tests in VM (XS)..."
     limactl shell "$VM" -- sh -lc \
-        "cd '${GUEST_REPO}' && perl Makefile.PL && make && ASYNC_TESTING=1 prove -l -Iblib/arch ${PROVE_ARGS}"
+        "cd '${GUEST_REPO}' && perl Makefile.PL && make && ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}"
 else
     echo "==> Running tests in VM (pure Perl)..."
     limactl shell "$VM" -- sh -lc \
-        "cd '${GUEST_REPO}' && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}"
+        "cd '${GUEST_REPO}' && ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}"
 fi
+
+echo "==> IPC::Shareable version tested..."
+limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl -Ilib -MIPC::Shareable -e 'print qq(IPC::Shareable \$IPC::Shareable::VERSION\n)'"
 
 echo "==> VM environment info..."
 limactl shell "$VM" -- sh -lc "uname -a; perl -V:archname"

@@ -49,12 +49,53 @@ done
 PROVE_ARGS="${_PROVE_ARGS# }"
 PROVE_ARGS="${PROVE_ARGS:--v t}"
 
+# ── timeout helpers ─────────────────────────────────────────────────────────
+# macOS lacks GNU timeout; these poll-based wrappers work everywhere.
+
+_timeout_run() {
+    # $1 = timeout seconds, remaining args = command to run.
+    # Returns the command's exit status, or 124 on timeout.
+    _timeout=$1; shift
+    "$@" &
+    _pid=$!
+    _elapsed=0
+    while kill -0 $_pid 2>/dev/null; do
+        sleep 5
+        _elapsed=$((_elapsed + 5))
+        if [ $_elapsed -ge $_timeout ]; then
+            echo "ERROR: Command timed out after ${_timeout}s" >&2
+            kill $_pid 2>/dev/null || true
+            wait $_pid 2>/dev/null || true
+            return 124
+        fi
+    done
+    wait $_pid
+}
+
+_wait_with_timeout() {
+    # $1 = timeout seconds, $2 = PID to wait for.
+    # Returns the PID's exit status, or 124 on timeout.
+    _timeout=$1; _pid=$2
+    _elapsed=0
+    while kill -0 $_pid 2>/dev/null; do
+        sleep 5
+        _elapsed=$((_elapsed + 5))
+        if [ $_elapsed -ge $_timeout ]; then
+            echo "ERROR: Timed out waiting for PID $_pid after ${_timeout}s" >&2
+            kill $_pid 2>/dev/null || true
+            wait $_pid 2>/dev/null || true
+            return 124
+        fi
+    done
+    wait $_pid
+}
+
 cleanup() {
     status=$?
     echo "==> Shutting down VM '${VM}' cleanly..."
     # Issue a clean shutdown via SSH so ZFS pool is marked clean.
     # TCG emulation is slow — the guest may need minutes to sync+halt.
-    ssh -F ~/.lima/"$VM"/ssh.config lima-"$VM" \
+    ssh -o ConnectTimeout=10 -F ~/.lima/"$VM"/ssh.config lima-"$VM" \
         'sudo shutdown -i5 -g0 -y 2>/dev/null' \
         </dev/null 2>/dev/null || true
     # Wait for the VM to actually power off (poll for up to 5 min).
@@ -174,6 +215,13 @@ if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then
         python3 "${SCRIPT_DIR}/solaris-first-boot.py" "$VM"
     fi
 
+    # If sudo is missing the VM predates the first-boot install step; redo it.
+    # This must run before _write_boot_done since that uses sudo over SSH.
+    if ! limactl shell "$VM" -- sh -lc 'command -v sudo >/dev/null 2>&1'; then
+        echo "==> sudo not found – running first-boot setup..."
+        python3 "${SCRIPT_DIR}/solaris-first-boot.py" "$VM"
+    fi
+
     # Lima generates a fresh instance-id on each start.  Write it to the
     # boot-done marker so limactl start (running in the background) exits.
     _write_boot_done() {
@@ -195,20 +243,14 @@ subprocess.run(['hdiutil','detach',mnt,'-quiet'])
     }
     _write_boot_done
 
-    wait "$_LIMA_PID" || true
+    _wait_with_timeout 6000 "$_LIMA_PID" || true
 
     limactl list | grep -q "^${VM}[[:space:]].*Running" || {
         echo "ERROR: VM '${VM}' is not Running after start"; exit 1; }
 fi
 
-# If sudo is missing the VM predates the first-boot install step; redo it.
-if ! limactl shell "$VM" -- sh -lc 'command -v sudo >/dev/null 2>&1'; then
-    echo "==> sudo not found – running first-boot setup..."
-    python3 "${SCRIPT_DIR}/solaris-first-boot.py" "$VM"
-fi
-
 echo "==> Installing OmniOS packages and CPAN deps..."
-limactl shell "$VM" -- sh -lc '
+_timeout_run 1200 limactl shell "$VM" -- sh -lc '
     set -e
     # System packages (pkg is idempotent for already-installed packages)
     sudo pkg install --accept -q \
@@ -247,18 +289,31 @@ scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
 # Strip macOS resource-fork files (._*).
 limactl shell "$VM" -- sh -lc "find '${GUEST_REPO}' -name '._*' -delete" 2>/dev/null || true
 
+echo "==> Cleaning up stale IPC segments/semaphores from previous runs..."
+limactl shell "$VM" -- sh -lc "
+    for id in \$(ipcs -m 2>/dev/null | awk '/${GUEST_USER}/ {print \$2}'); do
+        ipcrm -m \$id 2>/dev/null || true
+    done
+    for id in \$(ipcs -s 2>/dev/null | awk '/${GUEST_USER}/ {print \$2}'); do
+        ipcrm -s \$id 2>/dev/null || true
+    done
+" || true
+
 if [ $XS_MODE -eq 1 ]; then
     echo "==> Building and running tests in VM (XS)..."
-    limactl shell "$VM" -- sh -lc "
+    _timeout_run 2400 limactl shell "$VM" -- sh -lc "
         export PATH=/usr/gnu/bin:/usr/bin:\$PATH
-        cd '${GUEST_REPO}' && perl Makefile.PL && make && ASYNC_TESTING=1 prove -l -Iblib/arch ${PROVE_ARGS}
+        cd '${GUEST_REPO}' && perl Makefile.PL && make && ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}
     "
 else
     echo "==> Running tests in VM (pure Perl)..."
-    limactl shell "$VM" -- sh -lc "
+    _timeout_run 1800 limactl shell "$VM" -- sh -lc "
         export PATH=/usr/gnu/bin:/usr/bin:\$PATH
-        cd '${GUEST_REPO}' && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}
+        cd '${GUEST_REPO}' && ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}
     "
 fi
+
+echo "==> IPC::Shareable version tested..."
+limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && PERL5LIB=lib perl -Ilib -MIPC::Shareable -e 'print qq(IPC::Shareable \$IPC::Shareable::VERSION\n)'"
 
 echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"

@@ -63,6 +63,20 @@ the base disk image. `limactl create` copies the template into
 edit the VM's YAML directly (e.g. to bump CPUs) and `limactl start` will pick
 up the changes.
 
+### VM defaults and reuse
+
+The default VM names (`freebsd-ipc`, `openbsd-ipc`, `linux-i386`, `solaris-ipc`)
+match those used by the sibling `async-event-interval` repo, so the same
+provisioned VM disks can be reused between projects without re-downloading base
+images or re-running first-boot bootstraps. Each test script installs any extra
+CPAN deps the suite needs on top of what is already present, idempotently.
+
+To use isolated VMs instead, set `VM=<name>` when invoking any script:
+
+```bash
+VM=freebsd-ipc2 ./ci/freebsd-test.sh
+```
+
 ## Unified test runner (`vm-tests.sh`)
 
 Runs tests on one or more VMs sequentially and prints a summary with failed
@@ -82,6 +96,8 @@ test details.
 | `-s`, `--solaris` | Run Solaris/OmniOS tests |
 | `-a`, `--all` | Run all VMs (default) |
 | `-k`, `--keep-logs` | Keep log files after the run |
+| `-x`, `--xs` | Build and test with XS (default: pure Perl only) |
+| `-D`, `--display` | Write output to stdout instead of log files |
 | `-h`, `--help` | Print usage and exit |
 
 Prove options are forwarded to each VM test script (default: `-v t`).
@@ -163,6 +179,7 @@ tests pass, fail, or the script is interrupted.
   managed by perlbrew (e.g. `5.20.3`). Compiles Perl from source on the
   first run (10-20 min); subsequent runs reuse the cached build. Useful
   for reproducing failures reported against older Perl versions.
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only)
 - `-h`, `--help` — Print usage and exit.
 
 By default this runs `prove -l -v t` inside the VM. Pass your own prove
@@ -340,6 +357,7 @@ run tests in the chroot, stop the VM on exit.
 
 **Options:**
 
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only)
 - `-h`, `--help` — Print usage and exit.
 
 Same prove argument override syntax applies:
@@ -417,6 +435,7 @@ tests, stop the VM on exit.
 
 **Options:**
 
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only)
 - `-h`, `--help` — Print usage and exit.
 
 Same prove argument override syntax applies:
