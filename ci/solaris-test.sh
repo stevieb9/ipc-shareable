@@ -100,20 +100,31 @@ cleanup() {
         </dev/null 2>/dev/null || true
     # Wait for the VM to actually power off (poll for up to 5 min).
     echo "==> Waiting for VM to power off..."
+    _clean_shutdown=0
     for _i in $(seq 1 30); do
-        limactl list 2>/dev/null | grep -q "^${VM}[[:space:]].*Running" || break
+        limactl list 2>/dev/null | grep -q "^${VM}[[:space:]].*Running" || {
+            _clean_shutdown=1; break; }
         sleep 10
     done
     # If still running, let limactl stop send ACPI; last resort force.
-    limactl list 2>/dev/null | grep -q "^${VM}[[:space:]].*Running" && {
-        echo "==> VM still running, asking Lima to stop..."
-        limactl stop "$VM" >/dev/null 2>&1 || true
-        sleep 30
-    }
+    if [ "$_clean_shutdown" -eq 0 ]; then
+        limactl list 2>/dev/null | grep -q "^${VM}[[:space:]].*Running" && {
+            echo "==> VM still running, asking Lima to stop..."
+            limactl stop "$VM" >/dev/null 2>&1 || true
+            sleep 30
+        }
+    fi
     limactl list 2>/dev/null | grep -q "^${VM}[[:space:]].*Running" && {
         echo "==> Force-stopping VM..."
         limactl stop --force "$VM" >/dev/null 2>&1 || true
+        _clean_shutdown=0
     }
+    # Save clean QCOW2 snapshot for fast recovery next run
+    if [ "$_clean_shutdown" -eq 1 ]; then
+        _DISK="${HOME}/.lima/${VM}/disk"
+        echo "==> Saving clean VM snapshot..."
+        qemu-img snapshot -c clean "$_DISK" 2>/dev/null || true
+    fi
     trap - EXIT INT TERM
     exit "$status"
 }
@@ -170,6 +181,14 @@ PYEOF
 fi
 
 if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then
+    _DISK="${HOME}/.lima/${VM}/disk"
+
+    # Revert to last clean snapshot so ZFS never scans on boot
+    if qemu-img snapshot -l "$_DISK" 2>/dev/null | grep -q '\bclean\b'; then
+        echo "==> Reverting to clean snapshot..."
+        qemu-img snapshot -a clean "$_DISK" 2>/dev/null || true
+    fi
+
     echo "==> Starting VM '${VM}'..."
     limactl start "$VM" &
     _LIMA_PID=$!

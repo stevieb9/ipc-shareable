@@ -1,0 +1,54 @@
+# Lima VM config for DragonFly BSD 6.4 x86_64
+# Tests the DragonFly-specific shmid_ds unpack fix and ipcs parser.
+#
+# DragonFly BSD only supports x86_64. On Apple Silicon this means QEMU TCG
+# emulation (software emulation), like OpenBSD and Solaris VMs.
+#
+# IMPORTANT: DragonFly BSD does NOT publish pre-installed cloud/VM images.
+# The release .img files are installers, not bootable systems.  You must
+# create a pre-installed QCOW2 by running the installer interactively in
+# QEMU first.  See ci/README.md § DragonFly BSD CI for instructions.
+#
+# DragonFly BSD 6.x images use UEFI boot (they contain an EFI System
+# Partition).  Do NOT set legacyBIOS: true — it forces SeaBIOS which cannot
+# chainload the DragonFly EFI bootloader.  Omit legacyBIOS so Lima uses
+# EDK2/OVMF firmware.
+#
+# Lima has no DragonFly OS type. 'os: FreeBSD' is the closest — Lima uses
+# it to wait for the file-based boot-done marker instead of the Linux guest
+# agent. dragonfly-first-boot.py installs an rc.d service that writes the
+# marker on every subsequent boot.
+#
+# DragonFly does NOT support cloud-init.  All initial setup (user creation,
+# SSH key installation, boot-done service) is done once by
+# dragonfly-first-boot.py via the QEMU serial console.
+#
+# Setup (one-time, done automatically by dragonfly-test.sh):
+#   ./ci/dragonfly-test.sh
+#
+# Run tests directly:
+#   ./ci/dragonfly-test.sh
+#
+# Interactive shell (after VM is created and first-boot completed):
+#   limactl shell dragonfly-ipc
+#
+# Stop / delete:
+#   limactl stop dragonfly-ipc
+#   limactl delete dragonfly-ipc
+
+vmType: qemu
+os: FreeBSD
+arch: x86_64
+
+user:
+  name: dragonfly
+
+images:
+  - location: "~/.lima/_cache/dragonfly64.qcow2"
+    arch: x86_64
+
+cpus: 1
+memory: "2GiB"
+disk: "20GiB"
+
+mounts: []

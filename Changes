@@ -18,8 +18,8 @@ Revision history for Perl extension IPC::Shareable.
       previous test run. This was implemented in this distribution's unit test
       suite
     - Add Firefly unit test VM infrastructure
-    - Fix t/80-SharedMem.t: skip OpenBSD 64-bit tests on 32-bit Perl where the
-      'q' pack template is unavailable
+    - Fix t/80-SharedMem.t: skip 64-bit tests on 32-bit Perl where the 'q' pack
+      template is unavailable
     -
 
 1.14     2026-05-22

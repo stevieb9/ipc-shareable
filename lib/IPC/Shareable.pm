@@ -25,7 +25,7 @@ use Scalar::Util;
 use String::CRC32;
 use Storable 0.6 qw(freeze thaw);
 
-our $VERSION = '1.15_02';
+our $VERSION = '1.15';
 
 our $_have_xs = ! $ENV{IPC_SHAREABLE_NO_XS} && eval {
     require XSLoader;
@@ -664,6 +664,10 @@ sub shm_segments {
             # BSD/macOS format: m <shmid> <key> ...
             ($id, $raw_key) = ($1, $2);
         }
+        elsif ($line =~ /^\s*(\d+)\s+(0x[0-9a-fA-F]+)\s+/) {
+            # DragonFly BSD format: <shmid> <hex_key> ... (no 'm' type column)
+            ($id, $raw_key) = ($1, $2);
+        }
         elsif ($line =~ /^\s*(\S+)\s+(\d+)\s+\S+/) {
             # Linux format: <key> <shmid> ...
             ($raw_key, $id) = ($1, $2);
@@ -699,6 +703,8 @@ sub shm_segments {
             : unpack('x[44] L', $stat_buf) ) # 32-bit Solaris (ipc_perm=44)
             : $^O eq 'openbsd' && $Config{longsize} == 8
             ? unpack('x[32] L', $stat_buf)   # 64-bit OpenBSD: segsz is int (4 bytes)
+            : $^O eq 'dragonfly' && $Config{longsize} == 8
+            ? unpack('x[32] Q', $stat_buf)   # 64-bit DragonFly (ipc_perm=28 + pad 4; segsz=size_t=8)
             : unpack('x[24] Q', $stat_buf);  # macOS
 
         next unless $segsz;
@@ -761,8 +767,12 @@ sub seg_count {
     open my $ipcs_fh, '-|', 'ipcs', '-m' or die "ipcs -m: $!";
     while (my $line = <$ipcs_fh>) {
         # BSD/macOS format: m <shmid> <key> ...
+        # DragonFly BSD:    <shmid> <hex_key> ... (no type-letter column)
         # Linux format:     <key> <shmid> ...
         if ($line =~ /^\s*m\s+\d+\s+\S+/) {
+            $count++;
+        }
+        elsif ($line =~ /^\s*\d+\s+0x[0-9a-fA-F]+\s+/) {
             $count++;
         }
         elsif ($line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/) {
@@ -779,8 +789,12 @@ sub sem_count {
     open my $ipcs_fh, '-|', 'ipcs', '-s' or die "ipcs -s: $!";
     while (my $line = <$ipcs_fh>) {
         # BSD/macOS format: s <semid> <key> ...
+        # DragonFly BSD:    <semid> <hex_key> ... (no type-letter column)
         # Linux format:     <key> <semid> ...
         if ($line =~ /^\s*s\s+\d+\s+\S+/) {
+            $count++;
+        }
+        elsif ($line =~ /^\s*\d+\s+0x[0-9a-fA-F]+\s+/) {
             $count++;
         }
         elsif ($line =~ /^\s*(?:0x[0-9a-fA-F]+|\d+)\s+\d+\s+\S+/) {
@@ -1111,6 +1125,81 @@ sub remove {
         delete $process_register{$id};
         delete $global_register{$id};
     }
+}
+
+# Unit testing
+
+sub testing_set {
+    my ($class, $dist_name) = @_;
+    croak "testing_set() requires a distribution name string"
+        unless defined $dist_name && length $dist_name;
+    $_testing_dist = $dist_name;
+}
+sub clean_up_testing {
+    shift if @_ > 1 && ! ref $_[0] && defined $_[0] && UNIVERSAL::isa($_[0], __PACKAGE__);
+
+    my ($dist_name) = @_;
+
+    croak "clean_up_testing() requires a distribution name string"
+        unless defined $dist_name && length $dist_name;
+
+    my $target  = _testing_semaphore_key_hash($dist_name);
+    my $removed = 0;
+
+    # Scan ipcs -m for segment IDs and keys directly. We cannot use
+    # shm_segments() here because it filters by the 'IPC::Shareable' 14-byte
+    # tag, which is only written during STORE operations — empty tied segments
+    # have no tag and would be invisible. The authoritative identifier for a
+    # testing-tagged segment is the SEM_TESTING value on its semaphore set,
+    # not the segment content.
+
+    open my $ipcs_fh, '-|', 'ipcs', '-m' or die "ipcs -m: $!";
+    while (my $line = <$ipcs_fh>) {
+        my ($id, $raw_key);
+
+        if ($line =~ /^\s*m\s+(\d+)\s+(\S+)/) {
+            # BSD/macOS: m <shmid> <key> ...
+            ($id, $raw_key) = ($1, $2);
+        }
+        elsif ($line =~ /^\s*(\d+)\s+(0x[0-9a-fA-F]+)\s+/) {
+            # DragonFly BSD: <shmid> <hex_key> ... (no type-letter column)
+            ($id, $raw_key) = ($1, $2);
+        }
+        elsif ($line =~ /^\s*(\S+)\s+(\d+)\s+\S+/) {
+            # Linux: <key> <shmid> ...
+            ($raw_key, $id) = ($1, $2);
+        }
+        else {
+            next;
+        }
+
+        my $key_int = $raw_key =~ /^0x[0-9a-fA-F]+$/
+            ? hex($raw_key)
+            : $raw_key =~ /^-?\d+$/
+            ? int($raw_key)
+            : next;
+
+        # IPC_PRIVATE segments cannot be re-attached across processes
+        next if $key_int == 0;
+
+        my $sem = IPC::Semaphore->new($key_int, 0, 0);
+        next unless defined $sem;
+
+        next unless _testing_semaphore_value($sem) == $target;
+
+        if (shmctl($id, IPC_RMID, 0)) {
+            $sem->remove;
+            delete $process_register{$id};
+            delete $global_register{$id};
+            $removed++;
+        }
+        else {
+            warn "clean_up_testing(): could not remove shm segment $id: $!";
+        }
+    }
+    close $ipcs_fh;
+
+    return $removed;
 }
 
 # Private methods
@@ -2008,7 +2097,7 @@ sub _write_permitted {
     return 1;
 }
 
-# Testing support
+# Unit testing support
 
 sub _testing_semaphore_key_hash {
     my ($dist_name) = @_;
@@ -2024,74 +2113,6 @@ sub _testing_semaphore_value {
     my $stat = $sem->stat or return 0;
     return 0 if $stat->nsems < 5;
     return $sem->getval(SEM_TESTING) // 0;
-}
-sub testing_set {
-    my ($class, $dist_name) = @_;
-    croak "testing_set() requires a distribution name string"
-        unless defined $dist_name && length $dist_name;
-    $_testing_dist = $dist_name;
-}
-sub clean_up_testing {
-    shift if @_ > 1 && ! ref $_[0] && defined $_[0] && UNIVERSAL::isa($_[0], __PACKAGE__);
-
-    my ($dist_name) = @_;
-
-    croak "clean_up_testing() requires a distribution name string"
-        unless defined $dist_name && length $dist_name;
-
-    my $target  = _testing_semaphore_key_hash($dist_name);
-    my $removed = 0;
-
-    # Scan ipcs -m for segment IDs and keys directly. We cannot use
-    # shm_segments() here because it filters by the 'IPC::Shareable' 14-byte
-    # tag, which is only written during STORE operations — empty tied segments
-    # have no tag and would be invisible. The authoritative identifier for a
-    # testing-tagged segment is the SEM_TESTING value on its semaphore set,
-    # not the segment content.
-
-    open my $ipcs_fh, '-|', 'ipcs', '-m' or die "ipcs -m: $!";
-    while (my $line = <$ipcs_fh>) {
-        my ($id, $raw_key);
-
-        if ($line =~ /^\s*m\s+(\d+)\s+(\S+)/) {
-            # BSD/macOS: m <shmid> <key> ...
-            ($id, $raw_key) = ($1, $2);
-        }
-        elsif ($line =~ /^\s*(\S+)\s+(\d+)\s+\S+/) {
-            # Linux: <key> <shmid> ...
-            ($raw_key, $id) = ($1, $2);
-        }
-        else {
-            next;
-        }
-
-        my $key_int = $raw_key =~ /^0x[0-9a-fA-F]+$/
-            ? hex($raw_key)
-            : $raw_key =~ /^-?\d+$/
-            ? int($raw_key)
-            : next;
-
-        # IPC_PRIVATE segments cannot be re-attached across processes
-        next if $key_int == 0;
-
-        my $sem = IPC::Semaphore->new($key_int, 0, 0);
-        next unless defined $sem;
-
-        next unless _testing_semaphore_value($sem) == $target;
-
-        if (shmctl($id, IPC_RMID, 0)) {
-            $sem->remove;
-            delete $process_register{$id};
-            delete $global_register{$id};
-            $removed++;
-        }
-        else {
-            warn "clean_up_testing(): could not remove shm segment $id: $!";
-        }
-    }
-    close $ipcs_fh;
-
-    return $removed;
 }
 
 # Misc
@@ -2805,68 +2826,6 @@ Parameters:
 Mandatory, Integer: The integer protect key you assigned with the C<protected>
 option
 
-=head2 testing_set($dist_name)
-
-    IPC::Shareable->testing_set('My::Distribution');
-
-Sets a process-level tag so that every subsequent C<tie()> in the same process
-automatically receives C<< testing => 'My::Distribution' >> without needing it
-on each individual tie.  The tag propagates to nested-segment children (created
-automatically when a reference is stored into a tied variable) and to any
-processes forked B<after> the call, because C<fork()> copies the parent's memory.
-
-Call this once at the top of each test file (or from a shared helper module
-loaded with C<use>).
-
-Parameters:
-
-    $dist_name
-
-Mandatory, non-empty string: conventionally the distribution name.
-
-Croaks if C<$dist_name> is undefined or empty.
-
-=head2 clean_up_testing($dist_name)
-
-    IPC::Shareable::clean_up_testing('My::Distribution');
-
-    # or as a method:
-
-    IPC::Shareable->clean_up_testing('My::Distribution');
-
-Performs a B<system-wide> scan for every IPC::Shareable segment whose
-C<SEM_TESTING> semaphore slot contains the CRC32 hash of C<$dist_name>, then
-unconditionally removes each matching segment and its semaphore set.
-
-Unlike L</clean_up_all>, this function is not limited to segments in
-C<%global_register>: it will find and remove orphaned segments from previous
-crashed test runs.  Unlike L<clean_up_protected|/clean_up_protected($protect_key)>,
-it deliberately ignores the C<protected> attribute -- segments tagged with
-C<testing> are always removed.
-
-The typical usage is at the top of the first test file (before any segments are
-created) to clear orphans, and optionally at the end of the last test file as a
-belt-and-suspenders cleanup:
-
-    # t/00-base.t
-    IPC::Shareable->testing_set('My::Distribution');
-    my $n = IPC::Shareable::clean_up_testing('My::Distribution');
-    note "Removed $n orphaned segments from previous run" if $n;
-
-Parameters:
-
-    $dist_name
-
-Mandatory, non-empty string: the same string passed to L</testing_set($dist_name)>
-or the C<testing> tie attribute.
-
-Return: integer count of removed segments.
-
-B<Note>: C<attributes('testing')> on a re-attached segment returns the stored
-integer hash, not the original string.  This is intentional: the hash is
-sufficient for cleanup comparisons and the original string is never stored on
-the system.
-
 =head2 remove($key)
 
 Parameters:
@@ -3207,6 +3166,75 @@ C<mdb -k> to inspect the kernel IPC limits instead.
 
 Return: Hash reference, or C<undef> if the platform is not supported or no data
 could be read.
+
+
+=head1 METHODS - UNIT TESTING
+
+
+=head2 testing_set($dist_name)
+
+    IPC::Shareable->testing_set('My::Distribution');
+
+Sets a process-level tag so that every subsequent C<tie()> in the same process
+automatically receives C<< testing => 'My::Distribution' >> without needing it
+on each individual tie.  The tag propagates to nested-segment children (created
+automatically when a reference is stored into a tied variable) and to any
+processes forked B<after> the call, because C<fork()> copies the parent's memory.
+
+Call this once at the top of each test file (or from a shared helper module
+loaded with C<use>).
+
+This flag can also be set with the L</testing> flag in the initial tie params.
+
+Parameters:
+
+    $dist_name
+
+Mandatory, non-empty string: conventionally the distribution name.
+
+Croaks if C<$dist_name> is undefined or empty.
+
+
+=head2 clean_up_testing($dist_name)
+
+    IPC::Shareable::clean_up_testing('My::Distribution');
+
+    # or as a method:
+
+    IPC::Shareable->clean_up_testing('My::Distribution');
+
+Performs a B<system-wide> scan for every IPC::Shareable segment whose
+C<SEM_TESTING> semaphore slot contains the CRC32 hash of C<$dist_name>, then
+unconditionally removes each matching segment and its semaphore set.
+
+Unlike L</clean_up_all>, this function is not limited to segments in
+C<%global_register>: it will find and remove orphaned segments from previous
+crashed test runs.  Unlike L<clean_up_protected|/clean_up_protected($protect_key)>,
+it deliberately ignores the C<protected> attribute -- segments tagged with
+C<testing> are always removed.
+
+The typical usage is at the top of the first test file (before any segments are
+created) to clear orphans, and optionally at the end of the last test file as a
+belt-and-suspenders cleanup:
+
+    # t/00-base.t
+    IPC::Shareable->testing_set('My::Distribution');
+    my $n = IPC::Shareable::clean_up_testing('My::Distribution');
+    note "Removed $n orphaned segments from previous run" if $n;
+
+Parameters:
+
+    $dist_name
+
+Mandatory, non-empty string: the same string passed to L</testing_set($dist_name)>
+or the C<testing> tie attribute.
+
+Return: integer count of removed segments.
+
+B<Note>: C<attributes('testing')> on a re-attached segment returns the stored
+integer hash, not the original string.  This is intentional: the hash is
+sufficient for cleanup comparisons and the original string is never stored on
+the system.
 
 
 =head1 LOCKING

@@ -7,6 +7,7 @@
 #   -l, --linux       Run 32-bit Linux (i386) tests
 #   -o, --openbsd     Run OpenBSD tests
 #   -s, --solaris     Run Solaris/OmniOS tests
+#   -d, --dragonfly   Run DragonFly BSD tests
 #   -a, --all         Run all VMs (default)
 #   -k, --keep-logs   Keep log files (default: deleted after run)
 #   -h, --help        Show this help and exit
@@ -36,6 +37,7 @@ RUN_FREEBSD=0
 RUN_LINUX=0
 RUN_OPENBSD=0
 RUN_SOLARIS=0
+RUN_DRAGONFLY=0
 
 usage() {
     cat <<EOF
@@ -46,6 +48,7 @@ Options:
   -l, --linux       Run 32-bit Linux (i386) tests
   -o, --openbsd     Run OpenBSD tests
   -s, --solaris     Run Solaris/OmniOS tests
+  -d, --dragonfly   Run DragonFly BSD tests
   -a, --all         Run all VMs (default)
   -k, --keep-logs   Keep log files after the run (default: delete on success)
   -x, --xs          Build and test with XS on each VM (default: pure Perl only)
@@ -70,7 +73,8 @@ while [ $# -gt 0 ]; do
         -l|--linux)    RUN_LINUX=1; shift ;;
         -o|--openbsd)  RUN_OPENBSD=1; shift ;;
         -s|--solaris)  RUN_SOLARIS=1; shift ;;
-        -a|--all)      RUN_FREEBSD=1; RUN_LINUX=1; RUN_OPENBSD=1; RUN_SOLARIS=1; shift ;;
+        -d|--dragonfly) RUN_DRAGONFLY=1; shift ;;
+        -a|--all)      RUN_FREEBSD=1; RUN_LINUX=1; RUN_OPENBSD=1; RUN_SOLARIS=1; RUN_DRAGONFLY=1; shift ;;
         -k|--keep-logs) KEEP_LOGS=1; shift ;;
         -x|--xs)       XS_MODE=1; shift ;;
         -D|--display)  DISPLAY_MODE=1; shift ;;
@@ -79,8 +83,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ $RUN_FREEBSD -eq 0 ] && [ $RUN_LINUX -eq 0 ] && [ $RUN_OPENBSD -eq 0 ] && [ $RUN_SOLARIS -eq 0 ]; then
-    RUN_FREEBSD=1; RUN_LINUX=1; RUN_OPENBSD=1; RUN_SOLARIS=1
+if [ $RUN_FREEBSD -eq 0 ] && [ $RUN_LINUX -eq 0 ] && [ $RUN_OPENBSD -eq 0 ] && [ $RUN_SOLARIS -eq 0 ] && [ $RUN_DRAGONFLY -eq 0 ]; then
+    RUN_FREEBSD=1; RUN_LINUX=1; RUN_OPENBSD=1; RUN_SOLARIS=1; RUN_DRAGONFLY=1
 fi
 
 PROVE_ARGS="${_PROVE_ARGS# }"
@@ -159,10 +163,11 @@ else
     echo "    logs: ${LOGDIR}/"
 fi
 printf "    targets: "
-[ $RUN_FREEBSD -eq 1 ] && printf "freebsd "
-[ $RUN_LINUX -eq 1 ]   && printf "linux-i386 "
-[ $RUN_OPENBSD -eq 1 ] && printf "openbsd "
-[ $RUN_SOLARIS -eq 1 ] && printf "solaris"
+[ $RUN_FREEBSD -eq 1 ]   && printf "freebsd "
+[ $RUN_LINUX -eq 1 ]     && printf "linux-i386 "
+[ $RUN_OPENBSD -eq 1 ]   && printf "openbsd "
+[ $RUN_SOLARIS -eq 1 ]   && printf "solaris "
+[ $RUN_DRAGONFLY -eq 1 ] && printf "dragonfly"
 echo ""
 
 OVERALL=0
@@ -183,6 +188,10 @@ if [ $RUN_SOLARIS -eq 1 ]; then
     run_vm "solaris" "solaris-test.sh" || OVERALL=1
 fi
 
+if [ $RUN_DRAGONFLY -eq 1 ]; then
+    run_vm "dragonfly" "dragonfly-test.sh" || OVERALL=1
+fi
+
 # ── summary ──────────────────────────────────────────────────────────────────
 
 echo ""
@@ -191,13 +200,13 @@ echo " RESULTS SUMMARY"
 echo "============================================================"
 echo ""
 
-for _label in freebsd linux-i386 openbsd solaris; do
+for _label in freebsd linux-i386 openbsd solaris dragonfly; do
     print_result "$_label"
 done
 
 if [ $DISPLAY_MODE -eq 0 ]; then
     _any_failures=0
-    for _label in freebsd linux-i386 openbsd solaris; do
+    for _label in freebsd linux-i386 openbsd solaris dragonfly; do
         _status_file="${RESULTS_DIR}/${_label}"
         [ -f "$_status_file" ] || continue
         case "$(cat "$_status_file")" in
@@ -216,7 +225,7 @@ if [ $DISPLAY_MODE -eq 0 ]; then
     fi
 else
     echo ""
-    for _label in freebsd linux-i386 openbsd solaris; do
+    for _label in freebsd linux-i386 openbsd solaris dragonfly; do
         _status_file="${RESULTS_DIR}/${_label}"
         [ -f "$_status_file" ] || continue
         case "$(cat "$_status_file")" in

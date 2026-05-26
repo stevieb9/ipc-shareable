@@ -11,6 +11,8 @@ Scripts for running IPC::Shareable tests inside local VMs via
 - [OpenBSD CI](#openbsd-ci)
 - [Linux i386 CI](#linux-i386-ci)
 - [OmniOS CE (Solaris) CI](#omnios-ce-solaris-ci)
+- [DragonFly BSD CI](#dragonfly-bsd-ci)
+- [Technical Information](#technical-information)
 
 ## Lima basics
 
@@ -94,6 +96,7 @@ test details.
 | `-l`, `--linux` | Run 32-bit Linux (i386) tests |
 | `-o`, `--openbsd` | Run OpenBSD tests |
 | `-s`, `--solaris` | Run Solaris/OmniOS tests |
+| `-d`, `--dragonfly` | Run DragonFly BSD tests |
 | `-a`, `--all` | Run all VMs (default) |
 | `-k`, `--keep-logs` | Keep log files after the run |
 | `-x`, `--xs` | Build and test with XS (default: pure Perl only) |
@@ -294,6 +297,25 @@ VM=my-other-openbsd ./ci/openbsd-test.sh
 > 2. The first boot runs `openbsd-first-boot.py` via the QEMU serial console
 >    to install the Lima SSH key and a persistent boot-done rc.d service.
 >    Subsequent starts are fast.
+>
+> **Crash recovery:** After a crash (kernel panic, force-stop), OpenBSD runs
+> fsck at boot, which is slow under QEMU TCG emulation. The test script
+> mitigates this in two ways:
+>
+> - On shutdown, it SSHs in and runs `doas shutdown -h now` before falling
+>   back to `limactl stop`, so the filesystem is almost always clean.
+> - After every clean shutdown, it saves a `qemu-img` snapshot on the VM's
+>   QCOW2 disk. On the next start, the snapshot is reverted so that the
+>   filesystem is never dirty, regardless of how the previous run ended.
+> - During `limactl start`, the serial console log is monitored and a warning
+>   is printed if fsck is detected (in case both mitigations fail).
+>
+> If the snapshot itself becomes corrupted, delete and recreate the VM:
+> ```bash
+> limactl stop --force openbsd-ipc; limactl delete openbsd-ipc
+> # Then re-run the test script — it will recreate and provision automatically:
+> ./ci/openbsd-test.sh
+> ```
 
 ---
 
@@ -456,11 +478,466 @@ VM=my-other-solaris ./ci/solaris-test.sh
 >    user, install sudo, and set up the SMF boot-done service.
 > 4. Installs `runtime/perl`, GCC, and CPAN dependencies via `pkg` + `cpanm`.
 >
-> **Unclean shutdown warning:** Always let the script stop the VM. Killing
-> QEMU or force-deleting the VM triggers a full ZFS device scan on next boot,
-> which can take hours under TCG emulation. If this happens, delete the
-> QCOW2 cache (`~/.lima/_cache/omnios-r151058.qcow2`) and let the script
-> re-download the image.
+> **Unclean shutdown:** The test script avoids unclean shutdowns by issuing
+> `sudo shutdown -i5 -g0 -y` via SSH and waiting up to 5 minutes for the VM
+> to power off before falling back to `limactl stop`.
+>
+> Two additional mitigations protect against the case where the VM crashes
+> (kernel panic, OOM) and SSH shutdown isn't possible:
+>
+> - `solaris-first-boot.py` writes `set zfs:zfs_scan_legacy = 0` to
+>   `/etc/system`, suppressing the full ZFS device scan that would otherwise
+>   run after an unclean shutdown (and take hours under TCG emulation).
+> - After every clean shutdown, the test script saves a `qemu-img` snapshot
+>   on the VM's QCOW2 disk. On the next start, the snapshot is reverted so
+>   that the ZFS pool is never dirty, regardless of how the previous run
+>   ended.
+>
+> If the snapshot or QCOW2 cache becomes corrupted, delete both and let the
+> script re-download:
+> ```bash
+> limactl stop --force solaris-ipc; limactl delete solaris-ipc
+> rm -f ~/.lima/_cache/omnios-r151058.qcow2
+> ./ci/solaris-test.sh
+> ```
 >
 > If the GCC package name has changed in a newer OmniOS release, adjust the
 > `pkg install` line in `solaris-test.sh` (try `pkg search gcc` inside the VM).
+
+---
+
+## DragonFly BSD CI
+
+Local DragonFly BSD testing via Lima and QEMU. Targets the CPAN smoker platform:
+
+- `osname=dragonfly`, `archname=x86_64-dragonfly`
+
+**Important:** DragonFly BSD does NOT publish pre-installed cloud/VM images.
+The release `.img` and `.iso` files are installers, not bootable systems.
+A pre-installed QCOW2 must be created once before the test scripts can be
+used. See [Building the base image](#building-the-dragonfly-bsd-base-image) below.
+
+DragonFly BSD is x86-64 only. On Apple Silicon, QEMU emulates x86-64 via TCG
+(software emulation) — expect slow boots (~40 seconds to SSH on an installed
+system; the installer itself is much slower due to hardware probing).
+
+DragonFly BSD 6.x uses UEFI boot (EFI System Partition). The Lima config
+must NOT set `legacyBIOS: true` — that forces SeaBIOS which cannot chainload
+the DragonFly EFI bootloader. Lima's default EDK2/OVMF firmware works.
+
+Lima has no DragonFly OS type. The config uses `os:FreeBSD` so that Lima waits
+for the file-based boot-done marker instead of the Linux guest agent.
+`dragonfly-first-boot.py` bootstraps the VM via the QEMU serial console and
+installs an rc.d service that writes the marker on every subsequent boot.
+
+DragonFly does NOT support cloud-init, so all initial setup (user creation,
+SSH key installation, boot-done service) is done once by
+`dragonfly-first-boot.py` via the QEMU serial console.
+
+### Building the DragonFly BSD base image
+
+DragonFly BSD does not provide pre-installed cloud images. You must create
+a base QCOW2 once by running the installer in QEMU interactively:
+
+1. Download the latest release image:
+
+   ```bash
+   curl -o /tmp/dfly.img.bz2 \
+     https://mirror-master.dragonflybsd.org/iso-images/dfly-x86_64-6.4.2_REL.img.bz2
+   bunzip2 /tmp/dfly.img.bz2
+   ```
+
+2. Create a QCOW2 target disk for the installation:
+
+   ```bash
+   qemu-img create -f qcow2 ~/.lima/_cache/dragonfly64.qcow2 20G
+   ```
+
+3. Boot the installer with both the installer image and the target QCOW2:
+
+   ```bash
+   cp /opt/homebrew/share/qemu/edk2-i386-vars.fd /tmp/dfly-vars.fd
+   qemu-system-x86_64 \
+     -m 2048 \
+     -cpu max,-avx512vl,-pdpe1gb \
+     -machine q35,vmport=off \
+     -accel tcg,thread=multi \
+     -smp 2 \
+     -drive if=pflash,format=raw,readonly=on,file=/opt/homebrew/share/qemu/edk2-x86_64-code.fd \
+     -drive if=pflash,format=raw,file=/tmp/dfly-vars.fd \
+     -drive file=/tmp/dfly.img,if=ide,format=raw \
+     -drive file=~/.lima/_cache/dragonfly64.qcow2,if=ide,format=qcow2 \
+     -vga std
+   ```
+
+4. In the installer:
+   - Select the 20 GB target disk for installation
+   - Choose a minimal install (no X11, no games)
+   - **Enable serial console**: at the loader prompt before booting the
+     installed system, add `console=comconsole` to kernel parameters
+   - Enable sshd: add `sshd_enable="YES"` to `/etc/rc.conf`
+   - Set up a root password (or leave blank for password-less root)
+
+5. After installation completes, shut down and the QCOW2 at
+   `~/.lima/_cache/dragonfly64.qcow2` is ready.
+
+### One-time VM setup
+
+Once the base QCOW2 exists, everything else is automatic. To do it manually:
+
+```bash
+limactl create --name dragonfly-ipc ci/dragonfly-lima.yaml
+limactl start dragonfly-ipc
+```
+
+> **Note:** The first boot runs `dragonfly-first-boot.py` via the serial
+> console to create the dragonfly user, install sudo, install the Lima SSH
+> key, and set up the boot-done rc.d service (one-time, takes ~1-2 minutes).
+
+### Logging into the VM
+
+```bash
+limactl shell dragonfly-ipc
+```
+
+Or with SSH directly:
+
+```bash
+ssh -F ~/.lima/dragonfly-ipc/ssh.config lima-dragonfly-ipc
+```
+
+### Shutting down the VM
+
+```bash
+limactl stop dragonfly-ipc
+limactl delete dragonfly-ipc       # also removes disk image
+```
+
+### Running the test suite
+
+`dragonfly-test.sh` follows the same lifecycle as `openbsd-test.sh`: create VM
+if absent, start it, run first-boot setup on the first run, copy source, run
+tests, stop the VM on exit.
+
+```bash
+./ci/dragonfly-test.sh [options] [prove options]
+```
+
+**Options:**
+
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only)
+- `-h`, `--help` — Print usage and exit.
+
+Same prove argument override syntax applies:
+
+```bash
+./ci/dragonfly-test.sh t/85-clean.t
+./ci/dragonfly-test.sh t
+
+VM=my-other-dragonfly ./ci/dragonfly-test.sh
+```
+
+> **Note:** The first run runs `dragonfly-first-boot.py` via the QEMU serial
+> console to create the SSH user, install sudo, and set up the persistent
+> boot-done rc.d service. This takes ~1-2 minutes. Subsequent starts are fast.
+
+---
+
+## Technical Information
+
+Reference for diagnosing and rebuilding VMs. This section covers the
+internal mechanics that are not obvious from the scripts alone.
+
+### Lima boot-done mechanism
+
+Lima considers a VM "ready" when a file at a specific path contains the
+instance-id that Lima wrote to `cidata.iso` for that start. Lima generates
+a **new instance-id on every `limactl start`**, so the boot-done script
+inside the VM must read the current id from the cidata ISO — not from a
+saved file.
+
+**What Lima checks**: The hostagent SSHes into the VM and runs a boot script
+that does `cat /run/lima-boot-done` (note: `/run`, not `/var/run`) and
+compares the contents to the expected instance-id. If they don't match,
+Lima retries every ~3 seconds for 10 minutes, then gives up with
+`did not receive an event with the "running" status`.
+
+**How to read the expected instance-id from the host**:
+
+```python
+import subprocess, os
+iso = os.path.expanduser("~/.lima/<VM>/cidata.iso")
+subprocess.run(["hdiutil", "attach", iso, "-mountpoint", "/tmp/mnt", "-readonly", "-quiet"], check=True)
+# Read /tmp/mnt/meta-data, line starting with "instance-id:"
+subprocess.run(["hdiutil", "detach", "/tmp/mnt", "-quiet"])
+```
+
+**How to check what the VM wrote**:
+
+```bash
+ssh -F ~/.lima/<VM>/ssh.config lima-<VM> 'cat /run/lima-boot-done; cat /var/run/lima-boot-done'
+```
+
+**How to check what Lima is seeing** (debug log):
+
+```bash
+cat ~/.lima/<VM>/ha.stderr.log | tail -20
+# Look for the boot-done script trace showing the cat and comparison
+```
+
+### Per-OS boot-done implementation
+
+Each OS handles the boot-done marker differently because each has different
+init systems and device path conventions.
+
+#### FreeBSD
+
+- **Init**: rc.d service (`/etc/rc.d/lima_boot_done`, enabled via
+  `lima_boot_done_enable="YES"` in `/etc/rc.conf`).
+- **Cidata device**: `/dev/iso9660/cidata` or `/dev/iso9660/CIDATA`.
+- **Mount**: `mount_cd9660 -o ro`.
+- **Marker path**: `/var/run/lima-boot-done` (FreeBSD symlinks `/run` →
+  `/var/run`, so Lima's check of `/run/lima-boot-done` works).
+- **Source**: `freebsd-first-boot.py`, `BOOT_DONE_RC_LINES`.
+
+#### OpenBSD
+
+- **Init**: `/etc/rc.local` snippet (idiomatic OpenBSD one-shot).
+- **Cidata device**: `/dev/cd0a` or `/dev/cd1a`.
+- **Mount**: `mount_cd9660 -o ro`.
+- **Marker path**: `/var/run/lima-boot-done` (OpenBSD symlinks `/run` →
+  `/var/run`).
+- **Source**: `openbsd-first-boot.py`, `BOOT_DONE_RC_LOCAL`.
+
+#### Linux i386
+
+- **Init**: Lima's standard cloud-init (Linux guest agent handles
+  boot-done natively). No custom boot-done script needed.
+- **Marker path**: `/run/lima-boot-done` (Linux has `/run` as tmpfs).
+
+#### Solaris / OmniOS CE
+
+- **Init**: SMF transient service (`svc:/site/lima_boot_done:default`).
+  Manifest at `/var/svc/manifest/site/lima_boot_done.xml`, method script
+  at `/lib/svc/method/lima_boot_done`.
+- **Cidata device**: `/dev/dsk/c1t0d0s0` (vioscsi SCSI CD-ROM, slice 0).
+  Found via `prtconf -D | grep cdrom` — the device path is
+  `/pci@0,0/pci1af4,8@2/iport@iport0/cdrom@0,0`.
+- **Mount**: `mount -F hsfs -o ro` (HSFS is the illumos ISO9660 filesystem).
+- **Marker path**: Must write to **both** `/var/run/lima-boot-done` AND
+  `/run/lima-boot-done`. OmniOS does not have `/run` by default (it is not
+  a symlink to `/var/run` like on FreeBSD/OpenBSD), so the method script
+  must `mkdir -p /run` and write a second copy there. Lima checks `/run`
+  only.
+- **Source**: `solaris-first-boot.py`, `BOOT_DONE_METHOD_LINES`.
+
+#### DragonFly BSD
+
+- **Init**: rc.d service (`/usr/local/etc/rc.d/lima_boot_done`, enabled via
+  `lima_boot_done_enable="YES"` in `/etc/rc.conf`).
+- **Cidata device**: `/dev/cd0`.
+- **Mount**: `mount_cd9660 -o ro`.
+- **Marker path**: `/var/run/lima-boot-done` and `/run/lima-boot-done`.
+  DragonFly symlinks `/run` → `/var/run`, so both paths work — the script
+  writes to both for safety.
+- **Source**: `dragonfly-first-boot.py`, `BOOT_DONE_RC_LINES`.
+
+### Diagnosing a stuck `limactl start`
+
+If `limactl start <VM>` hangs past the SSH phase:
+
+1. **Check if SSH works**:
+   ```bash
+   ssh -F ~/.lima/<VM>/ssh.config lima-<VM> true && echo OK
+   ```
+2. **Check the marker**:
+   ```bash
+   ssh -F ~/.lima/<VM>/ssh.config lima-<VM> 'cat /run/lima-boot-done 2>&1; cat /var/run/lima-boot-done 2>&1'
+   ```
+3. **Check what Lima expects**:
+   ```bash
+   # Mount cidata.iso on macOS and read instance-id
+   hdiutil attach ~/.lima/<VM>/cidata.iso -mountpoint /tmp/cidata -readonly -quiet
+   grep instance-id /tmp/cidata/meta-data
+   hdiutil detach /tmp/cidata -quiet
+   ```
+4. **Check the hostagent debug log**:
+   ```bash
+   tail -20 ~/.lima/<VM>/ha.stderr.log
+   # Look for the [ '' = iid-XXXXXXXXXX ] comparison — empty LHS means
+   # the marker file is missing or at the wrong path.
+   ```
+5. **Fix it live** (while the VM is still running):
+   ```bash
+   # Write the correct marker so the blocked limactl start completes
+   IID=$(hdiutil attach ~/.lima/<VM>/cidata.iso -mountpoint /tmp/cidata -readonly -quiet && grep instance-id /tmp/cidata/meta-data | awk '{print $2}' && hdiutil detach /tmp/cidata -quiet)
+   ssh -F ~/.lima/<VM>/ssh.config lima-<VM> "sudo sh -c 'mkdir -p /run; echo $IID > /run/lima-boot-done; echo $IID > /var/run/lima-boot-done'"
+   ```
+
+### Crash recovery and QCOW2 snapshots
+
+OpenBSD and Solaris VMs run x86_64 under QEMU TCG emulation on Apple Silicon.
+After an unclean shutdown (kernel panic, OOM kill, force-stop), boot-time
+filesystem checks that take seconds on bare metal are magnified 10-100x:
+
+- **OpenBSD**: FFS fsck traverses filesystem metadata. Under TCG this can
+  take tens of minutes.
+- **Solaris/OmniOS**: ZFS performs a full pool device scan. Under TCG this
+  can take **hours**.
+
+The test scripts for these VMs use a QCOW2 snapshot strategy to avoid ever
+booting a dirty filesystem:
+
+**How it works:**
+
+1. On shutdown, the script SSHs into the VM and issues a clean OS-level
+   shutdown (`doas shutdown -h now` for OpenBSD, `sudo shutdown -i5 -g0 -y`
+   for Solaris). It polls until the VM powers off.
+2. If the VM stops cleanly, `qemu-img snapshot -c clean` saves a named
+   snapshot on `~/.lima/<VM>/disk`. The snapshot captures the filesystem in
+   a clean (fsck'd / ZFS-exported) state.
+3. On the next `limactl start`, the script runs `qemu-img snapshot -a clean`
+   to revert to the last clean snapshot before booting. The filesystem is
+   never marked dirty, so fsck and ZFS scans never run.
+4. If the VM crashed and the script had to force-stop, no snapshot is saved —
+   the previous clean snapshot is reverted on the next start instead.
+
+This means that even after a hard crash, the VM boots from the last
+known-clean state. The only cost is that any filesystem changes made during
+the crashed run (test output, core dumps, package installs) are discarded.
+Since the scripts re-copy the source tree and re-install packages idempotently
+on every run, this is harmless.
+
+**First-boot snapshot:**
+
+After `*-first-boot.py` completes successfully, the test script takes an
+initial snapshot. The first-boot script halts the VM cleanly (via the guest
+OS's own shutdown), so the filesystem is already clean.
+
+**Manual snapshot management:**
+
+```bash
+# List snapshots
+qemu-img snapshot -l ~/.lima/openbsd-ipc/disk
+
+# Revert to a snapshot (VM must be stopped)
+qemu-img snapshot -a clean ~/.lima/openbsd-ipc/disk
+
+# Delete a snapshot
+qemu-img snapshot -d clean ~/.lima/openbsd-ipc/disk
+```
+
+**Additional Solaris mitigation:**
+
+Beyond snapshots, `solaris-first-boot.py` writes `set zfs:zfs_scan_legacy = 0`
+to `/etc/system` inside the VM. This kernel parameter disables the legacy ZFS
+pool scan at import time, so even if the VM boots a dirty pool (e.g. before
+the first snapshot exists), ZFS won't spend hours scanning. This parameter
+takes effect on the next boot after first-boot completes.
+
+### Rebuilding a VM from scratch
+
+If a VM's disk is corrupted or you need a clean slate:
+
+```bash
+limactl stop --force <VM> 2>/dev/null
+limactl delete <VM>
+# For Solaris and DragonFly, also delete the first-boot sentinel if it exists:
+rm -f ~/.lima/<VM>/.first-boot-done
+# Then run the test script — it will recreate and provision automatically:
+./ci/<os>-test.sh
+```
+
+For Solaris specifically, if the QCOW2 cache is corrupted (e.g. after a
+force-kill during boot that left ZFS dirty):
+
+```bash
+rm -f ~/.lima/_cache/omnios-r151058.qcow2
+# The test script will re-download and re-convert from the VMDK.
+```
+
+For DragonFly BSD, if the QCOW2 cache needs rebuilding:
+
+```bash
+rm -f ~/.lima/_cache/dragonfly64.qcow2
+# DragonFly BSD does NOT provide pre-installed images — you must rebuild the
+# QCOW2 manually by running the installer in QEMU. The test script will exit
+# with an error if the cached QCOW2 is missing. See § Building the DragonFly
+# BSD base image above for the step-by-step interactive install procedure.
+```
+
+### Expected boot times (Apple Silicon, M-series)
+
+| VM            | Arch    | Emulation | Boot → SSH | Boot → Ready |
+|---------------|---------|-----------|------------|--------------|
+| freebsd-ipc   | aarch64 | Native    | ~6s        | ~7s          |
+| linux-i386    | x86_64  | TCG       | ~24s       | ~29s         |
+| openbsd-ipc   | x86_64  | TCG       | ~32s       | ~33s         |
+| dragonfly-ipc | x86_64  | TCG       | ~40s       | ~42s         |
+| solaris-ipc   | x86_64  | TCG       | ~56s       | ~58s         |
+
+FreeBSD is fastest because it runs natively on Apple Silicon (aarch64,
+hardware virtualisation). The other four use QEMU TCG (software x86_64
+emulation). Solaris is slowest due to the illumos boot sequence (SMF
+dependency resolution, ZFS pool import). DragonFly BSD boots faster than
+Solaris but slower than OpenBSD due to its device probing sequence.
+
+### Solaris-specific quirks
+
+- **No `/run` directory.** OmniOS uses `/var/run` exclusively. Any script
+  that writes a marker, PID file, or socket to `/run` must also create the
+  directory and write a copy there if Lima or another tool expects it.
+- **HSFS for ISO9660.** Use `mount -F hsfs`, not `mount -t iso9660`.
+- **Shutdown must use `shutdown -i5 -g0 -y`**, not `poweroff` or `halt`.
+  The ACPI powerdown (`limactl stop`) also works but is slower under TCG.
+  Always prefer the SSH shutdown path to ensure ZFS gets a clean export.
+- **`pkg install` is idempotent** — already-installed packages are skipped.
+  GCC is currently `developer/gcc14`; if OmniOS bumps the version, use
+  `pkg search gcc` inside the VM to find the new package name.
+- **`cpanm` may land outside `$PATH`** on OmniOS. The test script searches
+  `/usr/perl5` and `/opt` for the binary and symlinks it to `/usr/bin/cpanm`.
+- **`gmake` required for CPAN XS builds.** OmniOS's `/usr/bin/make` is not
+  GNU make. Pass `MAKE=gmake` to `cpanm` or `perl Makefile.PL`.
+
+### DragonFly-specific quirks
+
+- **x86_64 only.** DragonFly BSD does not support aarch64. All testing
+  requires QEMU TCG emulation on Apple Silicon.
+- **No cloud-init support.** All user creation and SSH key setup is done
+  via the serial console by `dragonfly-first-boot.py`.
+- **`pkg` for packages.** DragonFly uses the same `pkg` command as FreeBSD
+  (DPorts). Install Perl deps with `sudo pkg install -y perl5 p5-App-cpanminus gmake`.
+- **rc.d in `/usr/local/etc/rc.d/`.** User-installed services go in
+  `/usr/local/etc/rc.d/`, not `/etc/rc.d/` (which is for base system services).
+- **`gmake` required for CPAN XS builds.** DragonFly's `/usr/bin/make` is BSD
+  make, not GNU make. Pass `MAKE=gmake` or use `gmake` directly.
+- **UEFI boot required — "XMMNNOO" symptom.** DragonFly BSD 6.x images
+  contain an EFI System Partition (MBR type `0xEF`). Setting `legacyBIOS: true`
+  in the Lima YAML forces SeaBIOS firmware, which produces exactly 7 bytes of
+  garbled output (`XMMNNOO`) in `serial.log` and zero CPU activity — the VM
+  will never boot. Lima's default EDK2/OVMF firmware works correctly. The
+  firmware files are at `/opt/homebrew/share/qemu/edk2-x86_64-code.fd` and
+  `/opt/homebrew/share/qemu/edk2-i386-vars.fd` (Apple Silicon Homebrew paths).
+- **Console routing: serial vs virtio.** During UEFI boot, the bootloader
+  output goes to the serial port (`serial.log`). After the kernel takes over,
+  output goes to the **virtio console** (`serialv.log`), not the serial port.
+  This means `dragonfly-first-boot.py` monitoring `serial.log` for `login:`
+  will NOT see the login prompt on an unconfigured installed system. The
+  installed system must be configured with `console=comconsole` in
+  `/boot/loader.conf` to route kernel output to the serial port. Without this,
+  the first-boot script cannot detect when the VM is ready for setup.
+- **No pre-installed images exist.** DragonFly BSD publishes only installer
+  `.img` and `.iso` files at `https://mirror-master.dragonflybsd.org/iso-images/`.
+  There are NO cloud images, Vagrant boxes, or third-party VM images. The
+  `.img` files contain a DOS/MBR partition table: partition 1 is the EFI
+  System Partition (type `0xEF`, ~126 MB), partition 2 is the DragonFly BSD
+  root (type `0x6C`, active, ~1.8 GB). These images boot into an ncurses
+  installer, not a login shell. The installer's TCG hardware probing takes
+  >10 minutes, exceeding Lima's startup timeout. A pre-installed QCOW2 must
+  be built once interactively before any automation can work.
+- **ipcs format differs from Linux/BSD.** DragonFly's `ipcs -m` output puts
+  the shmid in column 1: `<shmid> <hex_key> <owner> <perms> <bytes> <nattch>`.
+  Linux puts the key in column 1 and shmid in column 2; FreeBSD/OpenBSD prefix
+  with a type letter (`m`). IPC cleanup scripts must use `$1` (not `$2`) to
+  extract the shmid on DragonFly. The parser in `Shareable.pm` uses the regex
+  `^\s*(\d+)\s+(0x[0-9a-fA-F]+)\s+/` to match this format.
