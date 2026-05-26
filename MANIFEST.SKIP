@@ -48,3 +48,4 @@ agent.txt
 profiling/
 ^plans/
 TESTING.md
+^[^/]+\.md$

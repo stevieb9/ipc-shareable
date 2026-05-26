@@ -2,6 +2,7 @@ use warnings;
 use strict;
 
 use IPC::Shareable qw(:lock);
+IPC::Shareable->testing_set('IPC::Shareable');
 use Test::More;
 
 my $segs_before = IPC::Shareable::seg_count();

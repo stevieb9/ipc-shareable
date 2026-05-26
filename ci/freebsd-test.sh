@@ -160,29 +160,42 @@ scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
 # Strip macOS resource-fork files (._*).
 limactl shell "$VM" -- sh -lc "find '${GUEST_REPO}' -name '._*' -delete" 2>/dev/null || true
 
+echo "==> Cleaning up stale IPC segments/semaphores from previous runs..."
+limactl shell "$VM" -- sh -lc "
+    for id in \$(ipcs -m 2>/dev/null | awk '/${GUEST_USER}/ {print \$2}'); do
+        ipcrm -m \$id 2>/dev/null || true
+    done
+    for id in \$(ipcs -s 2>/dev/null | awk '/${GUEST_USER}/ {print \$2}'); do
+        ipcrm -s \$id 2>/dev/null || true
+    done
+" || true
+
 if [ -n "$PERL_VERSION" ]; then
     if [ $XS_MODE -eq 1 ]; then
         echo "==> Building and running tests in VM with Perl ${PERL_VERSION} (XS, LC_ALL=${LOCALE})..."
         limactl shell "$VM" -- sh -lc "
             PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
-            cd '${GUEST_REPO}' && PATH=\"\$PERL_BIN:\$PATH\" perl Makefile.PL && make && LC_ALL=${LOCALE} ASYNC_TESTING=1 PATH=\"\$PERL_BIN:\$PATH\" prove -l -Iblib/arch ${PROVE_ARGS}
+            cd '${GUEST_REPO}' && PATH=\"\$PERL_BIN:\$PATH\" perl Makefile.PL && make && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib PATH=\"\$PERL_BIN:\$PATH\" prove -l -Iblib/arch ${PROVE_ARGS}
         "
     else
         echo "==> Running tests in VM with Perl ${PERL_VERSION} (pure Perl, LC_ALL=${LOCALE})..."
         limactl shell "$VM" -- sh -lc "
             PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
-            cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 PATH=\"\$PERL_BIN:\$PATH\" prove -l ${PROVE_ARGS}
+            cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib PATH=\"\$PERL_BIN:\$PATH\" prove -l ${PROVE_ARGS}
         "
     fi
 else
     if [ $XS_MODE -eq 1 ]; then
         echo "==> Building and running tests in VM (XS, LC_ALL=${LOCALE})..."
-        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl Makefile.PL && make && LC_ALL=${LOCALE} ASYNC_TESTING=1 prove -l -Iblib/arch ${PROVE_ARGS}"
+        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl Makefile.PL && make && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}"
     else
         echo "==> Running tests in VM (pure Perl, LC_ALL=${LOCALE})..."
-        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 prove -l ${PROVE_ARGS}"
+        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}"
     fi
 fi
+
+echo "==> IPC::Shareable version tested..."
+limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl -Ilib -MIPC::Shareable -e 'print qq(IPC::Shareable \$IPC::Shareable::VERSION\n)'"
 
 echo "==> VM environment info..."
 limactl shell "$VM" -- sh -lc "uname -a"

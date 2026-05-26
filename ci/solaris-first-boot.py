@@ -222,6 +222,15 @@ def main():
         print(f"[first-boot]   {cmd[:80]}")
         run(sock, cmd, delay=1.2)
 
+    # Suppress full ZFS pool scan on boot after unclean shutdown.
+    # Under QEMU TCG emulation this scan can take hours; a test VM
+    # that gets reprovisioned from a clean snapshot doesn't need it.
+    print("[first-boot] Suppressing ZFS pool scan after unclean shutdown...")
+    run(sock,
+        "grep -q 'zfs_scan_legacy' /etc/system 2>/dev/null"
+        " || echo 'set zfs:zfs_scan_legacy = 0' >> /etc/system",
+        delay=0.5)
+
     # Save the instance-id so the SMF service can write the marker on each boot
     print("[first-boot] Saving instance-id for boot service...")
     run(sock, "mkdir -p /etc/lima", delay=0.5)

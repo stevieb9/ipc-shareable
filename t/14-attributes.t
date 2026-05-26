@@ -14,7 +14,9 @@ my $k = tie my $sv, 'IPC::Shareable', 'testing', {create => 1, destroy => 1, ser
 my $attrs_tied = (tied $sv)->attributes;
 is ref $attrs_tied, 'HASH', "tied var attributes() returns a hash ref ok";
 
-my $attrs = $k->attributes;
+my $attrs = { %{ $k->attributes } };
+
+$k->testing_set('IPC::Shareable');
 
 is ref $attrs, 'HASH', "attributes() returns a hash ref ok";
 

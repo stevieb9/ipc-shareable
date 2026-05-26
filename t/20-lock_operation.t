@@ -5,6 +5,7 @@ use Carp;
 use Data::Dumper;
 use IPC::Semaphore;
 use IPC::Shareable;
+IPC::Shareable->testing_set('IPC::Shareable');
 use IPC::SysV qw(IPC_CREAT);
 use Mock::Sub;
 use Test::More;

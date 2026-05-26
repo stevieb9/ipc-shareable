@@ -81,8 +81,12 @@ limactl shell "$VM" -- sh -lc "
         sudo apt-get install -y debootstrap systemd-container
         sudo debootstrap --arch=i386 bookworm '${CHROOT}' http://deb.debian.org/debian/
         sudo systemd-nspawn -D '${CHROOT}' apt-get install -y perl cpanminus build-essential
-        sudo systemd-nspawn -D '${CHROOT}' cpanm --notest --quiet JSON String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval
     fi
+    # Top-up: idempotent and cheap if already installed.  Ensures the chroot
+    # has the IPC::Shareable test deps even when carried over from a previous
+    # project (e.g. async-event-interval, which does not install these).
+    sudo systemd-nspawn -D '${CHROOT}' cpanm --notest --quiet \\
+        JSON String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval
 "
 
 echo "==> Copying source into i386 chroot..."
@@ -93,16 +97,34 @@ COPYFILE_DISABLE=1 tar -C "$(dirname "$HOST_REPO")" -czf - "$(basename "$HOST_RE
 # Strip macOS resource-fork files (._*) that may have leaked through.
 limactl shell "$VM" -- sudo find "${CHROOT_REPO}" -name '._*' -delete 2>/dev/null || true
 
+echo "==> Cleaning up stale IPC segments/semaphores from previous runs..."
+limactl shell "$VM" -- sh -lc "
+    sudo systemd-nspawn -D '${CHROOT}' \\
+        sh -c '
+            for id in \$(ipcs -m 2>/dev/null | awk \"/root/ {print \\\$2}\"); do
+                ipcrm -m \$id 2>/dev/null || true
+            done
+            for id in \$(ipcs -s 2>/dev/null | awk \"/root/ {print \\\$2}\"); do
+                ipcrm -s \$id 2>/dev/null || true
+            done
+        '
+" || true
+
 if [ $XS_MODE -eq 1 ]; then
     echo "==> Building and running tests in i386 chroot (32-bit Perl, XS)..."
     limactl shell "$VM" -- sh -lc "
         sudo systemd-nspawn -D '${CHROOT}' \\
-            sh -c 'cd /opt/ipc-shareable && perl Makefile.PL && make && ASYNC_TESTING=1 prove -l -Iblib/arch ${PROVE_ARGS}'"
+            sh -c 'cd /opt/ipc-shareable && perl Makefile.PL && make && ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}'"
 else
     echo "==> Running tests in i386 chroot (32-bit Perl, pure Perl)..."
     limactl shell "$VM" -- sh -lc "
         sudo systemd-nspawn -D '${CHROOT}' \\
-            sh -c 'cd /opt/ipc-shareable && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}'"
+            sh -c 'cd /opt/ipc-shareable && ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}'"
 fi
+
+echo "==> IPC::Shareable version tested..."
+limactl shell "$VM" -- sh -lc "
+    sudo systemd-nspawn -D '${CHROOT}' \\
+        sh -c 'cd /opt/ipc-shareable && perl -Ilib -MIPC::Shareable -e \"print qq(IPC::Shareable \\\$IPC::Shareable::VERSION\\n)\"'"
 
 echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"

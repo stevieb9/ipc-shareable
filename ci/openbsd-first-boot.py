@@ -208,7 +208,7 @@ def main():
         "-m", "2048",
         "-machine", "q35",
         "-accel", "tcg,thread=multi",
-        "-smp", "2",
+        "-smp", "1",
         "-drive", f"file={DISK},if=virtio",
         "-netdev", f"user,id=net0,hostfwd=tcp:127.0.0.1:{SSH_PORT}-:22",
         "-device", "virtio-net-pci,netdev=net0",

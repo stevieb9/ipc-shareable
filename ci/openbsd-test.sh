@@ -60,7 +60,41 @@ PROVE_ARGS="${PROVE_ARGS:--v t}"
 cleanup() {
     status=$?
     echo "==> Stopping VM '${VM}'..."
-    limactl stop "$VM" >/dev/null 2>&1 || true
+
+    # Try clean SSH shutdown first (avoids fsck on next boot)
+    ssh -o ConnectTimeout=5 -F ~/.lima/"$VM"/ssh.config lima-"$VM" \
+        'doas shutdown -h now' </dev/null 2>/dev/null || true
+
+    # Wait for VM to power off
+    _clean_shutdown=0
+    for _i in $(seq 1 12); do
+        limactl list 2>/dev/null | grep -q "^${VM}[[:space:]].*Running" || {
+            _clean_shutdown=1; break; }
+        sleep 5
+    done
+
+    # If still running, try limactl stop (ACPI) then force-stop
+    if [ "$_clean_shutdown" -eq 0 ]; then
+        echo "==> VM still running, trying Lima stop..."
+        limactl stop "$VM" >/dev/null 2>&1 || true
+        for _i in $(seq 1 6); do
+            limactl list 2>/dev/null | grep -q "^${VM}[[:space:]].*Running" || {
+                _clean_shutdown=1; break; }
+            sleep 5
+        done
+    fi
+    if [ "$_clean_shutdown" -eq 0 ]; then
+        echo "==> Force-stopping VM..."
+        limactl stop --force "$VM" >/dev/null 2>&1 || true
+    fi
+
+    # Save clean QCOW2 snapshot for fast recovery next run
+    if [ "$_clean_shutdown" -eq 1 ]; then
+        _DISK="${HOME}/.lima/${VM}/disk"
+        echo "==> Saving clean VM snapshot..."
+        qemu-img snapshot -c clean "$_DISK" 2>/dev/null || true
+    fi
+
     trap - EXIT INT TERM
     exit "$status"
 }
@@ -125,14 +159,47 @@ if [ ! -f "$_FB_SENTINEL" ]; then
 
     python3 "${SCRIPT_DIR}/openbsd-first-boot.py" "$VM"
     touch "$_FB_SENTINEL"
+
+    # Take initial clean snapshot after first-boot (VM was halted cleanly)
+    _DISK="${HOME}/.lima/${VM}/disk"
+    qemu-img snapshot -c clean "$_DISK" 2>/dev/null || true
+
     echo "==> First-boot setup complete."
 fi
 
 # ── start VM ────────────────────────────────────────────────────────────────
 
 if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then
+    _DISK="${HOME}/.lima/${VM}/disk"
+
+    # Revert to last clean snapshot so fsck never runs on boot
+    if qemu-img snapshot -l "$_DISK" 2>/dev/null | grep -q '\bclean\b'; then
+        echo "==> Reverting to clean snapshot..."
+        qemu-img snapshot -a clean "$_DISK" 2>/dev/null || true
+    fi
+
     echo "==> Starting VM '${VM}'..."
-    limactl start "$VM"
+    limactl start "$VM" &
+    _LIMA_PID=$!
+
+    # Monitor serial log for boot progress (fsck can be slow on TCG)
+    _SERIAL_LOG="${HOME}/.lima/${VM}/serial.log"
+    _FS_WARNED=0
+    _ELAPSED=0
+    echo "==> Waiting for VM to be ready..."
+    while kill -0 $_LIMA_PID 2>/dev/null; do
+        sleep 10
+        _ELAPSED=$(( _ELAPSED + 10 ))
+        if [ "$_FS_WARNED" = "0" ] && [ -f "$_SERIAL_LOG" ] \
+            && grep -q 'fsck' "$_SERIAL_LOG" 2>/dev/null
+        then
+            echo "    ...fsck in progress (unclean shutdown); this may take a while on TCG"
+            _FS_WARNED=1
+        fi
+        [ $(( _ELAPSED % 60 )) -eq 0 ] && \
+            printf "    ...%d min elapsed\n" $(( _ELAPSED / 60 ))
+    done
+    wait "$_LIMA_PID" 2>/dev/null
 
     limactl list | grep -q "^${VM}[[:space:]].*Running" || {
         echo "ERROR: VM '${VM}' is not Running after start"; exit 1; }
@@ -154,17 +221,32 @@ scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
 limactl shell "$VM" -- sh -lc "find '${GUEST_REPO}' -name '._*' -delete" \
     2>/dev/null || true
 
+# ── clean up stale IPC from previous runs ────────────────────────────────────
+
+echo "==> Cleaning up stale IPC segments/semaphores from previous runs..."
+limactl shell "$VM" -- sh -lc "
+    for id in \$(ipcs -m 2>/dev/null | awk '/${GUEST_USER}/ {print \$2}'); do
+        ipcrm -m \$id 2>/dev/null || true
+    done
+    for id in \$(ipcs -s 2>/dev/null | awk '/${GUEST_USER}/ {print \$2}'); do
+        ipcrm -s \$id 2>/dev/null || true
+    done
+" || true
+
 # ── run tests ───────────────────────────────────────────────────────────────
 
 if [ $XS_MODE -eq 1 ]; then
     echo "==> Building and running tests in VM (XS)..."
     limactl shell "$VM" -- sh -lc \
-        "cd '${GUEST_REPO}' && perl Makefile.PL && make && ASYNC_TESTING=1 prove -l -Iblib/arch ${PROVE_ARGS}"
+        "cd '${GUEST_REPO}' && perl Makefile.PL && make && ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}"
 else
     echo "==> Running tests in VM (pure Perl)..."
     limactl shell "$VM" -- sh -lc \
-        "cd '${GUEST_REPO}' && ASYNC_TESTING=1 prove -l ${PROVE_ARGS}"
+        "cd '${GUEST_REPO}' && ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}"
 fi
+
+echo "==> IPC::Shareable version tested..."
+limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl -Ilib -MIPC::Shareable -e 'print qq(IPC::Shareable \$IPC::Shareable::VERSION\n)'"
 
 echo "==> VM environment info..."
 limactl shell "$VM" -- sh -lc "uname -a; perl -V:archname"
