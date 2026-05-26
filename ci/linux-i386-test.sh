@@ -110,16 +110,19 @@ limactl shell "$VM" -- sh -lc "
         '
 " || true
 
+_test_rc=0
 if [ $XS_MODE -eq 1 ]; then
     echo "==> Building and running tests in i386 chroot (32-bit Perl, XS)..."
     limactl shell "$VM" -- sh -lc "
         sudo systemd-nspawn -D '${CHROOT}' \\
-            sh -c 'cd /opt/ipc-shareable && perl Makefile.PL && make && ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}'"
+            sh -c 'cd /opt/ipc-shareable && perl Makefile.PL && make && ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}'" \
+        || _test_rc=$?
 else
     echo "==> Running tests in i386 chroot (32-bit Perl, pure Perl)..."
     limactl shell "$VM" -- sh -lc "
         sudo systemd-nspawn -D '${CHROOT}' \\
-            sh -c 'cd /opt/ipc-shareable && ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}'"
+            sh -c 'cd /opt/ipc-shareable && ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}'" \
+        || _test_rc=$?
 fi
 
 echo "==> IPC::Shareable version tested..."
@@ -127,4 +130,11 @@ limactl shell "$VM" -- sh -lc "
     sudo systemd-nspawn -D '${CHROOT}' \\
         sh -c 'cd /opt/ipc-shareable && perl -Ilib -MIPC::Shareable -e \"print qq(IPC::Shareable \\\$IPC::Shareable::VERSION\\n)\"'"
 
+echo "==> VM environment info..."
+limactl shell "$VM" -- sh -lc "
+    sudo systemd-nspawn -D '${CHROOT}' \\
+        sh -c 'uname -a; perl -v | head -2; perl -V:archname'"
+
 echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
+
+exit $_test_rc

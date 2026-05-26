@@ -640,6 +640,32 @@ VM=my-other-dragonfly ./ci/dragonfly-test.sh
 > **Note:** The first run runs `dragonfly-first-boot.py` via the QEMU serial
 > console to create the SSH user, install sudo, and set up the persistent
 > boot-done rc.d service. This takes ~1-2 minutes. Subsequent starts are fast.
+>
+> **TCG skip list:** Several tests hang under QEMU TCG emulation because they
+> use `SIGALRM` + `sleep` for parent/child synchronization, and signal
+> delivery under software emulation is too slow to win the race reliably.
+> When running the default full suite (`-v t`), the script automatically
+> excludes these tests:
+>
+> - `t/28-ipchv.t` — hash variable operations with forked children
+> - `t/30-ipcref.t` — nested reference synchronization
+> - `t/38-lsync.t` — lock synchronization between processes
+> - `t/66-protected_persist.t` — protected segment persistence with forks
+> - `t/85-clean.t` — cleanup with concurrent processes
+>
+> To run a skipped test explicitly: `./ci/dragonfly-test.sh t/38-lsync.t`
+>
+> **Crash recovery:** After first-boot completes, the script takes a
+> `qemu-img` snapshot (`clean`). On subsequent runs, it reverts to this
+> snapshot before booting so fsck never runs. Post-test snapshots are NOT
+> saved — the first-boot snapshot is the only reliable clean state because
+> post-test snapshots can include stale IPC segments or incomplete shutdown
+> state. If the snapshot becomes corrupted:
+> ```bash
+> limactl stop --force dragonfly-ipc; limactl delete --force dragonfly-ipc
+> rm -f ~/.lima/dragonfly-ipc/.first-boot-done
+> ./ci/dragonfly-test.sh
+> ```
 
 ---
 
@@ -926,6 +952,65 @@ Solaris but slower than OpenBSD due to its device probing sequence.
   installed system must be configured with `console=comconsole` in
   `/boot/loader.conf` to route kernel output to the serial port. Without this,
   the first-boot script cannot detect when the VM is ready for setup.
+  **Important:** The `loader.conf` check must use `grep -qF 'console="comconsole"'`
+  (exact fixed string), not `grep -q console` — the latter matches any line
+  containing the word "console" (e.g. comments, unrelated settings), causing
+  the append to be silently skipped.
+- **`boot -s` (single-user mode) is silently ignored.** DragonFly's EFI
+  bootloader accepts `boot -s` without error but does not set the single-user
+  flag. The kernel boots into multi-user mode regardless. Do not rely on
+  `boot -s` — boot normally and log in as root. This also means `init=/bin/sh`
+  cannot be used: the shell becomes PID 1, and any child process exit triggers
+  a kernel panic (`exit1()` → `sys_exit()` → panic on PID 1).
+- **Root shell is csh.** DragonFly's default root login shell is `/bin/csh`.
+  csh does not support fd redirection (`2>/dev/null` creates a file named `2`),
+  brace grouping (`{ }` gives "Ambiguous output redirect"), or `2>&1`.
+  After logging in, immediately run `exec /bin/sh` to switch to a POSIX shell
+  before issuing any setup commands.
+- **`/bin/sh` does not support `-l`.** DragonFly's `/bin/sh` rejects the `-l`
+  (login shell) flag with "Illegal option -l". Lima internally passes `-l` to
+  the user's login shell. The workaround is a wrapper script at
+  `/usr/local/bin/sh-lima` that strips `-l` and execs `/bin/sh`:
+  ```sh
+  #!/bin/sh
+  case "$1" in -l) shift ;; esac
+  exec /bin/sh "$@"
+  ```
+  The guest user is created with `-s /usr/local/bin/sh-lima` so Lima's SSH
+  shell invocation works. The test script must also use `sh -c` (not `sh -lc`)
+  for all `limactl shell` commands.
+- **Serial UART FIFO drops heredoc delimiters under TCG.** QEMU's emulated
+  serial UART has a small FIFO buffer. When writing long heredocs via
+  `_send_wait()`, the closing delimiter (e.g. `EOF`) can be dropped under
+  slow TCG emulation, leaving the shell stuck in continuation mode. The
+  first-boot script works around this by writing the boot-done rc.d service
+  line-by-line using `printf '%s\n' '...' >> file` instead of a heredoc.
+- **sshd privilege separation requires manual setup.** DragonFly's base
+  install may not have the `sshd` user or a properly configured `/var/empty`.
+  The first-boot script creates the `sshd` user (`pw useradd sshd -d /var/empty
+  -s /usr/sbin/nologin`), rebuilds the password database (`pwd_mkdb
+  /etc/master.passwd`), and sets permissions on `/var/empty` (`chmod 755`,
+  `chown root:wheel`). Without this, sshd exits immediately with a privsep
+  error ("Connection reset by peer" on the client side). Use `ssh-keygen -A`
+  to generate all standard host keys.
+- **QEMU user-mode networking (SLIRP).** The VM uses QEMU's built-in user-mode
+  network stack: gateway `10.0.2.2`, guest IP `10.0.2.15`, DNS `10.0.2.3`.
+  During first-boot (before rc.conf is configured), a static IP is set with
+  `ifconfig vtnet0 10.0.2.15 netmask 255.255.255.0 up` and `route add default
+  10.0.2.2`. For persistence across Lima-managed reboots, `ifconfig_vtnet0="DHCP"`
+  is written to `/etc/rc.conf`.
+- **`shutdown -p` required (not `-h`).** `shutdown -h` halts the CPU but does
+  not send ACPI power-off to QEMU — the process stays running indefinitely.
+  Use `shutdown -p now` to actually power off the VM. Also set
+  `sendmail_enable="NONE"` in `/etc/rc.conf` to avoid a ~30s sendmail stop
+  delay during shutdown.
+- **`shmid_ds` struct layout varies.** DragonFly's `shmid_ds` struct (from
+  `sys/shm.h`) may or may not include `__shm_*timensec` fields depending
+  on the kernel version. With nanosecond fields, the struct is ~108 bytes;
+  without, ~88 bytes. `SharedMem.pm` detects this at runtime via
+  `length($data) > 96` and uses the appropriate `unpack` template. Without
+  this, `shmctl(IPC_STAT)` returns `undef` for time fields (e.g. `ctime`),
+  causing `t/05-shm_stat.t` to fail.
 - **No pre-installed images exist.** DragonFly BSD publishes only installer
   `.img` and `.iso` files at `https://mirror-master.dragonflybsd.org/iso-images/`.
   There are NO cloud images, Vagrant boxes, or third-party VM images. The
@@ -941,3 +1026,8 @@ Solaris but slower than OpenBSD due to its device probing sequence.
   with a type letter (`m`). IPC cleanup scripts must use `$1` (not `$2`) to
   extract the shmid on DragonFly. The parser in `Shareable.pm` uses the regex
   `^\s*(\d+)\s+(0x[0-9a-fA-F]+)\s+/` to match this format.
+- **DDB (kernel debugger) detection.** Under TCG emulation, certain operations
+  can trigger a kernel panic that drops into DragonFly's DDB debugger instead
+  of halting. The first-boot script monitors for `db>` prompts in the serial
+  output and aborts immediately if detected, rather than hanging on a marker
+  that will never arrive.

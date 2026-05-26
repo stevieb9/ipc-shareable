@@ -170,27 +170,30 @@ limactl shell "$VM" -- sh -lc "
     done
 " || true
 
+_test_rc=0
 if [ -n "$PERL_VERSION" ]; then
     if [ $XS_MODE -eq 1 ]; then
         echo "==> Building and running tests in VM with Perl ${PERL_VERSION} (XS, LC_ALL=${LOCALE})..."
         limactl shell "$VM" -- sh -lc "
             PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
             cd '${GUEST_REPO}' && PATH=\"\$PERL_BIN:\$PATH\" perl Makefile.PL && make && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib PATH=\"\$PERL_BIN:\$PATH\" prove -l -Iblib/arch ${PROVE_ARGS}
-        "
+        " || _test_rc=$?
     else
         echo "==> Running tests in VM with Perl ${PERL_VERSION} (pure Perl, LC_ALL=${LOCALE})..."
         limactl shell "$VM" -- sh -lc "
             PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
             cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib PATH=\"\$PERL_BIN:\$PATH\" prove -l ${PROVE_ARGS}
-        "
+        " || _test_rc=$?
     fi
 else
     if [ $XS_MODE -eq 1 ]; then
         echo "==> Building and running tests in VM (XS, LC_ALL=${LOCALE})..."
-        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl Makefile.PL && make && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}"
+        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl Makefile.PL && make && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}" \
+            || _test_rc=$?
     else
         echo "==> Running tests in VM (pure Perl, LC_ALL=${LOCALE})..."
-        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}"
+        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}" \
+            || _test_rc=$?
     fi
 fi
 
@@ -198,6 +201,8 @@ echo "==> IPC::Shareable version tested..."
 limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl -Ilib -MIPC::Shareable -e 'print qq(IPC::Shareable \$IPC::Shareable::VERSION\n)'"
 
 echo "==> VM environment info..."
-limactl shell "$VM" -- sh -lc "uname -a"
+limactl shell "$VM" -- sh -lc "uname -a; perl -v | head -2; perl -V:archname"
 
 echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
+
+exit $_test_rc

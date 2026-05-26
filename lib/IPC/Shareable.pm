@@ -3528,9 +3528,18 @@ that held that data is automatically cleaned up and freed.
 
 =head2 Storable
 
-The child knot object (which holds _key, _type, etc.) is frozen in-place
-inside the parent's serialized byte blob. On thaw, the child knot is
-reconstructed from those bytes and re-attached to the existing child segment.
+With the Storable serializer, nested references are handled transparently.
+Storable natively freezes the entire Perl data structure (including internal
+tie information for child segments) into a single binary blob. On thaw,
+child segments are automatically re-attached without any explicit markers in
+the serialized data.
+
+This means that unlike JSON, there are no C<__ics__> placeholder objects in
+the stored data. The trade-off is that Storable output is Perl-specific and
+not portable across different Perl versions or platforms.
+
+See the C<serializer> option under L</OPTIONS> to choose between C<json> and
+C<storable>.
 
 =head2 JSON
 
