@@ -3472,12 +3472,12 @@ returned.
 
 =item *
 
-B<Read warns> iff C<ER = 1> AND C<WR = 1> AND another process holds
+B<Read warns> if C<ER = 1> AND C<WR = 1> AND another process holds
 C<LOCK_EX>.
 
 =item *
 
-B<Write blocks> iff C<EW = 1> AND (another process holds C<LOCK_EX> OR has
+B<Write blocks> if C<EW = 1> AND (another process holds C<LOCK_EX> OR has
 active C<LOCK_SH> readers OR the caller itself holds only C<LOCK_SH>).
 
 =item *
@@ -3571,7 +3571,7 @@ been initialized and is ready for use. C<1> if it is, C<0> if it isn't.
 =head2 SEM_READERS
 
 Semaphore slot ID 1. Specifies the current number of readers holding a
-C<LOCK_SH>. A write lock (C<LOCK_EX> can't be obtained until this value is
+C<LOCK_SH>. A write lock (C<LOCK_EX>) can't be obtained until this value is
 reduced to C<0>.
 
 =head2 SEM_WRITERS
