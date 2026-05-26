@@ -1,7 +1,8 @@
 Revision history for Perl extension IPC::Shareable.
 
 1.16 UNREL
-    - Promoted the signal handling note into its own section
+    - POD: Promoted the signal handling note into its own section under
+      DESTRUCTION
     - Fully implement Dragonfly BSD unit test VM infrastructure
     - Fix shmid_ds unpack for Dragonfly BSD
     -
