@@ -1,7 +1,7 @@
 Revision history for Perl extension IPC::Shareable.
 
 1.16 UNREL
-    -
+    - Promoted the signal handling note into its own section
 
 1.15    2026-05-26
     - Refactor how we initialize $VERSION. It's no longer in a BEGIN block. That

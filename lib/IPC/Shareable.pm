@@ -3602,21 +3602,18 @@ segment.
 L<IPC::Shareable> therefore provides several options to control the timing of
 removal of shared memory segments.
 
+B<Note>: The destruction is handled in an C<END> block. Only those memory
+segments that are tied to the current process will be removed.
+
 =head2 destroy Option
 
 As described in L</OPTIONS>, specifying the B<destroy> option when
 C<tie()>ing a variable coerces L<IPC::Shareable> to remove the underlying
 shared memory segment when the process calling C<tie()> exits gracefully.
 
-=head2 Notes
+=head2 Signal handlers
 
-B<Note>: The destruction is handled in an C<END> block. Only those memory
-segments that are tied to the current process will be removed.
-
-B<Note>: If the segment was created with its L</protected> attribute set,
-it will not be removed in the C<END> block, even if C<destroy> is set.
-
-B<Note>: The C<END> block only runs on a I<clean> exit (normal program
+The C<END> block only runs on a I<clean> exit (normal program
 end, C<die>, or C<exit>). It does B<not> run for untrapped signals
 (C<SIGTERM>, C<SIGINT>, etc.) or for C<SIGKILL>. If your process may be
 terminated by a signal and you want C<destroy> cleanup to run, install
@@ -3627,6 +3624,11 @@ signal handlers that call C<exit>:
 This causes the C<END> block to fire on those signals. C<SIGKILL> cannot
 be caught; any segments left behind by it can be recovered with
 C<IPC::Shareable-E<gt>clean_up_all>.
+
+=head2 Notes
+
+B<Note>: If the segment was created with its L</protected> attribute set,
+it will not be removed in the C<END> block, even if C<destroy> is set.
 
 B<Note>: Advisory locks (C<lock()>/C<unlock()>) are I<always> released
 automatically when a process dies, even on C<SIGKILL>, because the
