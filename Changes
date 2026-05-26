@@ -1,6 +1,6 @@
 Revision history for Perl extension IPC::Shareable.
 
-1.15 UNREL
+1.15    2026-05-26
     - Refactor how we initialize $VERSION. It's no longer in a BEGIN block. That
       broke Dist::Mgr
     - Fixes #60: Fix FETCH deadlock when inner child re-decode acquires SH lock

@@ -15,10 +15,8 @@ What it does:
   1. Launches QEMU directly with -nographic and UEFI firmware.
   2. Waits for the DragonFly EFI bootloader menu on the serial console.
   3. Interrupts the auto-boot countdown and escapes to the loader prompt.
-  4. Sets console=comconsole and boots in single-user mode (boot -s).
-     Single-user mode drops to a root shell while /sbin/init stays as
-     PID 1 — avoids the kernel panic that occurs when PID 1 (/bin/sh)
-     exits under init=/bin/sh.
+  4. Sets console=comconsole and boots into multi-user mode.
+     Waits for the login prompt and logs in as root (blank password).
   5. Mounts filesystems, clears any root password, then configures:
      sudo, guest user, Lima SSH key, boot-done rc.d service.
   6. Writes console="comconsole" to /boot/loader.conf for future boots.
@@ -228,29 +226,18 @@ def interact_with_bootloader(fd):
 
     print(f"[first-boot] After menu selection: {buf[-200:]!r}")
 
-    # At the loader prompt (OK), set console=comconsole and boot into
-    # single-user mode.  Single-user keeps /sbin/init as PID 1 and
-    # drops to a root shell as a child process — no kernel panic when
-    # the shell exits (unlike init=/bin/sh where the shell IS PID 1).
-    print("[first-boot] Setting console=comconsole, booting single-user...")
+    # Set console=comconsole and boot normally (multi-user).
+    # DragonFly's bootloader ignores "boot -s", so don't waste time
+    # waiting for a single-user prompt that never comes.
+    print("[first-boot] Setting console=comconsole, booting...")
     os.write(fd, b"set console=comconsole\r")
     time.sleep(0.6)
-    os.write(fd, b"boot -s\r")
+    os.write(fd, b"boot\r")
     time.sleep(0.6)
 
-    # Single-user mode: init asks for the shell pathname before
-    # dropping to a root shell.  Wait for that prompt and press Enter.
-    print("[first-boot] Kernel booting — waiting for single-user prompt...")
-    buf = _wait_for(fd, "pathname", timeout=300)
-    if "pathname" in buf:
-        print("[first-boot] Shell selection prompt detected, pressing Enter...")
-        os.write(fd, b"\r")
-        time.sleep(1)
+    print("[first-boot] Kernel booting — waiting for login prompt...")
+    buf = _wait_for(fd, "login:", timeout=300)
 
-    print("[first-boot] Waiting for root shell...")
-    buf += _wait_for(fd, "#", timeout=120)
-
-    print("[first-boot] Checking for shell or login prompt...")
     os.write(fd, b"\n")
     time.sleep(1)
     buf += _read(fd, timeout=2.0)
@@ -393,9 +380,20 @@ def setup_vm(fd, ssh_key, iid):
     print("[first-boot] Installing sudo...")
     _send_wait(fd, "pkg install -y sudo", timeout=300)
 
+    # Create a /bin/sh wrapper that accepts -l (which DragonFly's
+    # /bin/sh rejects).  Lima invokes the login shell with -l internally.
+    SH_WRAPPER = "/usr/local/bin/sh-lima"
+    print("[first-boot] Installing sh-lima wrapper...")
+    _send_wait(fd, "mkdir -p /usr/local/bin", timeout=10)
+    _send_wait(fd, f"echo '#!/bin/sh' > {SH_WRAPPER}", timeout=5)
+    _send_wait(fd, f"echo 'case \"$1\" in -l) shift ;; esac' >> {SH_WRAPPER}",
+               timeout=5)
+    _send_wait(fd, f"echo 'exec /bin/sh \"$@\"' >> {SH_WRAPPER}", timeout=5)
+    _send_wait(fd, f"chmod 755 {SH_WRAPPER}", timeout=5)
+
     # Create the guest user and install Lima SSH key
     user_cmds = [
-        f"pw useradd -n {GUEST_USER} -m -d {GUEST_HOME} -s /bin/csh"
+        f"pw useradd -n {GUEST_USER} -m -d {GUEST_HOME} -s {SH_WRAPPER}"
         f" -G wheel 2>/dev/null || true",
         f"mkdir -p {GUEST_HOME}/.ssh",
         f'printf "%s\\n" "{ssh_key}" > {GUEST_HOME}/.ssh/authorized_keys',

@@ -9,7 +9,6 @@ lib/IPC/Shareable/SharedMem.pm
 Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
-README.md
 Shareable.xs
 t/00-base.t
 t/02-create.t
