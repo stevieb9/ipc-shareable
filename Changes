@@ -20,9 +20,11 @@ Revision history for Perl extension IPC::Shareable.
     - Added 'testing' flag; allows bulk cleanup of leaked segs/sems from a
       previous test run. This was implemented in this distribution's unit test
       suite
-    - Add Firefly unit test VM infrastructure
+    - Fully implement Dragonfly BSD unit test VM infrastructure
     - Fix t/80-SharedMem.t: skip 64-bit tests on 32-bit Perl where the 'q' pack
       template is unavailable (Raspian OS specifically)
+    - Fix shmid_ds unpack for Dragonfly BSD
+    -
 
 1.14     2026-05-22
     - Modify remove() to properly catch a non "0 but true" case when trying
