@@ -5,7 +5,7 @@ Revision history for Perl extension IPC::Shareable.
       DESTRUCTION
     - Fully implement Dragonfly BSD unit test VM infrastructure
     - Fix shmid_ds unpack for Dragonfly BSD
-    -
+    - Prevent macOS extended attributes from leaking into dist tarballs
 
 1.15    2026-05-26
     - Refactor how we initialize $VERSION. It's no longer in a BEGIN block. That
