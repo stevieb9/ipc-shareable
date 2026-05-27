@@ -2243,11 +2243,13 @@ IPC::Shareable - Use shared memory backed variables across processes
     IPC::Shareable::clean_up_all;
     IPC::Shareable::clean_up_protected;
 
-    # Tag all segments in this process for test-suite cleanup, then purge
-    # any orphaned branded segments from previous crashed runs
+    # In the first test file that runs, purge any leaked segments that remain
+
+    IPC::Shareable::clean_up_testing('My::Distribution');
+
+    # Then in every test file that ties a segment, add:
 
     IPC::Shareable->testing_set('My::Distribution');
-    IPC::Shareable::clean_up_testing('My::Distribution');
 
     # Get the actual IPC::Shareable tied object you can make method calls on
     # instead of using the tied object like the examples above
@@ -3194,7 +3196,6 @@ Mandatory, non-empty string: conventionally the distribution name.
 
 Croaks if C<$dist_name> is undefined or empty.
 
-
 =head2 clean_up_testing($dist_name)
 
     IPC::Shareable::clean_up_testing('My::Distribution');
@@ -3218,9 +3219,15 @@ created) to clear orphans, and optionally at the end of the last test file as a
 belt-and-suspenders cleanup:
 
     # t/00-base.t
-    IPC::Shareable->testing_set('My::Distribution');
+
+    # First, clean up from the previous run if necessary
+
     my $n = IPC::Shareable::clean_up_testing('My::Distribution');
     note "Removed $n orphaned segments from previous run" if $n;
+
+    # Now set tagging for segments in this test file
+
+    IPC::Shareable->testing_set('My::Distribution');
 
 Parameters:
 
