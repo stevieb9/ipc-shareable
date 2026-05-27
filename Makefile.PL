@@ -77,5 +77,5 @@ WriteMakefile(
 # Strip macOS extended attributes and AppleDouble metadata from dist
 # tarballs (LIBARCHIVE.xattr.* headers cause warnings on Linux tar).
 sub MY::postamble {
-    return $^O eq 'darwin' ? "TARFLAGS = --no-xattrs --no-mac-metadata cvf\n" : '';
+    return $^O eq 'darwin' ? "TARFLAGS = --no-mac-metadata -cvf\n" : '';
 }
