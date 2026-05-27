@@ -27,3 +27,5 @@ cover_db/
 .aider*
 _Inline/
 /*.md
+.DS_store
+__pycache__

@@ -313,9 +313,8 @@ def setup_vm(fd, ssh_key, iid):
     # Persist serial console setting so Lima-managed boots use it
     print("[first-boot] Writing /boot/loader.conf...")
     _send_wait(fd,
-               'grep -q console /boot/loader.conf 2>/dev/null'
-               ' && echo "console=comconsole (already set)"'
-               ' || echo \'console="comconsole"\' >> /boot/loader.conf',
+               "grep -qF 'console=\"comconsole\"' /boot/loader.conf 2>/dev/null"
+               " || echo 'console=\"comconsole\"' >> /boot/loader.conf",
                timeout=15)
 
     # Enable sshd and DHCP networking on boot — the runtime ifconfig
@@ -329,6 +328,10 @@ def setup_vm(fd, ssh_key, iid):
     _send_wait(fd,
                "grep -q ifconfig_vtnet0 /etc/rc.conf 2>/dev/null"
                " || echo 'ifconfig_vtnet0=\"DHCP\"' >> /etc/rc.conf",
+               timeout=15)
+    _send_wait(fd,
+               "grep -q sendmail_enable /etc/rc.conf 2>/dev/null"
+               " || echo 'sendmail_enable=\"NONE\"' >> /etc/rc.conf",
                timeout=15)
 
     # Generate all standard host keys (RSA, ECDSA, ED25519)

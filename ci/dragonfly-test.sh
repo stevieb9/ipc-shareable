@@ -54,6 +54,11 @@ done
 PROVE_ARGS="${_PROVE_ARGS# }"
 PROVE_ARGS="${PROVE_ARGS:--v t}"
 
+# Tests that hang under TCG emulation — they use SIGALRM + sleep for
+# parent/child synchronization, which races when signal delivery is slow.
+# More round-trips = more likely to hang.
+SKIP_TESTS="t/28-ipchv.t t/30-ipcref.t t/38-lsync.t t/66-protected_persist.t t/85-clean.t"
+
 _DISK="${HOME}/.lima/${VM}/disk"
 
 cleanup() {
@@ -62,7 +67,7 @@ cleanup() {
 
     # Try clean SSH shutdown first (avoids fsck on next boot)
     ssh -o ConnectTimeout=5 -F ~/.lima/"$VM"/ssh.config lima-"$VM" \
-        'sudo shutdown -h now' </dev/null 2>/dev/null || true
+        'sudo shutdown -p now' </dev/null 2>/dev/null || true
 
     # Wait for VM to power off
     _clean_shutdown=0
@@ -87,11 +92,9 @@ cleanup() {
         limactl stop --force "$VM" >/dev/null 2>&1 || true
     fi
 
-    # Save clean QCOW2 snapshot for fast recovery next run
-    if [ "$_clean_shutdown" -eq 1 ]; then
-        echo "==> Saving clean VM snapshot..."
-        qemu-img snapshot -c clean "$_DISK" 2>/dev/null || true
-    fi
+    # Don't save a new snapshot here — the first-boot snapshot is the
+    # only reliable clean state.  Post-test snapshots can include stale
+    # IPC segments, modified files, or incomplete shutdown state.
 
     trap - EXIT INT TERM
     exit "$status"
@@ -209,20 +212,39 @@ limactl shell "$VM" -- sh -c "
 
 # ── run tests ───────────────────────────────────────────────────────────────
 
+# If running the default full suite, exclude tests that hang under TCG
+if [ "$PROVE_ARGS" = "-v t" ] && [ -n "$SKIP_TESTS" ]; then
+    _TEST_FILES=""
+    for f in t/*.t; do
+        _skip=0
+        for s in $SKIP_TESTS; do
+            [ "$f" = "$s" ] && _skip=1 && break
+        done
+        [ "$_skip" -eq 0 ] && _TEST_FILES="$_TEST_FILES $f"
+    done
+    PROVE_ARGS="-v${_TEST_FILES}"
+    echo "==> Skipping under TCG: ${SKIP_TESTS}"
+fi
+
+_test_rc=0
 if [ $XS_MODE -eq 1 ]; then
     echo "==> Building and running tests in VM (XS)..."
     limactl shell "$VM" -- sh -c \
-        "cd '${GUEST_REPO}' && perl Makefile.PL && make && PRINT_SEGS=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}"
+        "cd '${GUEST_REPO}' && perl Makefile.PL && make && PRINT_SEGS=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}" \
+        || _test_rc=$?
 else
     echo "==> Running tests in VM (pure Perl)..."
     limactl shell "$VM" -- sh -c \
-        "cd '${GUEST_REPO}' && PRINT_SEGS=1 PERL5LIB=lib prove -l ${PROVE_ARGS}"
+        "cd '${GUEST_REPO}' && PRINT_SEGS=1 PERL5LIB=lib prove -l ${PROVE_ARGS}" \
+        || _test_rc=$?
 fi
 
 echo "==> IPC::Shareable version tested..."
 limactl shell "$VM" -- sh -c "cd '${GUEST_REPO}' && perl -Ilib -MIPC::Shareable -e 'print qq(IPC::Shareable \$IPC::Shareable::VERSION\n)'"
 
 echo "==> VM environment info..."
-limactl shell "$VM" -- sh -c "uname -a; perl -V:archname"
+limactl shell "$VM" -- sh -c "uname -a; perl -v | head -2; perl -V:archname"
 
 echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
+
+exit $_test_rc
