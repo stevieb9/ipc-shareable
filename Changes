@@ -1,5 +1,8 @@
 Revision history for Perl extension IPC::Shareable.
 
+1.17 UNREL
+    -
+
 1.16    2026-05-27
     - POD: Promoted the signal handling note into its own section under
       DESTRUCTION
