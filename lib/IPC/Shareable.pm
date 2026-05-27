@@ -3310,7 +3310,7 @@ option must be set to true, which it is by default. The warning advises the user
 that the data they have received is stale, and that they should refactor their
 code to implement proper locking.
 
-=head3 Important notes
+=head2 Important notes
 
 Note that in the background, we perform lock optimization when reading and
 writing to the shared storage even if the advisory locks aren't being used.
