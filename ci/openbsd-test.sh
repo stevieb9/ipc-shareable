@@ -19,6 +19,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # HOST_REPO is resolved from --project below, after argument parsing,
 # so that --project async-event-interval ships the aei repo (sibling
 # of ipc-shareable) and --project ipc-shareable ships this repo.
+
+. "${SCRIPT_DIR}/lock-vm.sh"
+acquire_vm_lock
+
 CACHE_DIR="${HOME}/.lima/_cache"
 CACHED_QCOW2="${CACHE_DIR}/openbsd7.qcow2"
 
@@ -102,7 +106,16 @@ if [ ! -d "$HOST_REPO" ]; then
     exit 1
 fi
 
+sigint_handler() {
+    trap - EXIT INT TERM
+    echo "==> Force-stopping VM '${VM}' (SIGINT)..."
+    limactl stop --force "$VM" 2>/dev/null || true
+    release_vm_lock
+    exit 130
+}
+
 cleanup() {
+    trap - EXIT INT TERM
     status=$?
     echo "==> Stopping VM '${VM}'..."
 
@@ -140,11 +153,12 @@ cleanup() {
         qemu-img snapshot -c clean "$_DISK" 2>/dev/null || true
     fi
 
-    trap - EXIT INT TERM
+    release_vm_lock
     exit "$status"
 }
 
-trap cleanup EXIT INT TERM
+trap sigint_handler INT
+trap cleanup EXIT TERM
 
 # ── one-time: download Vagrant box and extract QCOW2 ────────────────────────
 
@@ -248,6 +262,8 @@ if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then
 
     limactl list | grep -q "^${VM}[[:space:]].*Running" || {
         echo "ERROR: VM '${VM}' is not Running after start"; exit 1; }
+else
+    echo "==> VM '${VM}' is already running"
 fi
 
 # ── install Perl dependencies ───────────────────────────────────────────────

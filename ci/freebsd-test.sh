@@ -13,6 +13,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # so that --project async-event-interval ships the aei repo (sibling
 # of ipc-shareable) and --project ipc-shareable ships this repo.
 
+. "${SCRIPT_DIR}/lock-vm.sh"
+acquire_vm_lock
+
 PROJECT=""
 PERL_VERSION=""
 XS_MODE=0
@@ -96,15 +99,25 @@ if [ ! -d "$HOST_REPO" ]; then
     exit 1
 fi
 
+sigint_handler() {
+    trap - EXIT INT TERM
+    echo "==> Force-stopping VM '${VM}' (SIGINT)..."
+    limactl stop --force "$VM" 2>/dev/null || true
+    release_vm_lock
+    exit 130
+}
+
 cleanup() {
+    trap - EXIT INT TERM
     status=$?
     echo "==> Stopping VM '${VM}'..."
     limactl stop "$VM" >/dev/null 2>&1 || true
-    trap - EXIT INT TERM
+    release_vm_lock
     exit "$status"
 }
 
-trap cleanup EXIT INT TERM
+trap sigint_handler INT
+trap cleanup EXIT TERM
 
 if ! limactl list 2>/dev/null | awk '{print $1}' | grep -qx "$VM"; then
     echo "==> Creating VM '${VM}' from Lima template..."
@@ -142,6 +155,8 @@ if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then
 
     limactl list | grep -q "^${VM}[[:space:]].*Running" || {
         echo "ERROR: VM '${VM}' is not Running after start"; exit 1; }
+else
+    echo "==> VM '${VM}' is already running"
 fi
 
 # Suppress FreeBSD daily tips (fortune freebsd-tips in .profile/.login).

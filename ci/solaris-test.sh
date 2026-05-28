@@ -17,6 +17,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # so that --project async-event-interval ships the aei repo (sibling
 # of ipc-shareable) and --project ipc-shareable ships this repo.
 
+. "${SCRIPT_DIR}/lock-vm.sh"
+acquire_vm_lock
+
 PROJECT=""
 XS_MODE=0
 
@@ -135,7 +138,16 @@ _wait_with_timeout() {
     wait $_pid
 }
 
+sigint_handler() {
+    trap - EXIT INT TERM
+    echo "==> Force-stopping VM '${VM}' (SIGINT)..."
+    limactl stop --force "$VM" 2>/dev/null || true
+    release_vm_lock
+    exit 130
+}
+
 cleanup() {
+    trap - EXIT INT TERM
     status=$?
     echo "==> Shutting down VM '${VM}' cleanly..."
     # Issue a clean shutdown via SSH so ZFS pool is marked clean.
@@ -170,11 +182,12 @@ cleanup() {
         echo "==> Saving clean VM snapshot..."
         qemu-img snapshot -c clean "$_DISK" 2>/dev/null || true
     fi
-    trap - EXIT INT TERM
+    release_vm_lock
     exit "$status"
 }
 
-trap cleanup EXIT INT TERM
+trap sigint_handler INT
+trap cleanup EXIT TERM
 
 # Lima cannot resize VMDK images (qemu-img resize -f vmdk fails).  Download the
 # OmniOS cloud VMDK once, convert it to QCOW2, and cache the result so that
@@ -311,6 +324,8 @@ subprocess.run(['hdiutil','detach',mnt,'-quiet'])
 
     limactl list | grep -q "^${VM}[[:space:]].*Running" || {
         echo "ERROR: VM '${VM}' is not Running after start"; exit 1; }
+else
+    echo "==> VM '${VM}' is already running"
 fi
 
 echo "==> Installing OmniOS packages and CPAN deps..."
