@@ -97,10 +97,13 @@ The `--project` flag (or `-p`) is mandatory and controls the guest repo path,
 CPAN dependencies, and test invocation. Valid values: `ipc-shareable`, `async-event-interval`.
 
 The `async-event-interval` repo's `ci/` directory contains thin wrappers that
-delegate here automatically. From that repo, just run:
+delegate here automatically, passing `--project async-event-interval` so you
+never need to type `-p`. From that repo:
 
 ```bash
-./ci/vm-tests.sh -f          # auto-passes --project async-event-interval
+./ci/vm-tests.sh              # all VMs
+./ci/vm-tests.sh -f           # FreeBSD only
+./ci/freebsd-test.sh t/15-interval.t   # single test file
 ```
 
 ## Unified test runner (`vm-tests.sh`)
@@ -154,15 +157,17 @@ Local FreeBSD testing via Lima and QEMU.
 
 ### One-time VM setup
 
-Create and start the VM from the project's Lima template:
+The test script creates and provisions the VM automatically on first run.
+To create it manually:
 
 ```bash
 limactl create --name freebsd-ipc ci/freebsd-lima.yaml
 limactl start freebsd-ipc
 ```
 
-`freebsd-lima.yaml` provisions a FreeBSD 14.3 aarch64 VM with the base Perl
-packages pre-installed.
+`freebsd-lima.yaml` defines a FreeBSD 14.3 aarch64 VM (2 CPUs, 2 GiB RAM,
+20 GiB disk). Perl packages and CPAN dependencies are installed by the test
+script at runtime.
 
 ### Logging into the VM
 
@@ -206,16 +211,16 @@ tests pass, fail, or the script is interrupted.
   managed by perlbrew (e.g. `5.20.3`). Compiles Perl from source on the
   first run (10-20 min); subsequent runs reuse the cached build. Useful
   for reproducing failures reported against older Perl versions.
+  (FreeBSD only.)
 - `-x`, `--xs` — Build and test with XS (default: pure Perl only,
   ipc-shareable only)
 - `-h`, `--help` — Print usage and exit.
 
-By default this runs `prove -l -v t` inside the VM. Pass your own prove
-arguments to override:
+Prove's `-v` (verbose) is the default. Pass individual test files to
+override the default `-v t`:
 
 ```bash
 ./ci/freebsd-test.sh -p ipc-shareable t/85-clean.t                # single test file
-./ci/freebsd-test.sh -p ipc-shareable -v t/85-clean.t             # verbose, single file
 ./ci/freebsd-test.sh -p ipc-shareable t                           # whole suite, no -v
 ./ci/freebsd-test.sh -p async-event-interval t/15-interval.t      # aei, single file
 ./ci/freebsd-test.sh -p ipc-shareable -v 5.20.3 t/85-clean.t     # single file, Perl 5.20.3

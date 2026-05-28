@@ -174,6 +174,10 @@ fi
 _VERSION=$(limactl shell "$VM" -- sh -lc "
     sudo systemd-nspawn -D '${CHROOT}' --quiet \
         sh -c 'perl -I/opt/${PROJECT}/lib -M${TEST_MODULE} -e \"print qq(${TEST_MODULE} \\\$${TEST_MODULE}::VERSION\\n)\"'" 2>/dev/null)
+_IPC_SHAREABLE_VERSION=$(limactl shell "$VM" -- sh -lc "
+    sudo systemd-nspawn -D '${CHROOT}' --quiet \
+        sh -c 'perl -MIPC::Shareable -e \"print qq(\\\$IPC::Shareable::VERSION)\"'" 2>/dev/null)
+_IPC_SHAREABLE_VERSION="${_IPC_SHAREABLE_VERSION:-N/A}"
 _OS_INFO=$(limactl shell "$VM" -- sh -lc "
     sudo systemd-nspawn -D '${CHROOT}' --quiet \
         sh -c 'uname -a'" 2>/dev/null)
@@ -184,6 +188,7 @@ _PERL_VERSION=$(limactl shell "$VM" -- sh -lc "
 echo ""
 echo "==> Project: ${PROJECT}"
 echo "==> Tested: ${_VERSION}"
+echo "==> IPC::Shareable installed: ${_IPC_SHAREABLE_VERSION}"
 echo "==> VM: ${VM}"
 echo "==> OS Version: ${_OS_INFO}"
 echo "==> Perl version: ${_PERL_VERSION}"
