@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run IPC::Shareable tests in a local OpenBSD VM (Lima/QEMU).
+# Run tests in a local OpenBSD VM (Lima/QEMU).
 #
 # Targets the CPAN smoker platform:
 #   osname=openbsd, osvers=7.8, archname=OpenBSD.amd64-openbsd
@@ -12,19 +12,20 @@
 set -e
 
 VM="${VM:-openbsd-ipc}"
-HOST_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 GUEST_USER="vagrant"
 GUEST_HOME="/home/${GUEST_USER}"
-GUEST_REPO="${GUEST_HOME}/ipc-shareable"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# HOST_REPO is resolved from --project below, after argument parsing,
+# so that --project async-event-interval ships the aei repo (sibling
+# of ipc-shareable) and --project ipc-shareable ships this repo.
 CACHE_DIR="${HOME}/.lima/_cache"
 CACHED_QCOW2="${CACHE_DIR}/openbsd7.qcow2"
 
 BOX_URL="https://vagrantcloud.com/generic/boxes/openbsd7/versions/4.3.12/providers/qemu/amd64/vagrant.box"
 BOX_CHECKSUM="d7049b92338162c552c147f4647dc3ee44546b7dc44e7e9c4652ae332c06aad1"
 
-LOCALE="en_US.UTF-8"
+PROJECT=""
 XS_MODE=0
 
 usage() {
@@ -32,23 +33,28 @@ usage() {
 Usage: $(basename "$0") [options] [prove options]
 
 Options:
-  -x, --xs      Build and test with XS (default: pure Perl only)
-  -h, --help    Show this help message and exit
+  --project <name>  Project to test: ipc-shareable (default) or
+                    async-event-interval
+  -x, --xs          Build and test with XS (default: pure Perl only,
+                    ipc-shareable only)
+  -h, --help        Show this help message and exit
 
 Environment:
-  VM=<name>     Target a different Lima VM (default: openbsd-ipc)
+  VM=<name>         Target a different Lima VM (default: openbsd-ipc)
 
 Prove options default to "-v t" (verbose, full suite) when not supplied.
 Examples:
-  $(basename "$0")                  # full suite
-  $(basename "$0") t/85-clean.t    # single test file
-  $(basename "$0") t               # full suite, no -v
+  $(basename "$0")                                # full suite, ipc-shareable
+  $(basename "$0") --project async-event-interval # full suite, aei
+  $(basename "$0") t/85-clean.t                   # single test file
+  $(basename "$0") t                              # full suite, no -v
 EOF
 }
 
 _PROVE_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        -p|--project) shift; PROJECT="$1"; shift ;;
         -x|--xs)      XS_MODE=1; shift ;;
         -h|--help)    usage; exit 0 ;;
         *)            _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
@@ -56,6 +62,45 @@ while [ $# -gt 0 ]; do
 done
 PROVE_ARGS="${_PROVE_ARGS# }"
 PROVE_ARGS="${PROVE_ARGS:--v t}"
+
+if [ -z "$PROJECT" ]; then
+    echo "ERROR: --project is required. Use ipc-shareable or async-event-interval."
+    usage
+    exit 1
+fi
+
+case "$PROJECT" in
+    ipc-shareable)
+        GUEST_REPO="${GUEST_HOME}/ipc-shareable"
+        OTHER_DEPS="String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval"
+        IPC_INSTALL=""
+        TEST_ENV="ASYNC_TESTING=1"
+        TEST_MODULE="IPC::Shareable"
+        ;;
+    async-event-interval)
+        GUEST_REPO="${GUEST_HOME}/async-event-interval"
+        OTHER_DEPS="Test::SharedFork Mock::Sub Parallel::ForkManager"
+        IPC_INSTALL="github"   # OpenBSD tar can't handle CPAN tarballs
+        TEST_ENV=""
+        TEST_MODULE="Async::Event::Interval"
+        ;;
+    *)
+        echo "ERROR: Unknown project '${PROJECT}'. Use ipc-shareable or async-event-interval."
+        usage
+        exit 1
+        ;;
+esac
+
+# Resolve HOST_REPO from --project: both repos must be siblings under the
+# same parent directory (the grandparent of this CI script). This ensures
+# the LOCAL copy of the selected project is shipped into the VM, not a
+# CPAN release or the other repo's source.
+HOST_REPO="$(cd "${SCRIPT_DIR}/../.." && pwd)/${PROJECT}"
+if [ ! -d "$HOST_REPO" ]; then
+    echo "ERROR: Could not find project '${PROJECT}' at ${HOST_REPO}"
+    echo "       Both repos must live as siblings under $(dirname "$HOST_REPO")/"
+    exit 1
+fi
 
 cleanup() {
     status=$?
@@ -207,10 +252,29 @@ fi
 
 # ── install Perl dependencies ───────────────────────────────────────────────
 
-echo "==> Installing Perl dependencies via CPAN (OpenBSD 7.4 packages offline)..."
-limactl shell "$VM" -- sh -lc '
-    sudo cpan -T String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval 2>&1
-'
+echo "==> Installing Perl dependencies via CPAN (OpenBSD packages offline)..."
+limactl shell "$VM" -- sh -lc "
+    sudo cpan -T ${OTHER_DEPS} 2>&1
+"
+
+if [ "${IPC_INSTALL}" = "github" ]; then
+    # IPC::Shareable: install from GitHub because OpenBSD tar(1)
+    # cannot handle PAX extended headers in modern CPAN tarballs.
+    echo "==> Installing IPC::Shareable from GitHub (OpenBSD tar PAX workaround)..."
+    limactl shell "$VM" -- sh -lc '
+        IPC_URL="https://github.com/stevieb9/ipc-shareable/archive/refs/heads/master.zip"
+        IPC_DIR="/tmp/ipc-shareable-install"
+        rm -rf "$IPC_DIR" /tmp/ipc-shareable-master
+        mkdir -p "$IPC_DIR"
+        curl -fsSL -o "$IPC_DIR/master.zip" "$IPC_URL"
+        unzip -qo "$IPC_DIR/master.zip" -d /tmp
+        cd /tmp/ipc-shareable-master
+        sudo perl Makefile.PL 2>&1
+        sudo make 2>&1
+        sudo make install 2>&1
+        rm -rf "$IPC_DIR" /tmp/ipc-shareable-master
+    '
+fi
 
 # ── copy source into VM ─────────────────────────────────────────────────────
 
@@ -236,24 +300,28 @@ limactl shell "$VM" -- sh -lc "
 # ── run tests ───────────────────────────────────────────────────────────────
 
 _test_rc=0
-if [ $XS_MODE -eq 1 ]; then
+if [ "$PROJECT" = "ipc-shareable" ] && [ $XS_MODE -eq 1 ]; then
     echo "==> Building and running tests in VM (XS)..."
     limactl shell "$VM" -- sh -lc \
-        "cd '${GUEST_REPO}' && perl Makefile.PL && make && ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}" \
+        "cd '${GUEST_REPO}' && perl Makefile.PL && make && ${TEST_ENV} PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}" \
         || _test_rc=$?
 else
     echo "==> Running tests in VM (pure Perl)..."
     limactl shell "$VM" -- sh -lc \
-        "cd '${GUEST_REPO}' && ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}" \
+        "cd '${GUEST_REPO}' && ${TEST_ENV} PERL5LIB=lib prove -l ${PROVE_ARGS}" \
         || _test_rc=$?
 fi
 
-echo "==> IPC::Shareable version tested..."
-limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl -Ilib -MIPC::Shareable -e 'print qq(IPC::Shareable \$IPC::Shareable::VERSION\n)'"
+_VERSION=$(limactl shell "$VM" -- sh -lc "perl -I'${GUEST_REPO}/lib' -M${TEST_MODULE} -e 'print qq(${TEST_MODULE} \${TEST_MODULE}::VERSION\n)'" 2>/dev/null)
+_OS_INFO=$(limactl shell "$VM" -- sh -lc 'uname -a' 2>/dev/null)
+_PERL_VERSION=$(limactl shell "$VM" -- sh -lc "perl -e 'printf qq(%vd\n), \$^V'" 2>/dev/null)
 
-echo "==> VM environment info..."
-limactl shell "$VM" -- sh -lc "uname -a; perl -v | head -2; perl -V:archname"
-
+echo ""
+echo "==> Project: ${PROJECT}"
+echo "==> Tested: ${_VERSION}"
+echo "==> VM: ${VM}"
+echo "==> OS Version: ${_OS_INFO}"
+echo "==> Perl version: ${_PERL_VERSION}"
 echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
 
 exit $_test_rc

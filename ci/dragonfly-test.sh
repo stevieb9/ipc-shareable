@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run IPC::Shareable tests in a local DragonFly BSD VM (Lima/QEMU).
+# Run tests in a local DragonFly BSD VM (Lima/QEMU).
 #
 # Targets the CPAN smoker platform:
 #   osname=dragonfly, archname=x86_64-dragonfly
@@ -13,15 +13,17 @@
 set -e
 
 VM="${VM:-dragonfly-ipc}"
-HOST_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 GUEST_USER="dragonfly"
 GUEST_HOME="/home/${GUEST_USER}.guest"
-GUEST_REPO="${GUEST_HOME}/ipc-shareable"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# HOST_REPO is resolved from --project below, after argument parsing,
+# so that --project async-event-interval ships the aei repo (sibling
+# of ipc-shareable) and --project ipc-shareable ships this repo.
 CACHE_DIR="${HOME}/.lima/_cache"
 CACHED_QCOW2="${CACHE_DIR}/dragonfly64.qcow2"
 
+PROJECT=""
 XS_MODE=0
 
 usage() {
@@ -29,23 +31,28 @@ usage() {
 Usage: $(basename "$0") [options] [prove options]
 
 Options:
-  -x, --xs      Build and test with XS (default: pure Perl only)
-  -h, --help    Show this help message and exit
+  --project <name>  Project to test: ipc-shareable (default) or
+                    async-event-interval
+  -x, --xs          Build and test with XS (default: pure Perl only,
+                    ipc-shareable only)
+  -h, --help        Show this help message and exit
 
 Environment:
-  VM=<name>     Target a different Lima VM (default: dragonfly-ipc)
+  VM=<name>         Target a different Lima VM (default: dragonfly-ipc)
 
 Prove options default to "-v t" (verbose, full suite) when not supplied.
 Examples:
-  $(basename "$0")                  # full suite
-  $(basename "$0") t/85-clean.t    # single test file
-  $(basename "$0") t               # full suite, no -v
+  $(basename "$0") -p ipc-shareable               # full suite, ipc-shareable
+  $(basename "$0") -p async-event-interval        # full suite, aei
+  $(basename "$0") -p ipc-shareable t/85-clean.t  # single test file
+  $(basename "$0") -p ipc-shareable t             # full suite, no -v
 EOF
 }
 
 _PROVE_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        -p|--project) shift; PROJECT="$1"; shift ;;
         -x|--xs)      XS_MODE=1; shift ;;
         -h|--help)    usage; exit 0 ;;
         *)            _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
@@ -53,6 +60,44 @@ while [ $# -gt 0 ]; do
 done
 PROVE_ARGS="${_PROVE_ARGS# }"
 PROVE_ARGS="${PROVE_ARGS:--v t}"
+
+if [ -z "$PROJECT" ]; then
+    echo "ERROR: --project is required. Use ipc-shareable or async-event-interval."
+    usage
+    exit 1
+fi
+
+case "$PROJECT" in
+    ipc-shareable)
+        GUEST_REPO="${GUEST_HOME}/ipc-shareable"
+        OTHER_DEPS="JSON String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval"
+        IPC_INSTALL=""
+        TEST_ENV="PRINT_SEGS=1"
+        TEST_MODULE="IPC::Shareable"
+        ;;
+    async-event-interval)
+        GUEST_REPO="${GUEST_HOME}/async-event-interval"
+        OTHER_DEPS="JSON Test::SharedFork Mock::Sub Parallel::ForkManager"
+        IPC_INSTALL="sudo cpanm --reinstall --notest IPC::Shareable"
+        TEST_ENV=""
+        TEST_MODULE="Async::Event::Interval"
+        ;;
+    *)
+        echo "ERROR: Unknown project '${PROJECT}'. Use ipc-shareable or async-event-interval."
+        exit 1
+        ;;
+esac
+
+# Resolve HOST_REPO from --project: both repos must be siblings under the
+# same parent directory (the grandparent of this CI script). This ensures
+# the LOCAL copy of the selected project is shipped into the VM, not a
+# CPAN release or the other repo's source.
+HOST_REPO="$(cd "${SCRIPT_DIR}/../.." && pwd)/${PROJECT}"
+if [ ! -d "$HOST_REPO" ]; then
+    echo "ERROR: Could not find project '${PROJECT}' at ${HOST_REPO}"
+    echo "       Both repos must live as siblings under $(dirname "$HOST_REPO")/"
+    exit 1
+fi
 
 # Tests that hang under TCG emulation — they use SIGALRM + sleep for
 # parent/child synchronization, which races when signal delivery is slow.
@@ -179,12 +224,12 @@ fi
 # ── install Perl dependencies ───────────────────────────────────────────────
 
 echo "==> Installing Perl dependencies via pkg and cpanm..."
-limactl shell "$VM" -- sh -c '
+limactl shell "$VM" -- sh -c "
     sudo pkg install -y perl5 p5-App-cpanminus gmake 2>&1
 
-    sudo cpanm --notest JSON String::CRC32 Test::SharedFork Mock::Sub \
-        Async::Event::Interval 2>&1
-'
+    sudo cpanm --notest ${OTHER_DEPS} 2>&1
+    ${IPC_INSTALL} 2>&1
+"
 
 # ── copy source into VM ─────────────────────────────────────────────────────
 
@@ -227,24 +272,28 @@ if [ "$PROVE_ARGS" = "-v t" ] && [ -n "$SKIP_TESTS" ]; then
 fi
 
 _test_rc=0
-if [ $XS_MODE -eq 1 ]; then
+if [ "$PROJECT" = "ipc-shareable" ] && [ $XS_MODE -eq 1 ]; then
     echo "==> Building and running tests in VM (XS)..."
     limactl shell "$VM" -- sh -c \
-        "cd '${GUEST_REPO}' && perl Makefile.PL && make && PRINT_SEGS=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}" \
+        "cd '${GUEST_REPO}' && perl Makefile.PL && make && ${TEST_ENV} PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}" \
         || _test_rc=$?
 else
     echo "==> Running tests in VM (pure Perl)..."
     limactl shell "$VM" -- sh -c \
-        "cd '${GUEST_REPO}' && PRINT_SEGS=1 PERL5LIB=lib prove -l ${PROVE_ARGS}" \
+        "cd '${GUEST_REPO}' && ${TEST_ENV} PERL5LIB=lib prove -l ${PROVE_ARGS}" \
         || _test_rc=$?
 fi
 
-echo "==> IPC::Shareable version tested..."
-limactl shell "$VM" -- sh -c "cd '${GUEST_REPO}' && perl -Ilib -MIPC::Shareable -e 'print qq(IPC::Shareable \$IPC::Shareable::VERSION\n)'"
+_VERSION=$(limactl shell "$VM" -- sh -c "perl -I'${GUEST_REPO}/lib' -M${TEST_MODULE} -e 'print qq(${TEST_MODULE} \${TEST_MODULE}::VERSION\n)'" 2>/dev/null)
+_OS_INFO=$(limactl shell "$VM" -- sh -c 'uname -a' 2>/dev/null)
+_PERL_VERSION=$(limactl shell "$VM" -- sh -c "perl -e 'printf qq(%vd\n), \$^V'" 2>/dev/null)
 
-echo "==> VM environment info..."
-limactl shell "$VM" -- sh -c "uname -a; perl -v | head -2; perl -V:archname"
-
+echo ""
+echo "==> Project: ${PROJECT}"
+echo "==> Tested: ${_VERSION}"
+echo "==> VM: ${VM}"
+echo "==> OS Version: ${_OS_INFO}"
+echo "==> Perl version: ${_PERL_VERSION}"
 echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
 
 exit $_test_rc

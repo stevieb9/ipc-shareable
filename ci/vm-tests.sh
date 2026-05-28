@@ -1,7 +1,7 @@
 #!/bin/sh
-# Run IPC::Shareable tests across multiple VMs and summarize results.
+# Run tests across multiple VMs and summarize results.
 #
-# Usage: ./ci/vm-tests.sh [-f] [-l] [-s] [-a] [-k] [-h] [prove options]
+# Usage: ./ci/vm-tests.sh [-f] [-l] [-o] [-s] [-d] [-a] [-k] [-x] [-D] [-h] [prove options]
 #
 #   -f, --freebsd     Run FreeBSD tests
 #   -l, --linux       Run 32-bit Linux (i386) tests
@@ -10,6 +10,8 @@
 #   -d, --dragonfly   Run DragonFly BSD tests
 #   -a, --all         Run all VMs (default)
 #   -k, --keep-logs   Keep log files (default: deleted after run)
+#   -x, --xs          Build and test with XS (ipc-shareable only)
+#   -D, --display     Write output directly to stdout instead of log files
 #   -h, --help        Show this help and exit
 #
 # Prove options are forwarded to each VM test script (default: -v t).
@@ -21,6 +23,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 LOGDIR="/tmp/vm-tests-${TIMESTAMP}"
 RESULTS_DIR=$(mktemp -d /tmp/vm-tests-status-XXXXXX)
 KEEP_LOGS=0
+PROJECT=""
 XS_MODE=0
 DISPLAY_MODE=0
 
@@ -44,6 +47,8 @@ usage() {
 Usage: $(basename "$0") [options] [prove options]
 
 Options:
+  --project <name>  Project to test: ipc-shareable (default) or
+                    async-event-interval
   -f, --freebsd     Run FreeBSD tests
   -l, --linux       Run 32-bit Linux (i386) tests
   -o, --openbsd     Run OpenBSD tests
@@ -51,7 +56,7 @@ Options:
   -d, --dragonfly   Run DragonFly BSD tests
   -a, --all         Run all VMs (default)
   -k, --keep-logs   Keep log files after the run (default: delete on success)
-  -x, --xs          Build and test with XS on each VM (default: pure Perl only)
+  -x, --xs          Build and test with XS on each VM (ipc-shareable only)
   -D, --display     Write output directly to stdout instead of log files
   -h, --help        Show this help and exit
 
@@ -59,16 +64,17 @@ Prove options are forwarded to each VM test script (default: -v t).
 Output from each run is logged under /tmp/vm-tests-<timestamp>/.
 
 Examples:
-  $(basename "$0")                       # all VMs, full suite
-  $(basename "$0") -s                    # Solaris only
-  $(basename "$0") -f -l t/20-lock.t     # FreeBSD + Linux, single test
-  $(basename "$0") -ks                   # Solaris only, keep logs
+  $(basename "$0") -p ipc-shareable                         # all VMs, ipc-shareable
+  $(basename "$0") -p async-event-interval -s               # Solaris only, aei
+  $(basename "$0") -p ipc-shareable -f -l t/20-lock.t       # FreeBSD + Linux, single test
+  $(basename "$0") -p ipc-shareable -ks                      # Solaris only, keep logs
 EOF
 }
 
 _PROVE_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        -p|--project)  shift; PROJECT="$1"; shift ;;
         -f|--freebsd)  RUN_FREEBSD=1; shift ;;
         -l|--linux)    RUN_LINUX=1; shift ;;
         -o|--openbsd)  RUN_OPENBSD=1; shift ;;
@@ -88,6 +94,14 @@ if [ $RUN_FREEBSD -eq 0 ] && [ $RUN_LINUX -eq 0 ] && [ $RUN_OPENBSD -eq 0 ] && [
 fi
 
 PROVE_ARGS="${_PROVE_ARGS# }"
+
+if [ -z "$PROJECT" ]; then
+    echo "ERROR: --project is required. Use ipc-shareable or async-event-interval."
+    usage
+    exit 1
+fi
+
+PROJECT_FLAG="--project ${PROJECT}"
 XS_FLAG=""
 [ $XS_MODE -eq 1 ] && XS_FLAG="--xs"
 [ $DISPLAY_MODE -eq 0 ] && mkdir -p "$LOGDIR"
@@ -103,7 +117,7 @@ run_vm() {
     echo "=== ${_label}: starting at $(date) ==="
 
     if [ $DISPLAY_MODE -eq 1 ]; then
-        if "${SCRIPT_DIR}/${_script}" ${XS_FLAG} ${PROVE_ARGS}; then
+        if "${SCRIPT_DIR}/${_script}" ${PROJECT_FLAG} ${XS_FLAG} ${PROVE_ARGS}; then
             echo "PASS" > "${RESULTS_DIR}/${_label}"
             echo "    ${_label}: PASS"
         else
@@ -113,7 +127,7 @@ run_vm() {
         fi
     else
         echo "    log: ${_log}"
-        if "${SCRIPT_DIR}/${_script}" ${XS_FLAG} ${PROVE_ARGS} >"${_log}" 2>&1; then
+        if "${SCRIPT_DIR}/${_script}" ${PROJECT_FLAG} ${XS_FLAG} ${PROVE_ARGS} >"${_log}" 2>&1; then
             echo "PASS" > "${RESULTS_DIR}/${_label}"
             echo "    ${_label}: PASS"
         else
@@ -155,6 +169,7 @@ print_result() {
 # ── run ──────────────────────────────────────────────────────────────────────
 
 echo "=== vm-tests.sh started at $(date) ==="
+echo "    project: ${PROJECT}"
 echo "    prove args: ${PROVE_ARGS:--v t}"
 echo "    mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
 if [ $DISPLAY_MODE -eq 1 ]; then
@@ -246,6 +261,7 @@ else
         echo "Logs: ${LOGDIR}/ (deleted on exit; use -k to keep)"
     fi
 fi
+echo "Project: ${PROJECT}"
 echo "Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
 echo "=== vm-tests.sh finished at $(date) ==="
 

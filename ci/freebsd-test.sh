@@ -1,18 +1,19 @@
 #!/bin/sh
-# Run IPC::Shareable tests in a local FreeBSD VM (Lima template).
-# Usage: ./ci/freebsd-test.sh [--german] [--perl-version <ver>] [prove options]
+# Run tests in a local FreeBSD VM (Lima template).
+# Usage: ./ci/freebsd-test.sh [--project <name>] [--perl-version <ver>] [prove options]
 
 set -e
 
 VM="${VM:-freebsd-ipc}"
-HOST_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 GUEST_USER="freebsd"
 GUEST_HOME="/home/${GUEST_USER}.guest"
-GUEST_REPO="${GUEST_HOME}/ipc-shareable"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# HOST_REPO is resolved from --project below, after argument parsing,
+# so that --project async-event-interval ships the aei repo (sibling
+# of ipc-shareable) and --project ipc-shareable ships this repo.
 
-LOCALE="en_US.UTF-8"
+PROJECT=""
 PERL_VERSION=""
 XS_MODE=0
 
@@ -21,32 +22,33 @@ usage() {
 Usage: $(basename "$0") [options] [prove options]
 
 Options:
-  --german              Run tests with LC_ALL=de_DE.ISO8859-1 (German locale)
-  --perl-version <ver>  Build and test with perlbrew Perl <ver> (e.g. 5.20.3).
-                        Compiles Perl from source on the first run (10-20 min);
-                        subsequent runs reuse the cached build.
-  -x, --xs              Build and test with XS (default: pure Perl only)
-  -h, --help            Show this help message and exit
+  -p, --project <name>   Project to test: ipc-shareable or async-event-interval
+                         (required)
+  -v, --perl-version <ver> Build and test with perlbrew Perl <ver> (e.g. 5.20.3).
+                         Compiles Perl from source on the first run (10-20 min);
+                         subsequent runs reuse the cached build.
+  -x, --xs               Build and test with XS (default: pure Perl only,
+                         ipc-shareable only)
+  -h, --help             Show this help message and exit
 
 Environment:
-  VM=<name>       Target a different Lima VM (default: freebsd-ipc)
+  VM=<name>        Target a different Lima VM (default: freebsd-ipc)
 
 Prove options default to "-v t" (verbose, full suite) when not supplied.
 Examples:
-  $(basename "$0")                                    # full suite, English locale
-  $(basename "$0") --german                           # full suite, German locale
-  $(basename "$0") --perl-version 5.20.3              # full suite, Perl 5.20.3
-  $(basename "$0") --german --perl-version 5.20.3    # German locale + Perl 5.20.3
-  $(basename "$0") t/85-clean.t                      # single test file
-  $(basename "$0") t                                 # full suite, no -v
+  $(basename "$0") -p ipc-shareable                     # full suite
+  $(basename "$0") -p async-event-interval              # full suite, aei
+  $(basename "$0") -p ipc-shareable -v 5.20.3           # full suite, Perl 5.20.3
+  $(basename "$0") -p ipc-shareable t/85-clean.t        # single test file
+  $(basename "$0") -p ipc-shareable t                   # full suite, no -v
 EOF
 }
 
 _PROVE_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --german)       LOCALE="de_DE.ISO8859-1"; shift ;;
-        --perl-version) shift; PERL_VERSION="$1"; shift ;;
+        -p|--project)   shift; PROJECT="$1"; shift ;;
+        -v|--perl-version) shift; PERL_VERSION="$1"; shift ;;
         -x|--xs)        XS_MODE=1; shift ;;
         -h|--help)      usage; exit 0 ;;
         *)              _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
@@ -54,6 +56,45 @@ while [ $# -gt 0 ]; do
 done
 PROVE_ARGS="${_PROVE_ARGS# }"
 PROVE_ARGS="${PROVE_ARGS:--v t}"
+
+if [ -z "$PROJECT" ]; then
+    echo "ERROR: --project is required. Use ipc-shareable or async-event-interval."
+    usage
+    exit 1
+fi
+
+case "$PROJECT" in
+    ipc-shareable)
+        GUEST_REPO="${GUEST_HOME}/ipc-shareable"
+        OTHER_DEPS="JSON String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval"
+        IPC_INSTALL=""
+        TEST_ENV="ASYNC_TESTING=1"
+        TEST_MODULE="IPC::Shareable"
+        ;;
+    async-event-interval)
+        GUEST_REPO="${GUEST_HOME}/async-event-interval"
+        OTHER_DEPS="Test::SharedFork Mock::Sub Parallel::ForkManager"
+        IPC_INSTALL="sudo cpanm --reinstall --notest IPC::Shareable"
+        TEST_ENV=""
+        TEST_MODULE="Async::Event::Interval"
+        ;;
+    *)
+        echo "ERROR: Unknown project '${PROJECT}'. Use ipc-shareable or async-event-interval."
+        usage
+        exit 1
+        ;;
+esac
+
+# Resolve HOST_REPO from --project: both repos must be siblings under the
+# same parent directory (the grandparent of this CI script). This ensures
+# the LOCAL copy of the selected project is shipped into the VM, not a
+# CPAN release or the other repo's source.
+HOST_REPO="$(cd "${SCRIPT_DIR}/../.." && pwd)/${PROJECT}"
+if [ ! -d "$HOST_REPO" ]; then
+    echo "ERROR: Could not find project '${PROJECT}' at ${HOST_REPO}"
+    echo "       Both repos must live as siblings under $(dirname "$HOST_REPO")/"
+    exit 1
+fi
 
 cleanup() {
     status=$?
@@ -117,7 +158,12 @@ if ! limactl shell "$VM" -- sh -lc 'command -v sudo >/dev/null 2>&1'; then
 fi
 
 echo "==> Installing FreeBSD packages..."
-limactl shell "$VM" -- sh -lc 'sudo pkg install -y perl5 p5-App-cpanminus gmake p5-ExtUtils-MakeMaker p5-JSON p5-String-CRC32 p5-Test-SharedFork p5-Mock-Sub && sudo cpanm --notest Async::Event::Interval'
+limactl shell "$VM" -- sh -lc "
+    sudo pkg install -y perl5 p5-App-cpanminus gmake p5-ExtUtils-MakeMaker \\
+        p5-Test-SharedFork p5-Mock-Sub
+    sudo cpanm --notest ${OTHER_DEPS}
+    ${IPC_INSTALL}
+"
 
 if [ -n "$PERL_VERSION" ]; then
     echo "==> Setting up Perl ${PERL_VERSION} via perlbrew (compiles from source on first run)..."
@@ -150,7 +196,9 @@ if [ -n "$PERL_VERSION" ]; then
             rm -f /tmp/_cpanm_bootstrap.pl
         fi
 
-        \"\$PERL_BIN/cpanm\" --notest JSON String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval
+        \"\$PERL_BIN/cpanm\" --notest ${OTHER_DEPS}
+        [ \"${PROJECT}\" = async-event-interval ] && \\
+            \"\$PERL_BIN/cpanm\" --reinstall --notest IPC::Shareable
     "
 fi
 
@@ -172,37 +220,41 @@ limactl shell "$VM" -- sh -lc "
 
 _test_rc=0
 if [ -n "$PERL_VERSION" ]; then
-    if [ $XS_MODE -eq 1 ]; then
-        echo "==> Building and running tests in VM with Perl ${PERL_VERSION} (XS, LC_ALL=${LOCALE})..."
+    if [ "$PROJECT" = "ipc-shareable" ] && [ $XS_MODE -eq 1 ]; then
+        echo "==> Building and running tests in VM with Perl ${PERL_VERSION} (XS)..."
         limactl shell "$VM" -- sh -lc "
             PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
-            cd '${GUEST_REPO}' && PATH=\"\$PERL_BIN:\$PATH\" perl Makefile.PL && make && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib PATH=\"\$PERL_BIN:\$PATH\" prove -l -Iblib/arch ${PROVE_ARGS}
+            cd '${GUEST_REPO}' && PATH=\"\$PERL_BIN:\$PATH\" perl Makefile.PL && make && ${TEST_ENV} PERL5LIB=lib PATH=\"\$PERL_BIN:\$PATH\" prove -l -Iblib/arch ${PROVE_ARGS}
         " || _test_rc=$?
     else
-        echo "==> Running tests in VM with Perl ${PERL_VERSION} (pure Perl, LC_ALL=${LOCALE})..."
+        echo "==> Running tests in VM with Perl ${PERL_VERSION} (pure Perl)..."
         limactl shell "$VM" -- sh -lc "
             PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
-            cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib PATH=\"\$PERL_BIN:\$PATH\" prove -l ${PROVE_ARGS}
+            cd '${GUEST_REPO}' && ${TEST_ENV} PERL5LIB=lib PATH=\"\$PERL_BIN:\$PATH\" prove -l ${PROVE_ARGS}
         " || _test_rc=$?
     fi
 else
-    if [ $XS_MODE -eq 1 ]; then
-        echo "==> Building and running tests in VM (XS, LC_ALL=${LOCALE})..."
-        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl Makefile.PL && make && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}" \
+    if [ "$PROJECT" = "ipc-shareable" ] && [ $XS_MODE -eq 1 ]; then
+        echo "==> Building and running tests in VM (XS)..."
+        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl Makefile.PL && make && ${TEST_ENV} PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}" \
             || _test_rc=$?
     else
-        echo "==> Running tests in VM (pure Perl, LC_ALL=${LOCALE})..."
-        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && LC_ALL=${LOCALE} ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}" \
+        echo "==> Running tests in VM (pure Perl)..."
+        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && ${TEST_ENV} PERL5LIB=lib prove -l ${PROVE_ARGS}" \
             || _test_rc=$?
     fi
 fi
 
-echo "==> IPC::Shareable version tested..."
-limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl -Ilib -MIPC::Shareable -e 'print qq(IPC::Shareable \$IPC::Shareable::VERSION\n)'"
+_VERSION=$(limactl shell "$VM" -- sh -lc "perl -I'${GUEST_REPO}/lib' -M${TEST_MODULE} -e 'print qq(${TEST_MODULE} \$${TEST_MODULE}::VERSION\n)'" 2>/dev/null)
+_OS_INFO=$(limactl shell "$VM" -- sh -lc 'uname -a' 2>/dev/null)
+_PERL_VERSION=$(limactl shell "$VM" -- sh -lc "perl -e 'printf qq(%vd\n), \$^V'" 2>/dev/null)
 
-echo "==> VM environment info..."
-limactl shell "$VM" -- sh -lc "uname -a; perl -v | head -2; perl -V:archname"
-
+echo ""
+echo "==> Project: ${PROJECT}"
+echo "==> Tested: ${_VERSION}"
+echo "==> VM: ${VM}"
+echo "==> OS Version: ${_OS_INFO}"
+echo "==> Perl version: ${_PERL_VERSION}"
 echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
 
 exit $_test_rc

@@ -3,6 +3,11 @@
 Scripts for running IPC::Shareable tests inside local VMs via
 [Lima](https://lima-vm.io/) and QEMU.
 
+The scripts accept a `--project` flag so the same VM infrastructure can test
+either IPC::Shareable or [Async::Event::Interval](https://github.com/stevieb9/async-event-interval).
+The `async-event-interval` repo's `ci/` directory contains thin wrappers that
+delegate here with `--project async-event-interval`.
+
 ## Contents
 
 - [Lima basics](#lima-basics)
@@ -67,16 +72,35 @@ up the changes.
 
 ### VM defaults and reuse
 
-The default VM names (`freebsd-ipc`, `openbsd-ipc`, `linux-i386`, `solaris-ipc`)
-match those used by the sibling `async-event-interval` repo, so the same
-provisioned VM disks can be reused between projects without re-downloading base
-images or re-running first-boot bootstraps. Each test script installs any extra
-CPAN deps the suite needs on top of what is already present, idempotently.
+Default VM names (`freebsd-ipc`, `openbsd-ipc`, `linux-i386`, `solaris-ipc`,
+`dragonfly-ipc`) are shared across projects. Each test script installs any
+extra CPAN deps the project needs on top of what is already present,
+idempotently — the same provisioned VM instances can test either project
+without re-downloading base images or re-running first-boot bootstraps.
 
 To use isolated VMs instead, set `VM=<name>` when invoking any script:
 
 ```bash
 VM=freebsd-ipc2 ./ci/freebsd-test.sh
+```
+
+### Testing other projects
+
+Every script accepts `--project`:
+
+```bash
+./ci/vm-tests.sh -p async-event-interval     # test aei on all VMs
+./ci/freebsd-test.sh -p async-event-interval t/15-interval.t
+```
+
+The `--project` flag (or `-p`) is mandatory and controls the guest repo path,
+CPAN dependencies, and test invocation. Valid values: `ipc-shareable`, `async-event-interval`.
+
+The `async-event-interval` repo's `ci/` directory contains thin wrappers that
+delegate here automatically. From that repo, just run:
+
+```bash
+./ci/vm-tests.sh -f          # auto-passes --project async-event-interval
 ```
 
 ## Unified test runner (`vm-tests.sh`)
@@ -92,6 +116,7 @@ test details.
 
 | Flag | Description |
 |------|-------------|
+| `-p`, `--project <name>` | Project to test: `ipc-shareable` or `async-event-interval` (required) |
 | `-f`, `--freebsd` | Run FreeBSD tests |
 | `-l`, `--linux` | Run 32-bit Linux (i386) tests |
 | `-o`, `--openbsd` | Run OpenBSD tests |
@@ -99,7 +124,7 @@ test details.
 | `-d`, `--dragonfly` | Run DragonFly BSD tests |
 | `-a`, `--all` | Run all VMs (default) |
 | `-k`, `--keep-logs` | Keep log files after the run |
-| `-x`, `--xs` | Build and test with XS (default: pure Perl only) |
+| `-x`, `--xs` | Build and test with XS (default: pure Perl only, ipc-shareable only) |
 | `-D`, `--display` | Write output to stdout instead of log files |
 | `-h`, `--help` | Print usage and exit |
 
@@ -108,10 +133,10 @@ Prove options are forwarded to each VM test script (default: `-v t`).
 ### Examples
 
 ```bash
-./ci/vm-tests.sh                       # all VMs, full suite
-./ci/vm-tests.sh -s                    # Solaris only
-./ci/vm-tests.sh -f -l t/20-lock.t     # FreeBSD + Linux, single test
-./ci/vm-tests.sh -ks                   # Solaris only, keep logs
+./ci/vm-tests.sh -p ipc-shareable                         # all VMs, ipc-shareable
+./ci/vm-tests.sh -p async-event-interval -s               # Solaris only, aei
+./ci/vm-tests.sh -p ipc-shareable -f -l t/20-lock.t      # FreeBSD + Linux, single test
+./ci/vm-tests.sh -p ipc-shareable -ks                     # Solaris only, keep logs
 ```
 
 ### Output
@@ -175,26 +200,25 @@ tests pass, fail, or the script is interrupted.
 
 **Options:**
 
-- `--german` — Run tests with `LC_ALL=de_DE.ISO8859-1` (German locale).
-  Useful for reproducing failures reported by CPAN smokers running on
-  German-locale FreeBSD systems.
-- `--perl-version <ver>` — Build and test with a specific Perl version
+- `-p`, `--project <name>` — Project to test: `ipc-shareable` or
+  `async-event-interval` (required).
+- `-v`, `--perl-version <ver>` — Build and test with a specific Perl version
   managed by perlbrew (e.g. `5.20.3`). Compiles Perl from source on the
   first run (10-20 min); subsequent runs reuse the cached build. Useful
   for reproducing failures reported against older Perl versions.
-- `-x`, `--xs` — Build and test with XS (default: pure Perl only)
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only,
+  ipc-shareable only)
 - `-h`, `--help` — Print usage and exit.
 
 By default this runs `prove -l -v t` inside the VM. Pass your own prove
 arguments to override:
 
 ```bash
-./ci/freebsd-test.sh t/85-clean.t                     # single test file
-./ci/freebsd-test.sh -v t/85-clean.t                  # verbose, single file
-./ci/freebsd-test.sh t                                # whole suite, no -v
-./ci/freebsd-test.sh --german                         # full suite, German locale
-./ci/freebsd-test.sh --german --perl-version 5.20.3   # German locale + Perl 5.20.3
-./ci/freebsd-test.sh --perl-version 5.20.3 t/85-clean.t  # single file, Perl 5.20.3
+./ci/freebsd-test.sh -p ipc-shareable t/85-clean.t                # single test file
+./ci/freebsd-test.sh -p ipc-shareable -v t/85-clean.t             # verbose, single file
+./ci/freebsd-test.sh -p ipc-shareable t                           # whole suite, no -v
+./ci/freebsd-test.sh -p async-event-interval t/15-interval.t      # aei, single file
+./ci/freebsd-test.sh -p ipc-shareable -v 5.20.3 t/85-clean.t     # single file, Perl 5.20.3
 ```
 
 To target a different (already-created) Lima VM, set the `VM` variable:
@@ -278,14 +302,18 @@ tests, stop the VM on exit.
 
 **Options:**
 
-- `-x`, `--xs` — Build and test with XS (default: pure Perl only)
+- `-p`, `--project <name>` — Project to test: `ipc-shareable` or
+  `async-event-interval` (required).
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only,
+  ipc-shareable only)
 - `-h`, `--help` — Print usage and exit.
 
 Same prove argument override syntax applies:
 
 ```bash
-./ci/openbsd-test.sh t/85-clean.t
-./ci/openbsd-test.sh t
+./ci/openbsd-test.sh -p ipc-shareable t/85-clean.t
+./ci/openbsd-test.sh -p async-event-interval t/15-interval.t
+./ci/openbsd-test.sh -p ipc-shareable t
 
 VM=my-other-openbsd ./ci/openbsd-test.sh
 ```
@@ -379,14 +407,18 @@ run tests in the chroot, stop the VM on exit.
 
 **Options:**
 
-- `-x`, `--xs` — Build and test with XS (default: pure Perl only)
+- `-p`, `--project <name>` — Project to test: `ipc-shareable` or
+  `async-event-interval` (required).
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only,
+  ipc-shareable only)
 - `-h`, `--help` — Print usage and exit.
 
 Same prove argument override syntax applies:
 
 ```bash
-./ci/linux-i386-test.sh t/85-clean.t
-./ci/linux-i386-test.sh t
+./ci/linux-i386-test.sh -p ipc-shareable t/85-clean.t
+./ci/linux-i386-test.sh -p async-event-interval t/15-interval.t
+./ci/linux-i386-test.sh -p ipc-shareable t
 
 VM=my-other-linux ./ci/linux-i386-test.sh
 ```
@@ -457,14 +489,18 @@ tests, stop the VM on exit.
 
 **Options:**
 
-- `-x`, `--xs` — Build and test with XS (default: pure Perl only)
+- `-p`, `--project <name>` — Project to test: `ipc-shareable` or
+  `async-event-interval` (required).
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only,
+  ipc-shareable only)
 - `-h`, `--help` — Print usage and exit.
 
 Same prove argument override syntax applies:
 
 ```bash
-./ci/solaris-test.sh t/85-clean.t
-./ci/solaris-test.sh t
+./ci/solaris-test.sh -p ipc-shareable t/85-clean.t
+./ci/solaris-test.sh -p async-event-interval t/15-interval.t
+./ci/solaris-test.sh -p ipc-shareable t
 
 VM=my-other-solaris ./ci/solaris-test.sh
 ```
@@ -625,14 +661,18 @@ tests, stop the VM on exit.
 
 **Options:**
 
-- `-x`, `--xs` — Build and test with XS (default: pure Perl only)
+- `-p`, `--project <name>` — Project to test: `ipc-shareable` or
+  `async-event-interval` (required).
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only,
+  ipc-shareable only)
 - `-h`, `--help` — Print usage and exit.
 
 Same prove argument override syntax applies:
 
 ```bash
-./ci/dragonfly-test.sh t/85-clean.t
-./ci/dragonfly-test.sh t
+./ci/dragonfly-test.sh -p ipc-shareable t/85-clean.t
+./ci/dragonfly-test.sh -p async-event-interval t/15-interval.t
+./ci/dragonfly-test.sh -p ipc-shareable t
 
 VM=my-other-dragonfly ./ci/dragonfly-test.sh
 ```

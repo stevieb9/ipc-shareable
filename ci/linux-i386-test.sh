@@ -1,23 +1,25 @@
 #!/bin/sh
-# Run IPC::Shareable tests in a 32-bit i386 Linux environment via Lima/QEMU.
+# Run tests in a 32-bit i386 Linux environment via Lima/QEMU.
 #
 # The host VM is Debian 12 amd64 (no i386 cloud images exist for modern
 # Debian).  An i386 debootstrap chroot is created inside the VM on the first
 # run; subsequent runs reuse it.  Tests execute under systemd-nspawn so that
 # /proc, /sys and /dev are available to the 32-bit Perl process.
 #
-# Usage: ./ci/linux-i386-test.sh [prove options]
+# Usage: ./ci/linux-i386-test.sh [options] [prove options]
 
 set -e
 
 VM="${VM:-linux-i386}"
-HOST_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # i386 chroot path inside the VM
 CHROOT="/opt/chroot-i386"
-CHROOT_REPO="${CHROOT}/opt/ipc-shareable"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# HOST_REPO is resolved from --project below, after argument parsing,
+# so that --project async-event-interval ships the aei repo (sibling
+# of ipc-shareable) and --project ipc-shareable ships this repo.
 
+PROJECT=""
 XS_MODE=0
 
 usage() {
@@ -25,31 +27,74 @@ usage() {
 Usage: $(basename "$0") [options] [prove options]
 
 Options:
-  -x, --xs      Build and test with XS (default: pure Perl only)
-  -h, --help      Show this help message and exit
+  --project <name>  Project to test: ipc-shareable (default) or
+                    async-event-interval
+  -x, --xs          Build and test with XS (default: pure Perl only,
+                    ipc-shareable only)
+  -h, --help        Show this help message and exit
 
 Environment:
-  VM=<name>       Target a different Lima VM (default: linux-i386)
+  VM=<name>         Target a different Lima VM (default: linux-i386)
 
 Prove options default to "-v t" (verbose, full suite) when not supplied.
 Examples:
-  $(basename "$0")                   # full suite
-  $(basename "$0") t/24-clean.t     # single test file
-  $(basename "$0") -v t/24-clean.t  # verbose, single file
-  $(basename "$0") t                # full suite, no -v
+  $(basename "$0") -p ipc-shareable               # full suite, ipc-shareable
+  $(basename "$0") -p async-event-interval        # full suite, aei
+  $(basename "$0") -p ipc-shareable t/24-clean.t  # single test file
+  $(basename "$0") -p ipc-shareable -v t/24-clean.t  # verbose, single file
+  $(basename "$0") -p ipc-shareable t             # full suite, no -v
 EOF
 }
 
 _PROVE_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        -p|--project) shift; PROJECT="$1"; shift ;;
         -x|--xs)      XS_MODE=1; shift ;;
-        -h|--help) usage; exit 0 ;;
-        *)         _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
+        -h|--help)    usage; exit 0 ;;
+        *)            _PROVE_ARGS="${_PROVE_ARGS} $1"; shift ;;
     esac
 done
 PROVE_ARGS="${_PROVE_ARGS# }"
 PROVE_ARGS="${PROVE_ARGS:--v t}"
+
+if [ -z "$PROJECT" ]; then
+    echo "ERROR: --project is required. Use ipc-shareable or async-event-interval."
+    usage
+    exit 1
+fi
+
+case "$PROJECT" in
+    ipc-shareable)
+        CHROOT_REPO="${CHROOT}/opt/ipc-shareable"
+        OTHER_DEPS="JSON String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval"
+        IPC_INSTALL=""
+        TEST_ENV="ASYNC_TESTING=1"
+        TEST_MODULE="IPC::Shareable"
+        ;;
+    async-event-interval)
+        CHROOT_REPO="${CHROOT}/opt/async-event-interval"
+        OTHER_DEPS="Test::SharedFork Mock::Sub Parallel::ForkManager"
+        IPC_INSTALL="sudo systemd-nspawn -D '${CHROOT}' cpanm --reinstall --notest --quiet IPC::Shareable"
+        TEST_ENV=""
+        TEST_MODULE="Async::Event::Interval"
+        ;;
+    *)
+        echo "ERROR: Unknown project '${PROJECT}'. Use ipc-shareable or async-event-interval."
+        exit 1
+        ;;
+esac
+
+# Resolve HOST_REPO from --project: both repos must be siblings under the
+# same parent directory (the grandparent of this CI script). This ensures
+# the LOCAL copy of the selected project is shipped into the VM, not a
+# CPAN release or the other repo's source.
+HOST_REPO="$(cd "${SCRIPT_DIR}/../.." && pwd)/${PROJECT}"
+if [ ! -d "$HOST_REPO" ]; then
+    echo "ERROR: Could not find project '${PROJECT}' at ${HOST_REPO}"
+    echo "       Both repos must live as siblings under $(dirname "$HOST_REPO")/"
+    exit 1
+fi
 
 cleanup() {
     status=$?
@@ -83,17 +128,18 @@ limactl shell "$VM" -- sh -lc "
         sudo systemd-nspawn -D '${CHROOT}' apt-get install -y perl cpanminus build-essential
     fi
     # Top-up: idempotent and cheap if already installed.  Ensures the chroot
-    # has the IPC::Shareable test deps even when carried over from a previous
-    # project (e.g. async-event-interval, which does not install these).
+    # has the correct test deps even when carried over from a previous project.
     sudo systemd-nspawn -D '${CHROOT}' cpanm --notest --quiet \\
-        JSON String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval
+        ${OTHER_DEPS}
+    ${IPC_INSTALL}
 "
 
 echo "==> Copying source into i386 chroot..."
 limactl shell "$VM" -- sh -lc "sudo rm -rf '${CHROOT_REPO}' && sudo mkdir -p '${CHROOT}/opt'"
-COPYFILE_DISABLE=1 tar -C "$(dirname "$HOST_REPO")" -czf - "$(basename "$HOST_REPO")" | \
+COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata \
+        -C "$(dirname "$HOST_REPO")" -czf - "$(basename "$HOST_REPO")" | \
     limactl shell "$VM" -- sudo tar -C "${CHROOT}/opt" -xzf - \
-        --transform "s|^$(basename "$HOST_REPO")|ipc-shareable|"
+        --transform "s|^$(basename "$HOST_REPO")|${PROJECT}|"
 # Strip macOS resource-fork files (._*) that may have leaked through.
 limactl shell "$VM" -- sudo find "${CHROOT_REPO}" -name '._*' -delete 2>/dev/null || true
 
@@ -111,30 +157,36 @@ limactl shell "$VM" -- sh -lc "
 " || true
 
 _test_rc=0
-if [ $XS_MODE -eq 1 ]; then
+if [ "$PROJECT" = "ipc-shareable" ] && [ $XS_MODE -eq 1 ]; then
     echo "==> Building and running tests in i386 chroot (32-bit Perl, XS)..."
     limactl shell "$VM" -- sh -lc "
-        sudo systemd-nspawn -D '${CHROOT}' \\
-            sh -c 'cd /opt/ipc-shareable && perl Makefile.PL && make && ASYNC_TESTING=1 PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}'" \
+        sudo systemd-nspawn -D '${CHROOT}' --quiet \
+            sh -c 'cd /opt/${PROJECT} && perl Makefile.PL && make && ${TEST_ENV} PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}'" \
         || _test_rc=$?
 else
     echo "==> Running tests in i386 chroot (32-bit Perl, pure Perl)..."
     limactl shell "$VM" -- sh -lc "
-        sudo systemd-nspawn -D '${CHROOT}' \\
-            sh -c 'cd /opt/ipc-shareable && ASYNC_TESTING=1 PERL5LIB=lib prove -l ${PROVE_ARGS}'" \
+        sudo systemd-nspawn -D '${CHROOT}' --quiet \
+            sh -c 'cd /opt/${PROJECT} && ${TEST_ENV} PERL5LIB=lib prove -l ${PROVE_ARGS}'" \
         || _test_rc=$?
 fi
 
-echo "==> IPC::Shareable version tested..."
-limactl shell "$VM" -- sh -lc "
-    sudo systemd-nspawn -D '${CHROOT}' \\
-        sh -c 'cd /opt/ipc-shareable && perl -Ilib -MIPC::Shareable -e \"print qq(IPC::Shareable \\\$IPC::Shareable::VERSION\\n)\"'"
+_VERSION=$(limactl shell "$VM" -- sh -lc "
+    sudo systemd-nspawn -D '${CHROOT}' --quiet \
+        sh -c 'perl -I/opt/${PROJECT}/lib -M${TEST_MODULE} -e \"print qq(${TEST_MODULE} \\\$${TEST_MODULE}::VERSION\\n)\"'" 2>/dev/null)
+_OS_INFO=$(limactl shell "$VM" -- sh -lc "
+    sudo systemd-nspawn -D '${CHROOT}' --quiet \
+        sh -c 'uname -a'" 2>/dev/null)
+_PERL_VERSION=$(limactl shell "$VM" -- sh -lc "
+    sudo systemd-nspawn -D '${CHROOT}' --quiet \
+        sh -c 'perl -e \"printf qq(%vd\\n), \\\$^V\"'" 2>/dev/null)
 
-echo "==> VM environment info..."
-limactl shell "$VM" -- sh -lc "
-    sudo systemd-nspawn -D '${CHROOT}' \\
-        sh -c 'uname -a; perl -v | head -2; perl -V:archname'"
-
+echo ""
+echo "==> Project: ${PROJECT}"
+echo "==> Tested: ${_VERSION}"
+echo "==> VM: ${VM}"
+echo "==> OS Version: ${_OS_INFO}"
+echo "==> Perl version: ${_PERL_VERSION}"
 echo "==> Mode: $( [ $XS_MODE -eq 1 ] && echo 'XS' || echo 'pure Perl' )"
 
 exit $_test_rc
