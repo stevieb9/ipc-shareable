@@ -130,6 +130,7 @@ run_vm() {
     _label="$1"
     _script="$2"
     _log="${LOGDIR}/${_label}-${TIMESTAMP}.log"
+    _vm_rc=0
 
     echo ""
     echo "=== ${_label}: starting at $(date) ==="
@@ -139,9 +140,9 @@ run_vm() {
             echo "PASS" > "${RESULTS_DIR}/${_label}"
             echo "    ${_label}: PASS"
         else
-            _rc=$?
-            echo "FAIL:${_rc}" > "${RESULTS_DIR}/${_label}"
-            echo "    ${_label}: FAIL (exit ${_rc})"
+            _vm_rc=$?
+            echo "FAIL:${_vm_rc}" > "${RESULTS_DIR}/${_label}"
+            echo "    ${_label}: FAIL (exit ${_vm_rc})"
         fi
     else
         echo "    log: ${_log}"
@@ -149,11 +150,12 @@ run_vm() {
             echo "PASS" > "${RESULTS_DIR}/${_label}"
             echo "    ${_label}: PASS"
         else
-            _rc=$?
-            echo "FAIL:${_rc}" > "${RESULTS_DIR}/${_label}"
-            echo "    ${_label}: FAIL (exit ${_rc})"
+            _vm_rc=$?
+            echo "FAIL:${_vm_rc}" > "${RESULTS_DIR}/${_label}"
+            echo "    ${_label}: FAIL (exit ${_vm_rc})"
         fi
     fi
+    return $_vm_rc
 }
 
 extract_failures() {

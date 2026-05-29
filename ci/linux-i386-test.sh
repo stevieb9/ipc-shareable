@@ -192,6 +192,10 @@ else
         || _test_rc=$?
 fi
 
+# Disable set -e for version probes: dash exits on failed $(...) under set -e,
+# and the second probe is allowed to fail (system-installed IPC::Shareable may
+# not exist).
+set +e
 _VERSION=$(limactl shell "$VM" -- sh -lc "
     sudo systemd-nspawn -D '${CHROOT}' --quiet \
         sh -c 'perl -I/opt/${PROJECT}/lib -M${TEST_MODULE} -e \"print qq(${TEST_MODULE} \\\$${TEST_MODULE}::VERSION\\n)\"'" 2>/dev/null)
@@ -205,6 +209,7 @@ _OS_INFO=$(limactl shell "$VM" -- sh -lc "
 _PERL_VERSION=$(limactl shell "$VM" -- sh -lc "
     sudo systemd-nspawn -D '${CHROOT}' --quiet \
         sh -c 'perl -e \"printf qq(%vd\\n), \\\$^V\"'" 2>/dev/null)
+set -e
 
 echo ""
 echo "==> Project: ${PROJECT}"

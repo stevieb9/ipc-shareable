@@ -319,11 +319,16 @@ else
 fi
 limactl shell "$VM" -- sh -lc "$(_remote_test_cmd)" || _test_rc=$?
 
+# Disable set -e for version probes: dash exits on failed $(...) under set -e,
+# and the second probe is allowed to fail (system-installed IPC::Shareable may
+# not exist).
+set +e
 _VERSION=$(limactl shell "$VM" -- sh -lc "perl -I'${GUEST_REPO}/lib' -M${TEST_MODULE} -e 'print qq(${TEST_MODULE} \$${TEST_MODULE}::VERSION\n)'" 2>/dev/null)
 _IPC_SHAREABLE_VERSION=$(limactl shell "$VM" -- sh -lc "perl -MIPC::Shareable -e 'print qq(\$IPC::Shareable::VERSION)'" 2>/dev/null)
 _IPC_SHAREABLE_VERSION="${_IPC_SHAREABLE_VERSION:-N/A}"
 _OS_INFO=$(limactl shell "$VM" -- sh -lc 'uname -a' 2>/dev/null)
 _PERL_VERSION=$(limactl shell "$VM" -- sh -lc "perl -e 'printf qq(%vd\n), \$^V'" 2>/dev/null)
+set -e
 
 echo ""
 echo "==> Project: ${PROJECT}"

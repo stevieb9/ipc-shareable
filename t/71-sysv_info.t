@@ -65,7 +65,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 
     my $info = $knot->sysv_info;
 
-    if ($^O eq 'darwin' || $^O eq 'linux' || $^O eq 'freebsd') {
+    if ($^O eq 'darwin' || $^O eq 'linux' || $^O eq 'freebsd' || $^O eq 'openbsd') {
         isnt $info, undef, "sysv_info() called as object method returns a value";
         is ref $info, 'HASH', "...and it's a hash ref";
 
@@ -86,7 +86,7 @@ warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
 {
     my $knot = tie my %hv, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
 
-    if ($^O eq 'darwin' || $^O eq 'linux' || $^O eq 'freebsd') {
+    if ($^O eq 'darwin' || $^O eq 'linux' || $^O eq 'freebsd' || $^O eq 'openbsd') {
         my $class_info  = IPC::Shareable->sysv_info;
         my $object_info = $knot->sysv_info;
 

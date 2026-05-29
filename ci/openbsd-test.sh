@@ -76,14 +76,14 @@ fi
 case "$PROJECT" in
     ipc-shareable)
         GUEST_REPO="${GUEST_HOME}/ipc-shareable"
-        OTHER_DEPS="String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval"
+        OTHER_DEPS="JSON String::CRC32 Test::SharedFork Mock::Sub Async::Event::Interval"
         IPC_INSTALL=""
         TEST_ENV="ASYNC_TESTING=1"
         TEST_MODULE="IPC::Shareable"
         ;;
     async-event-interval)
         GUEST_REPO="${GUEST_HOME}/async-event-interval"
-        OTHER_DEPS="Test::SharedFork Mock::Sub Parallel::ForkManager"
+        OTHER_DEPS="JSON Test::SharedFork Mock::Sub Parallel::ForkManager"
         IPC_INSTALL="github"   # OpenBSD tar can't handle CPAN tarballs
         TEST_ENV=""
         TEST_MODULE="Async::Event::Interval"
@@ -208,12 +208,39 @@ if [ ! -f "$_FB_SENTINEL" ]; then
     # Ensure any previous Lima-managed QEMU is stopped so our direct QEMU
     # can use the disk.
     limactl stop --force "$VM" >/dev/null 2>&1 || true
-    # Lima deletes socket files on stop; recreate the cidata.iso which
-    # Lima creates on create.  We need Lima's ssh.config for the instance
-    # ID extraction.
+
+    # Lima usually generates ~/.lima/<vm>/cidata.iso at create time, but Lima
+    # 2.x on Linux skips it for this config (works on macOS).  Generate a
+    # minimal NoCloud ISO ourselves so openbsd-first-boot.py can read an
+    # instance-id from it.
     if [ ! -f "${HOME}/.lima/${VM}/cidata.iso" ]; then
-        echo "ERROR: cidata.iso not found; VM may not have been created"
-        exit 1
+        echo "==> Generating minimal cidata.iso (Lima skipped it)..."
+        _CIDATA_TMP=$(mktemp -d "/tmp/cidata-${VM}.XXXXXX")
+        _IID="iid-$(date +%s)"
+        cat > "${_CIDATA_TMP}/meta-data" <<EOF
+instance-id: ${_IID}
+local-hostname: lima-${VM}
+EOF
+        : > "${_CIDATA_TMP}/user-data"
+        if command -v xorrisofs >/dev/null 2>&1; then
+            xorrisofs -V cidata -J -r -quiet \
+                -o "${HOME}/.lima/${VM}/cidata.iso" \
+                "${_CIDATA_TMP}/meta-data" "${_CIDATA_TMP}/user-data"
+        elif command -v genisoimage >/dev/null 2>&1; then
+            genisoimage -V cidata -J -r -quiet \
+                -o "${HOME}/.lima/${VM}/cidata.iso" \
+                "${_CIDATA_TMP}/meta-data" "${_CIDATA_TMP}/user-data"
+        elif command -v hdiutil >/dev/null 2>&1; then
+            hdiutil makehybrid -iso -joliet \
+                -default-volume-name cidata \
+                -o "${HOME}/.lima/${VM}/cidata.iso" "${_CIDATA_TMP}" \
+                >/dev/null
+        else
+            echo "ERROR: need xorrisofs, genisoimage, or hdiutil to build cidata.iso" >&2
+            rm -rf "${_CIDATA_TMP}"
+            exit 1
+        fi
+        rm -rf "${_CIDATA_TMP}"
     fi
 
     python3 "${SCRIPT_DIR}/openbsd-first-boot.py" "$VM"
@@ -328,11 +355,16 @@ else
         || _test_rc=$?
 fi
 
+# Disable set -e for version probes: dash exits on failed $(...) under set -e,
+# and the second probe is allowed to fail (system-installed IPC::Shareable may
+# not exist, e.g. on OpenBSD where CPAN's PAX-tar install fails).
+set +e
 _VERSION=$(limactl shell "$VM" -- sh -lc "perl -I'${GUEST_REPO}/lib' -M${TEST_MODULE} -e 'print qq(${TEST_MODULE} \${TEST_MODULE}::VERSION\n)'" 2>/dev/null)
 _IPC_SHAREABLE_VERSION=$(limactl shell "$VM" -- sh -lc "perl -MIPC::Shareable -e 'print qq(\$IPC::Shareable::VERSION)'" 2>/dev/null)
 _IPC_SHAREABLE_VERSION="${_IPC_SHAREABLE_VERSION:-N/A}"
 _OS_INFO=$(limactl shell "$VM" -- sh -lc 'uname -a' 2>/dev/null)
 _PERL_VERSION=$(limactl shell "$VM" -- sh -lc "perl -e 'printf qq(%vd\n), \$^V'" 2>/dev/null)
+set -e
 
 echo ""
 echo "==> Project: ${PROJECT}"
