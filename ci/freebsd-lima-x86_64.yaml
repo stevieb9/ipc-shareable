@@ -1,0 +1,24 @@
+# Lima VM config for FreeBSD 14.3 x86_64.
+#
+# Used on x86_64 hosts (typically Linux/KVM; works on macOS Intel under
+# HVF as well). For aarch64 hosts, see freebsd-lima.yaml. `freebsd-test.sh`
+# picks the right file based on `uname -m`.
+#
+# Setup is done automatically by freebsd-test.sh.
+
+vmType: qemu
+os: FreeBSD
+arch: x86_64
+
+user:
+  name: freebsd
+
+images:
+  - location: "https://download.freebsd.org/releases/VM-IMAGES/14.3-RELEASE/amd64/Latest/FreeBSD-14.3-RELEASE-amd64-BASIC-CLOUDINIT-ufs.qcow2.xz"
+    arch: x86_64
+
+cpus: 2
+memory: "2GiB"
+disk: "20GiB"
+
+mounts: []
