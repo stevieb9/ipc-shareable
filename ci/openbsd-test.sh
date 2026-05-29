@@ -303,14 +303,17 @@ limactl shell "$VM" -- sh -lc "
 if [ "${IPC_INSTALL}" = "github" ]; then
     # IPC::Shareable: install from GitHub because OpenBSD tar(1)
     # cannot handle PAX extended headers in modern CPAN tarballs.
+    # We use the .tar.gz (git archive emits ustar, no PAX headers) so
+    # OpenBSD's native tar can extract it without needing unzip(1).
     echo "==> Installing IPC::Shareable from GitHub (OpenBSD tar PAX workaround)..."
     limactl shell "$VM" -- sh -lc '
-        IPC_URL="https://github.com/stevieb9/ipc-shareable/archive/refs/heads/master.zip"
+        set -e
+        IPC_URL="https://github.com/stevieb9/ipc-shareable/archive/refs/heads/master.tar.gz"
         IPC_DIR="/tmp/ipc-shareable-install"
         rm -rf "$IPC_DIR" /tmp/ipc-shareable-master
         mkdir -p "$IPC_DIR"
-        curl -fsSL -o "$IPC_DIR/master.zip" "$IPC_URL"
-        unzip -qo "$IPC_DIR/master.zip" -d /tmp
+        curl -fsSL -o "$IPC_DIR/master.tar.gz" "$IPC_URL"
+        tar -xzf "$IPC_DIR/master.tar.gz" -C /tmp
         cd /tmp/ipc-shareable-master
         sudo perl Makefile.PL 2>&1
         sudo make 2>&1
