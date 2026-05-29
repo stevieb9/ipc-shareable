@@ -46,9 +46,46 @@ SSH_PORT = 60233
 GUEST_USER = "dragonfly"
 GUEST_HOME = f"/home/{GUEST_USER}.guest"
 
-QEMU_BIN = "/opt/homebrew/bin/qemu-system-x86_64"
-OVMF_CODE = "/opt/homebrew/share/qemu/edk2-x86_64-code.fd"
-OVMF_VARS_TEMPLATE = "/opt/homebrew/share/qemu/edk2-i386-vars.fd"
+
+def _find_first_existing(candidates, what):
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    sys.exit(
+        f"ERROR: {what} not found. Tried: {candidates}\n"
+        "On Debian/Ubuntu, install via: sudo apt-get install ovmf"
+    )
+
+
+QEMU_BIN = shutil.which("qemu-system-x86_64") \
+    or "/opt/homebrew/bin/qemu-system-x86_64"
+
+OVMF_CODE = _find_first_existing(
+    [
+        "/opt/homebrew/share/qemu/edk2-x86_64-code.fd",  # macOS Homebrew
+        "/usr/share/OVMF/OVMF_CODE.fd",                  # Debian/Ubuntu
+        "/usr/share/OVMF/OVMF_CODE_4M.fd",               # Debian/Ubuntu (newer)
+        "/usr/share/edk2/ovmf/OVMF_CODE.fd",             # Fedora/RHEL
+    ],
+    "OVMF code firmware",
+)
+
+OVMF_VARS_TEMPLATE = _find_first_existing(
+    [
+        "/opt/homebrew/share/qemu/edk2-i386-vars.fd",    # macOS Homebrew
+        "/usr/share/OVMF/OVMF_VARS.fd",                  # Debian/Ubuntu
+        "/usr/share/OVMF/OVMF_VARS_4M.fd",               # Debian/Ubuntu (newer)
+        "/usr/share/edk2/ovmf/OVMF_VARS.fd",             # Fedora/RHEL
+    ],
+    "OVMF vars template",
+)
+
+
+def _qemu_accel_args():
+    """Use KVM when /dev/kvm is available (Linux), else TCG (macOS)."""
+    if os.path.exists("/dev/kvm") and os.access("/dev/kvm", os.R_OK | os.W_OK):
+        return ["-cpu", "host", "-accel", "kvm"]
+    return ["-accel", "tcg,thread=multi"]
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -515,10 +552,8 @@ def main():
 
     if not os.path.exists(QEMU_BIN):
         sys.exit(f"ERROR: QEMU binary not found: {QEMU_BIN}")
-    if not os.path.exists(OVMF_CODE):
-        sys.exit(f"ERROR: OVMF code not found: {OVMF_CODE}")
-    if not os.path.exists(OVMF_VARS_TEMPLATE):
-        sys.exit(f"ERROR: OVMF vars template not found: {OVMF_VARS_TEMPLATE}")
+    # OVMF_CODE / OVMF_VARS_TEMPLATE are resolved at import time by
+    # _find_first_existing(); a missing file there already exited.
 
     # Copy OVMF vars template — QEMU modifies it in place
     tmpdir = tempfile.mkdtemp(prefix="dragonfly-ovmf-")
@@ -531,7 +566,7 @@ def main():
         QEMU_BIN,
         "-m", "2048",
         "-machine", "q35",
-        "-accel", "tcg,thread=multi",
+        *_qemu_accel_args(),
         "-smp", "1",
         "-drive", f"file={DISK},if=virtio",
         "-drive", f"if=pflash,format=raw,readonly=on,file={OVMF_CODE}",

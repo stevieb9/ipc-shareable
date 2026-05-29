@@ -45,23 +45,21 @@ def get_lima_pubkey():
 
 
 def get_instance_id():
-    """Mount the cidata.iso and extract the cloud-init instance-id."""
+    """Portable: grep the ISO bytes for the cloud-init instance-id line.
+
+    Works on macOS and Linux without mounting. See freebsd-first-boot.py
+    for the same fix.
+    """
     iso = os.path.join(LIMA_DIR, "cidata.iso")
-    mnt = "/tmp/_lima_cidata_setup"
-    os.makedirs(mnt, exist_ok=True)
-    try:
-        subprocess.run(
-            ["hdiutil", "attach", iso, "-mountpoint", mnt,
-             "-readonly", "-quiet"],
-            check=True, capture_output=True,
-        )
-        with open(f"{mnt}/meta-data") as f:
-            for line in f:
-                if line.startswith("instance-id:"):
-                    return line.split(":", 1)[1].strip()
-    finally:
-        subprocess.run(["hdiutil", "detach", mnt, "-quiet"],
-                       capture_output=True)
+    if not os.path.exists(iso):
+        return None
+    r = subprocess.run(
+        ["grep", "-aoE", "instance-id: [a-zA-Z0-9_-]+", iso],
+        capture_output=True,
+    )
+    if r.returncode == 0 and r.stdout:
+        line = r.stdout.decode("utf-8", errors="ignore").splitlines()[0]
+        return line.split(":", 1)[1].strip()
     return None
 
 

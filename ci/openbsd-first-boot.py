@@ -28,6 +28,7 @@ Usage:
 import os
 import pty
 import select
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -44,7 +45,15 @@ SSH_PORT = 60222
 GUEST_USER = "vagrant"
 GUEST_HOME = f"/home/{GUEST_USER}"
 
-QEMU_BIN = "/opt/homebrew/bin/qemu-system-x86_64"
+QEMU_BIN = shutil.which("qemu-system-x86_64") \
+    or "/opt/homebrew/bin/qemu-system-x86_64"
+
+
+def _qemu_accel_args():
+    """Use KVM when /dev/kvm is available (Linux), else TCG (macOS)."""
+    if os.path.exists("/dev/kvm") and os.access("/dev/kvm", os.R_OK | os.W_OK):
+        return ["-cpu", "host", "-accel", "kvm"]
+    return ["-accel", "tcg,thread=multi"]
 
 # Content appended to /etc/rc.local (idiomatic OpenBSD way for one-shot boot
 # commands — simpler than an rc.d service which requires a daemon variable).
@@ -67,22 +76,21 @@ def get_lima_pubkey():
 
 
 def get_instance_id():
+    """Portable: grep the ISO bytes for the cloud-init instance-id line.
+
+    Works on macOS and Linux without mounting. See freebsd-first-boot.py
+    for the same fix.
+    """
     iso = CIDATA_ISO
-    mnt = "/tmp/_lima_cidata_openbsd"
-    os.makedirs(mnt, exist_ok=True)
-    try:
-        subprocess.run(
-            ["hdiutil", "attach", iso, "-mountpoint", mnt,
-             "-readonly", "-quiet"],
-            check=True, capture_output=True,
-        )
-        with open(f"{mnt}/meta-data") as f:
-            for line in f:
-                if line.startswith("instance-id:"):
-                    return line.split(":", 1)[1].strip()
-    finally:
-        subprocess.run(["hdiutil", "detach", mnt, "-quiet"],
-                       capture_output=True)
+    if not os.path.exists(iso):
+        return None
+    r = subprocess.run(
+        ["grep", "-aoE", "instance-id: [a-zA-Z0-9_-]+", iso],
+        capture_output=True,
+    )
+    if r.returncode == 0 and r.stdout:
+        line = r.stdout.decode("utf-8", errors="ignore").splitlines()[0]
+        return line.split(":", 1)[1].strip()
     return None
 
 
@@ -207,7 +215,7 @@ def main():
         QEMU_BIN,
         "-m", "2048",
         "-machine", "q35",
-        "-accel", "tcg,thread=multi",
+        *_qemu_accel_args(),
         "-smp", "1",
         "-drive", f"file={DISK},if=virtio",
         "-netdev", f"user,id=net0,hostfwd=tcp:127.0.0.1:{SSH_PORT}-:22",

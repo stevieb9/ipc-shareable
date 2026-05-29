@@ -101,6 +101,24 @@ if [ -z "$PROJECT" ]; then
     exit 1
 fi
 
+# Lima 2.x on Debian/Ubuntu falls back to /usr/bin/genisoimage when xorriso
+# isn't installed, then invokes it with --norock (which genisoimage rejects),
+# and `limactl start` dies during cidata.iso generation. Fail early with the
+# install command instead of letting Lima emit a cryptic error mid-test.
+if [ "$(uname -s)" = "Linux" ] && ! command -v xorrisofs >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+ERROR: xorriso is required on Linux for Lima cidata.iso generation, but
+xorrisofs was not found in PATH. Without it, `limactl start` fails during
+VM creation (Lima falls back to genisoimage, which doesn't support --norock).
+
+Install with:
+
+    sudo apt-get install -y xorriso
+
+EOF
+    exit 1
+fi
+
 PROJECT_FLAG="--project ${PROJECT}"
 XS_FLAG=""
 [ $XS_MODE -eq 1 ] && XS_FLAG="--xs"

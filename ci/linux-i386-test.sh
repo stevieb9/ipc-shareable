@@ -14,6 +14,12 @@ VM="${VM:-linux-i386}"
 # i386 chroot path inside the VM
 CHROOT="/opt/chroot-i386"
 
+# BSD tar (macOS) honours --no-mac-metadata; GNU tar (Linux) rejects it.
+case "$(uname -s)" in
+    Darwin) TAR_NO_META='--no-mac-metadata' ;;
+    *)      TAR_NO_META='' ;;
+esac
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # HOST_REPO is resolved from --project below, after argument parsing,
 # so that --project async-event-interval ships the aei repo (sibling
@@ -151,7 +157,7 @@ limactl shell "$VM" -- sh -lc "
 
 echo "==> Copying source into i386 chroot..."
 limactl shell "$VM" -- sh -lc "sudo rm -rf '${CHROOT_REPO}' && sudo mkdir -p '${CHROOT}/opt'"
-COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata \
+COPYFILE_DISABLE=1 tar --no-xattrs ${TAR_NO_META} \
         -C "$(dirname "$HOST_REPO")" -czf - "$(basename "$HOST_REPO")" | \
     limactl shell "$VM" -- sudo tar -C "${CHROOT}/opt" -xzf - \
         --transform "s|^$(basename "$HOST_REPO")|${PROJECT}|"

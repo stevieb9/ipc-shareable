@@ -1,6 +1,12 @@
-# Lima VM config for FreeBSD 14.3 aarch64
-# Matches the CPAN smoker platform that reported struct unpack failures
-# (14.1 is no longer mirrored; 14.3 has identical struct layout).
+# Lima VM config for FreeBSD 14.3
+#
+# Multi-arch: Lima picks the image whose arch matches the host.
+#   macOS Apple Silicon → aarch64 (HVF native)
+#   Linux x86_64        → x86_64  (KVM native)
+#
+# aarch64 was originally pinned to match a CPAN smoker that reported
+# struct-unpack failures (see git history); x86_64 is the typical platform
+# for the rest of CPAN.
 #
 # Setup (one-time):
 #   limactl create --name freebsd-ipc ci/freebsd-lima.yaml
@@ -18,7 +24,6 @@
 
 vmType: qemu
 os: FreeBSD
-arch: aarch64
 
 user:
   name: freebsd
@@ -26,6 +31,8 @@ user:
 images:
   - location: "https://download.freebsd.org/releases/VM-IMAGES/14.3-RELEASE/aarch64/Latest/FreeBSD-14.3-RELEASE-arm64-aarch64-BASIC-CLOUDINIT-ufs.qcow2.xz"
     arch: aarch64
+  - location: "https://download.freebsd.org/releases/VM-IMAGES/14.3-RELEASE/amd64/Latest/FreeBSD-14.3-RELEASE-amd64-BASIC-CLOUDINIT-ufs.qcow2.xz"
+    arch: x86_64
 
 cpus: 2
 memory: "2GiB"

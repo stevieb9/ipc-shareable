@@ -302,18 +302,9 @@ if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then
     # Lima generates a fresh instance-id on each start.  Write it to the
     # boot-done marker so limactl start (running in the background) exits.
     _write_boot_done() {
-        _IID=$(python3 -c "
-import os, subprocess
-iso = os.path.expanduser('~/.lima/${VM}/cidata.iso')
-mnt = '/tmp/_iid_mnt'
-os.makedirs(mnt, exist_ok=True)
-subprocess.run(['hdiutil','attach',iso,'-mountpoint',mnt,'-readonly','-quiet'], check=True)
-with open(f'{mnt}/meta-data') as f:
-    for line in f:
-        if line.startswith('instance-id:'):
-            print(line.split(':',1)[1].strip())
-subprocess.run(['hdiutil','detach',mnt,'-quiet'])
-" 2>/dev/null)
+        _IID=$(grep -aoE "instance-id: [a-zA-Z0-9_-]+" \
+            "${HOME}/.lima/${VM}/cidata.iso" 2>/dev/null \
+            | head -n1 | awk '{print $2}')
         [ -n "$_IID" ] && ssh -F ~/.lima/"$VM"/ssh.config lima-"$VM" \
             "sudo sh -c 'echo ${_IID} > /var/run/lima-boot-done && echo INSTANCE_ID=${_IID} > /etc/lima/boot-done-id'" \
             2>/dev/null || true

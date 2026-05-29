@@ -22,7 +22,35 @@ delegate here with `--project async-event-interval`.
 ## Lima basics
 
 [Lima](https://lima-vm.io/) launches Linux (and experimentally, non-Linux) VMs
-on macOS via QEMU, with automatic file sharing and port forwarding.
+on macOS and Linux via QEMU, with automatic file sharing and port forwarding.
+On macOS Apple Silicon it uses HVF; on Linux it uses KVM.
+
+### Host setup
+
+**macOS**:
+
+```sh
+brew install lima qemu
+```
+
+**Linux (Debian/Ubuntu)**:
+
+```sh
+sudo apt-get install -y qemu-system-x86 qemu-utils xorriso ovmf
+# Add yourself to the kvm group (log out / back in after):
+sudo usermod -aG kvm "$USER"
+
+# Lima itself: install the latest release tarball
+LIMA_VER=$(curl -fsSL https://api.github.com/repos/lima-vm/lima/releases/latest \
+    | grep tag_name | cut -d'"' -f4)
+curl -fsSL "https://github.com/lima-vm/lima/releases/download/${LIMA_VER}/lima-${LIMA_VER#v}-Linux-x86_64.tar.gz" \
+    | sudo tar -C /usr/local -xzf -
+```
+
+`xorriso` is mandatory on Linux: Lima 2.x falls back to `genisoimage` when
+it's missing and then crashes during cidata.iso generation (the `--norock`
+flag is unsupported by `genisoimage`). `vm-tests.sh` checks for this up
+front and exits with the install command if missing.
 
 ### Commands
 
