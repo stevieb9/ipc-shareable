@@ -147,8 +147,8 @@ sigint_handler() {
 }
 
 cleanup() {
-    trap - EXIT INT TERM
     status=$?
+    trap - EXIT INT TERM
     echo "==> Shutting down VM '${VM}' cleanly..."
     # Issue a clean shutdown via SSH so ZFS pool is marked clean.
     # TCG emulation is slow — the guest may need minutes to sync+halt.

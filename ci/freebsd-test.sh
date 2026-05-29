@@ -108,8 +108,8 @@ sigint_handler() {
 }
 
 cleanup() {
-    trap - EXIT INT TERM
     status=$?
+    trap - EXIT INT TERM
     echo "==> Stopping VM '${VM}'..."
     limactl stop "$VM" >/dev/null 2>&1 || true
     release_vm_lock
@@ -119,9 +119,17 @@ cleanup() {
 trap sigint_handler INT
 trap cleanup EXIT TERM
 
+# Pick the Lima YAML by host arch. Two single-arch YAMLs because Lima 2.1.1
+# does not auto-select an image entry when the top-level `arch:` is absent.
+case "$(uname -m)" in
+    arm64|aarch64) _LIMA_YAML="${SCRIPT_DIR}/freebsd-lima.yaml" ;;
+    x86_64|amd64)  _LIMA_YAML="${SCRIPT_DIR}/freebsd-lima-x86_64.yaml" ;;
+    *) echo "ERROR: unsupported host arch: $(uname -m)" >&2; exit 1 ;;
+esac
+
 if ! limactl list 2>/dev/null | awk '{print $1}' | grep -qx "$VM"; then
     echo "==> Creating VM '${VM}' from Lima template..."
-    limactl create --name "$VM" --tty=false "${SCRIPT_DIR}/freebsd-lima.yaml"
+    limactl create --name "$VM" --tty=false "$_LIMA_YAML"
 fi
 
 if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then

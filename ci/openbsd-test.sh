@@ -115,8 +115,8 @@ sigint_handler() {
 }
 
 cleanup() {
-    trap - EXIT INT TERM
     status=$?
+    trap - EXIT INT TERM
     echo "==> Stopping VM '${VM}'..."
 
     # Try clean SSH shutdown first (avoids fsck on next boot)

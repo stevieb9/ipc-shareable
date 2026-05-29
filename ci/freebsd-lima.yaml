@@ -1,29 +1,19 @@
-# Lima VM config for FreeBSD 14.3
+# Lima VM config for FreeBSD 14.3 aarch64.
 #
-# Multi-arch: Lima picks the image whose arch matches the host.
-#   macOS Apple Silicon → aarch64 (HVF native)
-#   Linux x86_64        → x86_64  (KVM native)
+# Matches the CPAN smoker platform that reported struct-unpack failures.
+# Used on macOS Apple Silicon (HVF native) and on any aarch64 Linux host.
+# For x86_64 Linux, see freebsd-lima-x86_64.yaml — `freebsd-test.sh` picks
+# the right file based on `uname -m`.
 #
-# aarch64 was originally pinned to match a CPAN smoker that reported
-# struct-unpack failures (see git history); x86_64 is the typical platform
-# for the rest of CPAN.
+# (Why two files: Lima 2.1.1 does not auto-select an image entry by host
+# arch when the top-level `arch:` field is absent. Splitting into two
+# single-arch YAMLs is simpler than templating.)
 #
-# Setup (one-time):
-#   limactl create --name freebsd-ipc ci/freebsd-lima.yaml
-#   limactl start freebsd-ipc
-#
-# Run tests:
-#   ./ci/freebsd-test.sh
-#
-# Interactive shell:
-#   limactl shell freebsd-ipc
-#
-# Stop / delete:
-#   limactl stop freebsd-ipc
-#   limactl delete freebsd-ipc
+# Setup is done automatically by freebsd-test.sh.
 
 vmType: qemu
 os: FreeBSD
+arch: aarch64
 
 user:
   name: freebsd
@@ -31,8 +21,6 @@ user:
 images:
   - location: "https://download.freebsd.org/releases/VM-IMAGES/14.3-RELEASE/aarch64/Latest/FreeBSD-14.3-RELEASE-arm64-aarch64-BASIC-CLOUDINIT-ufs.qcow2.xz"
     arch: aarch64
-  - location: "https://download.freebsd.org/releases/VM-IMAGES/14.3-RELEASE/amd64/Latest/FreeBSD-14.3-RELEASE-amd64-BASIC-CLOUDINIT-ufs.qcow2.xz"
-    arch: x86_64
 
 cpus: 2
 memory: "2GiB"

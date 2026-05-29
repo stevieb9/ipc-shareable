@@ -114,8 +114,8 @@ sigint_handler() {
 }
 
 cleanup() {
-    trap - EXIT INT TERM
     status=$?
+    trap - EXIT INT TERM
     echo "==> Stopping VM '${VM}'..."
     limactl stop "$VM" >/dev/null 2>&1 || true
     release_vm_lock
