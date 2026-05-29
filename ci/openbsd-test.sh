@@ -310,7 +310,7 @@ if [ "${IPC_INSTALL}" = "github" ]; then
         set -e
         IPC_URL="https://github.com/stevieb9/ipc-shareable/archive/refs/heads/master.tar.gz"
         IPC_DIR="/tmp/ipc-shareable-install"
-        rm -rf "$IPC_DIR" /tmp/ipc-shareable-master
+        sudo rm -rf "$IPC_DIR" /tmp/ipc-shareable-master
         mkdir -p "$IPC_DIR"
         curl -fsSL -o "$IPC_DIR/master.tar.gz" "$IPC_URL"
         tar -xzf "$IPC_DIR/master.tar.gz" -C /tmp
@@ -318,7 +318,7 @@ if [ "${IPC_INSTALL}" = "github" ]; then
         sudo perl Makefile.PL 2>&1
         sudo make 2>&1
         sudo make install 2>&1
-        rm -rf "$IPC_DIR" /tmp/ipc-shareable-master
+        sudo rm -rf "$IPC_DIR" /tmp/ipc-shareable-master
     '
 fi
 
