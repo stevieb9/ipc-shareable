@@ -83,7 +83,11 @@ case "$PROJECT" in
         ;;
     async-event-interval)
         GUEST_REPO="${GUEST_HOME}/async-event-interval"
-        OTHER_DEPS="JSON Test::SharedFork Mock::Sub Parallel::ForkManager"
+        # String::CRC32 is an IPC::Shareable prerequisite; cpanm pulls it
+        # automatically on other VMs, but our OpenBSD path uses bare
+        # `perl Makefile.PL && make install` which only warns about
+        # missing prereqs — so we install it explicitly here.
+        OTHER_DEPS="JSON String::CRC32 Test::SharedFork Mock::Sub Parallel::ForkManager"
         IPC_INSTALL="github"   # OpenBSD tar can't handle CPAN tarballs
         TEST_ENV=""
         TEST_MODULE="Async::Event::Interval"
