@@ -232,6 +232,16 @@ To target a different (already-created) Lima VM, set the `VM` variable:
 VM=my-other-freebsd ./ci/freebsd-test.sh
 ```
 
+**`IPC_DEBUG_DELTAS=1`** swaps the single `prove` invocation for a per-file
+loop that snapshots `ipcs -s` / `ipcs -m` counts before and after each `.t`
+file and emits an `IPC-DELTA LEAK:` line on stderr for any file with a
+net-positive delta. Off by default — enable when chasing a per-file
+semaphore or shared-memory leak:
+
+```bash
+IPC_DEBUG_DELTAS=1 ./ci/freebsd-test.sh -p async-event-interval
+```
+
 > **Note:** If the VM does not yet exist, `freebsd-test.sh` will create it
 > from `ci/freebsd-lima.yaml` automatically. The first run is slower for
 > two reasons:

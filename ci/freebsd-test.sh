@@ -224,41 +224,92 @@ scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
 limactl shell "$VM" -- sh -lc "find '${GUEST_REPO}' -name '._*' -delete" 2>/dev/null || true
 
 echo "==> Cleaning up stale IPC segments/semaphores from previous runs..."
+# Remove non-system-owned IPC (any user that isn't root/wheel/system) and
+# also attempt root-owned cleanup since sudo invocations during testing
+# may have created root-owned segments. Filtering by ${GUEST_USER} alone
+# misses both other-user and root-owned leftovers.
 limactl shell "$VM" -- sh -lc "
-    for id in \$(ipcs -m 2>/dev/null | awk '/${GUEST_USER}/ {print \$2}'); do
+    for id in \$(ipcs -m 2>/dev/null | awk 'NR>3 && \$5 !~ /^(root|wheel|system)\$/ {print \$2}'); do
         ipcrm -m \$id 2>/dev/null || true
     done
-    for id in \$(ipcs -s 2>/dev/null | awk '/${GUEST_USER}/ {print \$2}'); do
+    for id in \$(ipcs -s 2>/dev/null | awk 'NR>3 && \$5 !~ /^(root|wheel|system)\$/ {print \$2}'); do
         ipcrm -s \$id 2>/dev/null || true
     done
+    sudo ipcs -m 2>/dev/null | awk 'NR>3 && \$5 == \"root\" {print \$2}' \
+        | xargs -I{} sudo ipcrm -m {} 2>/dev/null || true
+    sudo ipcs -s 2>/dev/null | awk 'NR>3 && \$5 == \"root\" {print \$2}' \
+        | xargs -I{} sudo ipcrm -s {} 2>/dev/null || true
 " || true
+
+# IPC_DEBUG_DELTAS=1 swaps the single prove invocation for a per-file loop
+# that snapshots ipcs counts before/after each .t and flags any file with a
+# net-positive delta (leaked sem set or shm segment). Off by default.
+if [ "${IPC_DEBUG_DELTAS:-0}" = "1" ]; then
+    echo "==> IPC delta diagnostics enabled (per-file leak detection)"
+fi
+
+# Builds the remote command to run inside the VM. Honours PERL_VERSION (for
+# perlbrew PATH), XS_MODE (build XS first then prove with -Iblib/arch), and
+# IPC_DEBUG_DELTAS (wrap prove in a per-file loop).
+_remote_test_cmd() {
+    _path_setup=""
+    _prove_extra=""
+    _make_step=""
+    if [ -n "$PERL_VERSION" ]; then
+        _path_setup="PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"; PATH=\"\$PERL_BIN:\$PATH\"; "
+    fi
+    if [ "$PROJECT" = "ipc-shareable" ] && [ $XS_MODE -eq 1 ]; then
+        _make_step="perl Makefile.PL && make && "
+        _prove_extra="-Iblib/arch "
+    fi
+    if [ "${IPC_DEBUG_DELTAS:-0}" = "1" ]; then
+        # Per-file loop. Resolve the prove targets from PROVE_ARGS: if a
+        # directory or glob, expand it; otherwise iterate the given files.
+        printf '%s' "
+            cd '${GUEST_REPO}' && ${_make_step}${TEST_ENV} PERL5LIB=lib ${_path_setup}sh -c '
+                _fail=0
+                _files=\$(for _a in ${PROVE_ARGS}; do
+                    case \"\$_a\" in
+                        -*) ;;
+                        *) [ -d \"\$_a\" ] && find \"\$_a\" -name \"*.t\" | sort || echo \"\$_a\" ;;
+                    esac
+                done)
+                for _t in \$_files; do
+                    [ -f \"\$_t\" ] || continue
+                    _bs=\$(ipcs -s 2>/dev/null | awk \"NR>3 && /[a-zA-Z]/{c++}END{print c+0}\")
+                    _bm=\$(ipcs -m 2>/dev/null | awk \"NR>3 && /[a-zA-Z]/{c++}END{print c+0}\")
+                    prove ${_prove_extra}-l -v \"\$_t\" || _fail=1
+                    _as=\$(ipcs -s 2>/dev/null | awk \"NR>3 && /[a-zA-Z]/{c++}END{print c+0}\")
+                    _am=\$(ipcs -m 2>/dev/null | awk \"NR>3 && /[a-zA-Z]/{c++}END{print c+0}\")
+                    if [ \"\$_as\" -gt \"\$_bs\" ] || [ \"\$_am\" -gt \"\$_bm\" ]; then
+                        echo \"IPC-DELTA LEAK: \$_t sem \$_bs->\$_as shm \$_bm->\$_am\" >&2
+                    fi
+                done
+                exit \$_fail
+            '
+        "
+    else
+        printf '%s' "
+            cd '${GUEST_REPO}' && ${_make_step}${TEST_ENV} PERL5LIB=lib ${_path_setup}prove -l ${_prove_extra}${PROVE_ARGS}
+        "
+    fi
+}
 
 _test_rc=0
 if [ -n "$PERL_VERSION" ]; then
     if [ "$PROJECT" = "ipc-shareable" ] && [ $XS_MODE -eq 1 ]; then
         echo "==> Building and running tests in VM with Perl ${PERL_VERSION} (XS)..."
-        limactl shell "$VM" -- sh -lc "
-            PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
-            cd '${GUEST_REPO}' && PATH=\"\$PERL_BIN:\$PATH\" perl Makefile.PL && make && ${TEST_ENV} PERL5LIB=lib PATH=\"\$PERL_BIN:\$PATH\" prove -l -Iblib/arch ${PROVE_ARGS}
-        " || _test_rc=$?
     else
         echo "==> Running tests in VM with Perl ${PERL_VERSION} (pure Perl)..."
-        limactl shell "$VM" -- sh -lc "
-            PERL_BIN=\"\$HOME/perl5/perlbrew/perls/perl-${PERL_VERSION}/bin\"
-            cd '${GUEST_REPO}' && ${TEST_ENV} PERL5LIB=lib PATH=\"\$PERL_BIN:\$PATH\" prove -l ${PROVE_ARGS}
-        " || _test_rc=$?
     fi
 else
     if [ "$PROJECT" = "ipc-shareable" ] && [ $XS_MODE -eq 1 ]; then
         echo "==> Building and running tests in VM (XS)..."
-        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && perl Makefile.PL && make && ${TEST_ENV} PERL5LIB=lib prove -l -Iblib/arch ${PROVE_ARGS}" \
-            || _test_rc=$?
     else
         echo "==> Running tests in VM (pure Perl)..."
-        limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && ${TEST_ENV} PERL5LIB=lib prove -l ${PROVE_ARGS}" \
-            || _test_rc=$?
     fi
 fi
+limactl shell "$VM" -- sh -lc "$(_remote_test_cmd)" || _test_rc=$?
 
 _VERSION=$(limactl shell "$VM" -- sh -lc "perl -I'${GUEST_REPO}/lib' -M${TEST_MODULE} -e 'print qq(${TEST_MODULE} \$${TEST_MODULE}::VERSION\n)'" 2>/dev/null)
 _IPC_SHAREABLE_VERSION=$(limactl shell "$VM" -- sh -lc "perl -MIPC::Shareable -e 'print qq(\$IPC::Shareable::VERSION)'" 2>/dev/null)

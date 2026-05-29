@@ -988,7 +988,22 @@ sub sysv_info {
             $s;
         };
         for my $line (split /\n/, $out) {
-            if ($line =~ /^kern\.ipc\.(shm\w+):\s*(\S+)/) {
+            if ($line =~ /^kern\.ipc\.((?:shm|sem)\w+):\s*(\S+)/) {
+                $info{$1} = $2;
+            }
+        }
+    }
+    elsif ($^O eq 'openbsd') {
+        my $out = defined $sysctl_out ? $sysctl_out : do {
+            open my $fh, '-|', 'sysctl', 'kern.seminfo', 'kern.shminfo'
+                or die "sysctl: $!";
+            local $/;
+            my $s = <$fh>;
+            close $fh;
+            $s;
+        };
+        for my $line (split /\n/, $out) {
+            if ($line =~ /^kern\.(?:sem|shm)info\.(\w+)\s*=\s*(\S+)/) {
                 $info{$1} = $2;
             }
         }
@@ -999,6 +1014,16 @@ sub sysv_info {
             if (open my $fh, '<', $file) {
                 chomp(my $val = <$fh>);
                 $info{$key} = $val;
+            }
+        }
+        # /proc/sys/kernel/sem is a single line of 4 ints:
+        #   semmsl semmns semopm semmni
+        if (open my $fh, '<', "$proc_dir/sem") {
+            chomp(my $line = <$fh>);
+            close $fh;
+            my @vals = split /\s+/, $line;
+            if (@vals >= 4) {
+                @info{qw(semmsl semmns semopm semmni)} = @vals[0..3];
             }
         }
     }
@@ -3123,9 +3148,10 @@ IPC::Shareable Segment Map
 
     print "Max segment size: $sysv_info->{shmmax}\n";
     print "Max segments (system): $sysv_info->{shmmni}\n";
+    print "Max semaphore sets (system): $sysv_info->{semmni}\n";
 
 Class method. Returns a hash reference containing the kernel's SysV shared
-memory configuration parameters for the current platform.
+memory and semaphore configuration parameters for the current platform.
 
 Returns C<undef> if the platform is not supported or no data could be read.
 
@@ -3137,6 +3163,9 @@ On MacOS, reads from C<sysctl kern.sysv>. Example return value:
         shmmni => 32,        # Maximum number of segments system-wide
         shmseg => 8,         # Maximum number of segments per process
         shmall => 1024,      # Maximum total shared memory (pages)
+        semmni => 87381,     # Maximum number of semaphore identifier sets
+        semmns => 87381,     # Maximum semaphores system-wide
+        semmsl => 87381,     # Maximum semaphores per set
     }
 
 On Linux, reads from C</proc/sys/kernel/>. Example return value:
@@ -3146,10 +3175,15 @@ On Linux, reads from C</proc/sys/kernel/>. Example return value:
         shmmin => 1,                     # Minimum size of a single segment (bytes)
         shmmni => 4096,                  # Maximum number of segments system-wide
         shmall => 18446744073692774399,  # Maximum total shared memory (pages)
+        semmsl => 32000,                 # Maximum semaphores per set
+        semmns => 1024000000,            # Maximum semaphores system-wide
+        semopm => 500,                   # Maximum semop ops per call
+        semmni => 32000,                 # Maximum number of semaphore identifier sets
     }
 
 Note: Linux has no per-process segment limit (C<shmseg>); only the system-wide
-C<shmmni> applies.
+C<shmmni> applies. The four C<sem*> keys come from C</proc/sys/kernel/sem>
+(one line: C<semmsl semmns semopm semmni>).
 
 On FreeBSD, reads from C<sysctl kern.ipc>. Example return value:
 
@@ -3159,12 +3193,36 @@ On FreeBSD, reads from C<sysctl kern.ipc>. Example return value:
         shmmni => 192,        # Maximum number of segments system-wide
         shmseg => 128,        # Maximum number of segments per process
         shmall => 131072,     # Maximum total shared memory (pages)
+        semmni => 50,         # Maximum number of semaphore identifier sets
+        semmns => 340,        # Maximum semaphores system-wide
+        semmsl => 340,        # Maximum semaphores per set
+        semopm => 100,        # Maximum semop ops per call
     }
 
-On Solaris (including OmniOS/illumos), the kernel's SysV shared memory
-configuration is not yet read programmatically. This method returns
-C<undef> on Solaris; use system tools such as C<prctl> or
-C<mdb -k> to inspect the kernel IPC limits instead.
+On OpenBSD, reads from C<sysctl kern.seminfo kern.shminfo>. Example return
+value:
+
+    {
+        shmmax => 33554432,  # Maximum size of a single segment (bytes)
+        shmmin => 1,         # Minimum size of a single segment (bytes)
+        shmmni => 128,       # Maximum number of segments system-wide
+        shmall => 8192,      # Maximum total shared memory (pages)
+        semmni => 10,        # Maximum number of semaphore identifier sets
+        semmns => 60,        # Maximum semaphores system-wide
+        semmsl => 60,        # Maximum semaphores per set
+    }
+
+On Solaris (including OmniOS/illumos), the kernel's SysV configuration is
+not yet read programmatically. This method returns C<undef> on Solaris; use
+system tools such as C<prctl> or C<mdb -k> to inspect the kernel IPC limits
+instead.
+
+C<semmni> in particular is the limit that test suites making heavy use of
+shared-memory tied variables most often hit. FreeBSD's default of 50 is
+unusually tight; OpenBSD's default of 10 is tighter still. Test code that
+needs to scale by available capacity can compute
+C<< $info->{semmni} - IPC::Shareable::sem_count() >> as the headroom
+currently available for new allocations.
 
 Return: Hash reference, or C<undef> if the platform is not supported or no data
 could be read.
