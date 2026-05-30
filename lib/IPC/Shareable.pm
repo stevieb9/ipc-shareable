@@ -477,6 +477,8 @@ sub new {
 sub lock {
     my $knot = shift;
 
+    # POD "lock($flags, $code)" documents both positional and code-only calling
+    # conventions. See =head2 lock section for the full parameter specification.
     my ($flags, $code);
 
     if (scalar @_ == 2) {
