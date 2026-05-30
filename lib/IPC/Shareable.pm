@@ -493,7 +493,7 @@ sub lock {
     }
 
     if (defined $code && ref $code ne 'CODE') {
-        croak "\$code param to lock() must be a code reference"
+        croak "\$code param to lock() must be a code reference";
     }
 
     $flags = LOCK_EX if ! defined $flags;
