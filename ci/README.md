@@ -59,8 +59,9 @@ brew install lima qemu
 **Linux (Debian/Ubuntu)**:
 
 ```sh
-sudo apt-get install -y qemu-system-x86 qemu-utils xorriso ovmf
-# Add yourself to the kvm group (log out / back in after):
+sudo apt-get install -y \
+    qemu-system-x86 qemu-utils xorriso ovmf \
+    git curl python3
 sudo usermod -aG kvm "$USER"
 
 # Lima itself: install the latest release tarball
@@ -70,10 +71,27 @@ curl -fsSL "https://github.com/lima-vm/lima/releases/download/${LIMA_VER}/lima-$
     | sudo tar -C /usr/local -xzf -
 ```
 
+> **Critical: log out and back in (or run `newgrp kvm`) before continuing.**
+> The `usermod -aG kvm` above only takes effect in *new* login sessions —
+> your current shell still doesn't have the group. Verify with:
+>
+> ```sh
+> groups | tr ' ' '\n' | grep -x kvm && ls -l /dev/kvm
+> ```
+>
+> If `kvm` isn't in your groups list, Lima will silently fall back to TCG
+> emulation, which still works but runs each test VM roughly **10×
+> slower** than KVM.
+
 `xorriso` is mandatory on Linux: Lima 2.x falls back to `genisoimage` when
 it's missing and then crashes during cidata.iso generation (the `--norock`
 flag is unsupported by `genisoimage`). `vm-tests.sh` checks for this up
 front and exits with the install command if missing.
+
+`git`, `curl`, and `python3` aren't always in a minimal Ubuntu Server
+install. They're needed for cloning these repos, the Lima tarball
+install above, and the `*-first-boot.py` scripts that bootstrap
+OpenBSD / DragonFly / Solaris.
 
 ### Migration to a new Linux machine
 
@@ -238,44 +256,6 @@ from each log.
 
 Local FreeBSD testing via Lima and QEMU.
 
-#### One-time VM setup
-
-The test script creates and provisions the VM automatically on first run.
-To create it manually:
-
-```bash
-limactl create --name freebsd-ipc ci/freebsd-lima.yaml
-limactl start freebsd-ipc
-```
-
-`freebsd-lima.yaml` defines a FreeBSD 14.3 aarch64 VM (2 CPUs, 2 GiB RAM,
-20 GiB disk). Perl packages and CPAN dependencies are installed by the test
-script at runtime.
-
-#### Logging into the VM
-
-```bash
-limactl shell freebsd-ipc
-```
-
-Or with SSH directly:
-
-```bash
-ssh -F ~/.lima/freebsd-ipc/ssh.config lima-freebsd-ipc
-```
-
-#### Shutting down the VM
-
-```bash
-limactl stop freebsd-ipc
-```
-
-To permanently remove the VM and its disk image:
-
-```bash
-limactl delete freebsd-ipc
-```
-
 #### Running the test suite
 
 `freebsd-test.sh` starts the VM (if not already running), copies the source,
@@ -338,6 +318,44 @@ IPC_DEBUG_DELTAS=1 ./ci/freebsd-test.sh -p async-event-interval
 >    writes Lima's boot-done marker on every subsequent boot. This one-time
 >    setup takes a few minutes. After it completes, later starts are fast.
 
+#### One-time VM setup
+
+The test script creates and provisions the VM automatically on first run.
+To create it manually:
+
+```bash
+limactl create --name freebsd-ipc ci/freebsd-lima.yaml
+limactl start freebsd-ipc
+```
+
+`freebsd-lima.yaml` defines a FreeBSD 14.3 aarch64 VM (2 CPUs, 2 GiB RAM,
+20 GiB disk). Perl packages and CPAN dependencies are installed by the test
+script at runtime.
+
+#### Logging into the VM
+
+```bash
+limactl shell freebsd-ipc
+```
+
+Or with SSH directly:
+
+```bash
+ssh -F ~/.lima/freebsd-ipc/ssh.config lima-freebsd-ipc
+```
+
+#### Shutting down the VM
+
+```bash
+limactl stop freebsd-ipc
+```
+
+To permanently remove the VM and its disk image:
+
+```bash
+limactl delete freebsd-ipc
+```
+
 ---
 
 ### OpenBSD CI
@@ -354,39 +372,6 @@ Lima has no OpenBSD OS type. The config uses `os:FreeBSD` so that Lima waits
 for the file-based boot-done marker instead of the Linux guest agent.
 `openbsd-first-boot.py` bootstraps the VM via the QEMU serial console and
 installs an rc.d service that writes the marker on every subsequent boot.
-
-#### One-time VM setup
-
-Done automatically by `openbsd-test.sh`. To do it manually:
-
-```bash
-limactl create --name openbsd-ipc ci/openbsd-lima.yaml
-limactl start openbsd-ipc
-```
-
-> **Note:** The first run downloads the Vagrant box (~1.1 GB) and extracts the
-> QCOW2. This is cached in `~/.lima/_cache/` for subsequent runs. The first
-> boot also runs `openbsd-first-boot.py` via the serial console to install the
-> Lima SSH key and the boot-done rc.d service (one-time, takes ~1-2 minutes).
-
-#### Logging into the VM
-
-```bash
-limactl shell openbsd-ipc
-```
-
-Or with SSH directly:
-
-```bash
-ssh -F ~/.lima/openbsd-ipc/ssh.config lima-openbsd-ipc
-```
-
-#### Shutting down the VM
-
-```bash
-limactl stop openbsd-ipc
-limactl delete openbsd-ipc       # also removes disk image
-```
 
 #### Running the test suite
 
@@ -443,6 +428,39 @@ VM=my-other-openbsd ./ci/openbsd-test.sh
 > ./ci/openbsd-test.sh
 > ```
 
+#### One-time VM setup
+
+Done automatically by `openbsd-test.sh`. To do it manually:
+
+```bash
+limactl create --name openbsd-ipc ci/openbsd-lima.yaml
+limactl start openbsd-ipc
+```
+
+> **Note:** The first run downloads the Vagrant box (~1.1 GB) and extracts the
+> QCOW2. This is cached in `~/.lima/_cache/` for subsequent runs. The first
+> boot also runs `openbsd-first-boot.py` via the serial console to install the
+> Lima SSH key and the boot-done rc.d service (one-time, takes ~1-2 minutes).
+
+#### Logging into the VM
+
+```bash
+limactl shell openbsd-ipc
+```
+
+Or with SSH directly:
+
+```bash
+ssh -F ~/.lima/openbsd-ipc/ssh.config lima-openbsd-ipc
+```
+
+#### Shutting down the VM
+
+```bash
+limactl stop openbsd-ipc
+limactl delete openbsd-ipc       # also removes disk image
+```
+
 ---
 
 ### Linux i386 CI
@@ -458,6 +476,39 @@ Silicon) natively executes 32-bit i386 binaries, so this exercises real
 32-bit Perl with 32-bit integers and pointers.
 
 The chroot is preserved between runs; only the source tree is re-copied.
+
+#### Running the test suite
+
+`linux-i386-test.sh` follows the same lifecycle as `freebsd-test.sh`: create
+VM if absent, start it, set up the i386 chroot on the first run, copy source,
+run tests in the chroot, stop the VM on exit.
+
+```bash
+./ci/linux-i386-test.sh [options] [prove options]
+```
+
+**Options:**
+
+- `-p`, `--project <name>` — Project to test: `ipc-shareable` or
+  `async-event-interval` (required).
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only,
+  ipc-shareable only)
+- `-h`, `--help` — Print usage and exit.
+
+Same prove argument override syntax applies:
+
+```bash
+./ci/linux-i386-test.sh -p ipc-shareable t/85-clean.t
+./ci/linux-i386-test.sh -p async-event-interval t/15-interval.t
+./ci/linux-i386-test.sh -p ipc-shareable t
+
+VM=my-other-linux ./ci/linux-i386-test.sh
+```
+
+> **Note:** The first run is slow (~5-10 min) because it downloads the amd64
+> VM image, runs debootstrap to build the i386 chroot, and installs Perl
+> packages via cpanm. Subsequent runs only re-copy the source and are much
+> faster.
 
 #### One-time VM setup
 
@@ -493,39 +544,6 @@ limactl stop linux-i386
 limactl delete linux-i386       # also removes disk image
 ```
 
-#### Running the test suite
-
-`linux-i386-test.sh` follows the same lifecycle as `freebsd-test.sh`: create
-VM if absent, start it, set up the i386 chroot on the first run, copy source,
-run tests in the chroot, stop the VM on exit.
-
-```bash
-./ci/linux-i386-test.sh [options] [prove options]
-```
-
-**Options:**
-
-- `-p`, `--project <name>` — Project to test: `ipc-shareable` or
-  `async-event-interval` (required).
-- `-x`, `--xs` — Build and test with XS (default: pure Perl only,
-  ipc-shareable only)
-- `-h`, `--help` — Print usage and exit.
-
-Same prove argument override syntax applies:
-
-```bash
-./ci/linux-i386-test.sh -p ipc-shareable t/85-clean.t
-./ci/linux-i386-test.sh -p async-event-interval t/15-interval.t
-./ci/linux-i386-test.sh -p ipc-shareable t
-
-VM=my-other-linux ./ci/linux-i386-test.sh
-```
-
-> **Note:** The first run is slow (~5-10 min) because it downloads the amd64
-> VM image, runs debootstrap to build the i386 chroot, and installs Perl
-> packages via cpanm. Subsequent runs only re-copy the source and are much
-> faster.
-
 ---
 
 ### OmniOS CE (Solaris) CI
@@ -546,34 +564,6 @@ and installs an SMF service that writes the marker on every subsequent boot.
 OmniOS is x86-64 only. On Apple Silicon, QEMU emulates x86-64 via TCG
 (software emulation) — the first boot takes 10-20 minutes. Subsequent
 starts are much faster once the boot-done SMF service is installed.
-
-#### One-time VM setup
-
-Done automatically by `solaris-test.sh`. Manual creation is not recommended:
-the OmniOS image is a VMDK, which Lima cannot resize directly. The script
-handles this by downloading the VMDK, converting it to QCOW2 (cached at
-`~/.lima/_cache/omnios-r151058.qcow2`), and passing a rewritten YAML to
-`limactl create`. Running `limactl create` with `solaris-lima.yaml` directly
-will fail at the disk-resize step.
-
-#### Logging into the VM
-
-```bash
-limactl shell solaris-ipc
-```
-
-Or with SSH directly:
-
-```bash
-ssh -F ~/.lima/solaris-ipc/ssh.config lima-solaris-ipc
-```
-
-#### Shutting down the VM
-
-```bash
-limactl stop solaris-ipc
-limactl delete solaris-ipc       # also removes disk image
-```
 
 #### Running the test suite
 
@@ -638,6 +628,34 @@ VM=my-other-solaris ./ci/solaris-test.sh
 > If the GCC package name has changed in a newer OmniOS release, adjust the
 > `pkg install` line in `solaris-test.sh` (try `pkg search gcc` inside the VM).
 
+#### One-time VM setup
+
+Done automatically by `solaris-test.sh`. Manual creation is not recommended:
+the OmniOS image is a VMDK, which Lima cannot resize directly. The script
+handles this by downloading the VMDK, converting it to QCOW2 (cached at
+`~/.lima/_cache/omnios-r151058.qcow2`), and passing a rewritten YAML to
+`limactl create`. Running `limactl create` with `solaris-lima.yaml` directly
+will fail at the disk-resize step.
+
+#### Logging into the VM
+
+```bash
+limactl shell solaris-ipc
+```
+
+Or with SSH directly:
+
+```bash
+ssh -F ~/.lima/solaris-ipc/ssh.config lima-solaris-ipc
+```
+
+#### Shutting down the VM
+
+```bash
+limactl stop solaris-ipc
+limactl delete solaris-ipc       # also removes disk image
+```
+
 ---
 
 ### DragonFly BSD CI
@@ -667,6 +685,64 @@ installs an rc.d service that writes the marker on every subsequent boot.
 DragonFly does NOT support cloud-init, so all initial setup (user creation,
 SSH key installation, boot-done service) is done once by
 `dragonfly-first-boot.py` via the QEMU serial console.
+
+#### Running the test suite
+
+`dragonfly-test.sh` follows the same lifecycle as `freebsd-test.sh`: create VM
+if absent, start it, run first-boot setup on the first run, copy source, run
+tests, stop the VM on exit.
+
+```bash
+./ci/dragonfly-test.sh [options] [prove options]
+```
+
+**Options:**
+
+- `-p`, `--project <name>` — Project to test: `ipc-shareable` or
+  `async-event-interval` (required).
+- `-x`, `--xs` — Build and test with XS (default: pure Perl only,
+  ipc-shareable only)
+- `-h`, `--help` — Print usage and exit.
+
+Same prove argument override syntax applies:
+
+```bash
+./ci/dragonfly-test.sh -p ipc-shareable t/85-clean.t
+./ci/dragonfly-test.sh -p async-event-interval t/15-interval.t
+./ci/dragonfly-test.sh -p ipc-shareable t
+
+VM=my-other-dragonfly ./ci/dragonfly-test.sh
+```
+
+> **Note:** The first run runs `dragonfly-first-boot.py` via the QEMU serial
+> console to create the SSH user, install sudo, and set up the persistent
+> boot-done rc.d service. This takes ~1-2 minutes. Subsequent starts are fast.
+>
+> **TCG skip list:** Several tests hang under QEMU TCG emulation because they
+> use `SIGALRM` + `sleep` for parent/child synchronization, and signal
+> delivery under software emulation is too slow to win the race reliably.
+> When running the default full suite (`-v t`), the script automatically
+> excludes these tests:
+>
+> - `t/28-ipchv.t` — hash variable operations with forked children
+> - `t/30-ipcref.t` — nested reference synchronization
+> - `t/38-lsync.t` — lock synchronization between processes
+> - `t/66-protected_persist.t` — protected segment persistence with forks
+> - `t/85-clean.t` — cleanup with concurrent processes
+>
+> To run a skipped test explicitly: `./ci/dragonfly-test.sh t/38-lsync.t`
+>
+> **Crash recovery:** After first-boot completes, the script takes a
+> `qemu-img` snapshot (`clean`). On subsequent runs, it reverts to this
+> snapshot before booting so fsck never runs. Post-test snapshots are NOT
+> saved — the first-boot snapshot is the only reliable clean state because
+> post-test snapshots can include stale IPC segments or incomplete shutdown
+> state. If the snapshot becomes corrupted:
+> ```bash
+> limactl stop --force dragonfly-ipc; limactl delete --force dragonfly-ipc
+> rm -f ~/.lima/dragonfly-ipc/.first-boot-done
+> ./ci/dragonfly-test.sh
+> ```
 
 #### Building the DragonFly BSD base image
 
@@ -746,64 +822,6 @@ ssh -F ~/.lima/dragonfly-ipc/ssh.config lima-dragonfly-ipc
 limactl stop dragonfly-ipc
 limactl delete dragonfly-ipc       # also removes disk image
 ```
-
-#### Running the test suite
-
-`dragonfly-test.sh` follows the same lifecycle as `openbsd-test.sh`: create VM
-if absent, start it, run first-boot setup on the first run, copy source, run
-tests, stop the VM on exit.
-
-```bash
-./ci/dragonfly-test.sh [options] [prove options]
-```
-
-**Options:**
-
-- `-p`, `--project <name>` — Project to test: `ipc-shareable` or
-  `async-event-interval` (required).
-- `-x`, `--xs` — Build and test with XS (default: pure Perl only,
-  ipc-shareable only)
-- `-h`, `--help` — Print usage and exit.
-
-Same prove argument override syntax applies:
-
-```bash
-./ci/dragonfly-test.sh -p ipc-shareable t/85-clean.t
-./ci/dragonfly-test.sh -p async-event-interval t/15-interval.t
-./ci/dragonfly-test.sh -p ipc-shareable t
-
-VM=my-other-dragonfly ./ci/dragonfly-test.sh
-```
-
-> **Note:** The first run runs `dragonfly-first-boot.py` via the QEMU serial
-> console to create the SSH user, install sudo, and set up the persistent
-> boot-done rc.d service. This takes ~1-2 minutes. Subsequent starts are fast.
->
-> **TCG skip list:** Several tests hang under QEMU TCG emulation because they
-> use `SIGALRM` + `sleep` for parent/child synchronization, and signal
-> delivery under software emulation is too slow to win the race reliably.
-> When running the default full suite (`-v t`), the script automatically
-> excludes these tests:
->
-> - `t/28-ipchv.t` — hash variable operations with forked children
-> - `t/30-ipcref.t` — nested reference synchronization
-> - `t/38-lsync.t` — lock synchronization between processes
-> - `t/66-protected_persist.t` — protected segment persistence with forks
-> - `t/85-clean.t` — cleanup with concurrent processes
->
-> To run a skipped test explicitly: `./ci/dragonfly-test.sh t/38-lsync.t`
->
-> **Crash recovery:** After first-boot completes, the script takes a
-> `qemu-img` snapshot (`clean`). On subsequent runs, it reverts to this
-> snapshot before booting so fsck never runs. Post-test snapshots are NOT
-> saved — the first-boot snapshot is the only reliable clean state because
-> post-test snapshots can include stale IPC segments or incomplete shutdown
-> state. If the snapshot becomes corrupted:
-> ```bash
-> limactl stop --force dragonfly-ipc; limactl delete --force dragonfly-ipc
-> rm -f ~/.lima/dragonfly-ipc/.first-boot-done
-> ./ci/dragonfly-test.sh
-> ```
 
 ---
 
