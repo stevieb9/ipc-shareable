@@ -98,9 +98,8 @@ def get_lima_pubkey():
 def get_instance_id():
     """Extract the cloud-init instance-id from cidata.iso.
 
-    Reads the ISO bytes directly — the meta-data text is embedded
-    literally and the ISO is only a few KB.  Avoids fragile hdiutil
-    mount/detach which can fail on stale mounts or macOS restrictions.
+    Reads the ISO bytes and scans for the literal `instance-id:` line.
+    Works without mounting (no macOS hdiutil, no Linux loop device).
     """
     iso = CIDATA_ISO
     if not os.path.exists(iso):

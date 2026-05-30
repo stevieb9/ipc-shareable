@@ -52,6 +52,111 @@ it's missing and then crashes during cidata.iso generation (the `--norock`
 flag is unsupported by `genisoimage`). `vm-tests.sh` checks for this up
 front and exits with the install command if missing.
 
+### Migration to a new Linux machine
+
+After completing **Host setup** above, a fresh Linux x86_64 host needs the
+steps below before `./ci/vm-tests.sh` runs end-to-end against all VMs.
+These extend Host setup; they aren't replacements. Validated against
+Lima 2.1.1 on Ubuntu 22.04 x86_64 — newer Lima versions may need
+re-validation if cidata or hostagent behaviour shifts.
+
+#### Sibling repo layout
+
+`*-test.sh` computes `HOST_REPO` via `${SCRIPT_DIR}/../..`. Both
+`ipc-shareable` and `async-event-interval` must live as siblings under a
+shared parent directory, e.g.
+
+```
+~/repos/ipc-shareable/
+~/repos/async-event-interval/
+```
+
+A flat layout (one repo only) will not work — even if you only intend to
+test ipc-shareable, the runners look for the aei repo when running aei
+tests inside the VMs.
+
+#### DragonFly base image (operator-supplied)
+
+DragonFly has no public cloud image; the Lima qcow2 must be supplied by
+the operator. If you have a working DragonFly Lima VM on another host:
+
+```sh
+# From a host that already has the DragonFly cache:
+scp ~/.lima/_cache/dragonfly64.qcow2 newhost:~/.lima/_cache/
+```
+
+The image is ~778 MB. Building one from scratch is covered under
+"Building the DragonFly BSD base image" further below.
+
+#### OmniOS qcow2 pre-bake (one-time, mandatory)
+
+A freshly downloaded `omnios-r151058.cloud.vmdk` will not complete
+first-boot on Linux KVM in any reasonable time — ZFS does a slow device
+path re-discovery because the pool was last accessed by the OmniOS
+build host on a different `/devices` layout. The fix is to import and
+re-export the pool on Linux, which updates the pool's hostid and
+device-path metadata so OmniOS's next boot recognises the disks
+immediately.
+
+Required apt package beyond Host setup:
+
+```sh
+sudo apt-get install -y zfsutils-linux
+```
+
+Trigger the initial VMDK→qcow2 conversion by running solaris-test.sh
+once; it will hang on first-boot but the cached qcow2 will be in
+place. Ctrl-C after you see `==> Reverting to clean snapshot...` and
+the VM start, then `limactl delete --force solaris-ipc` to clean up.
+
+```sh
+./ci/solaris-test.sh -p ipc-shareable t/00-base.t   # let it download+convert, then Ctrl-C
+limactl delete --force solaris-ipc
+```
+
+Then pre-bake the cached image:
+
+```sh
+# Defensive backup
+cp ~/.lima/_cache/omnios-r151058.qcow2 ~/.lima/_cache/omnios-r151058.qcow2.bak
+
+sudo modprobe nbd max_part=16
+sudo qemu-nbd --connect=/dev/nbd0 ~/.lima/_cache/omnios-r151058.qcow2
+sudo mkdir -p /mnt/omnios
+sudo zpool import -f -R /mnt/omnios rpool   # -f: pool last accessed by OmniOS
+sudo zpool export rpool                      # exports clean with Linux as last-host
+sudo qemu-nbd --disconnect /dev/nbd0
+sudo rmdir /mnt/omnios
+```
+
+**Critical: do NOT edit any files inside the pool.** Modifying
+`/etc/system` (or any boot-archive file) changes the checksum OmniOS
+uses to validate the cached boot archive. The next boot detects the
+mismatch, auto-rebuilds the archive, and triggers a reboot — which
+won't recover cleanly on KVM. The import/export-only approach updates
+pool metadata without touching any file.
+
+After the pre-bake, re-run `./ci/solaris-test.sh -p ipc-shareable
+t/00-base.t` — first-boot should complete cleanly within a few
+minutes.
+
+#### Optional: libguestfs accessibility
+
+If you anticipate inspecting guest filesystems with `guestfish` /
+`virt-edit` for diagnostics, Debian/Ubuntu's `/boot/vmlinuz-*` is
+`-rw-------` by default (root-only), which trips libguestfs's
+supermin appliance build with a cryptic `cp: cannot open
+'/boot/vmlinuz-*' for reading: Permission denied`. The user running
+libguestfs needs read access:
+
+```sh
+sudo chmod 644 /boot/vmlinuz-*
+```
+
+Not required for the OmniOS pre-bake above (`qemu-nbd` doesn't go
+through libguestfs). May need re-applying after kernel package
+upgrades.
+
 ### Commands
 
 ```bash
@@ -771,14 +876,22 @@ compares the contents to the expected instance-id. If they don't match,
 Lima retries every ~3 seconds for 10 minutes, then gives up with
 `did not receive an event with the "running" status`.
 
-**How to read the expected instance-id from the host**:
+**How to read the expected instance-id from the host** (portable across
+macOS and Linux — `cidata.iso` may be ~10 KB on macOS or ~281 MB on
+Linux, so prefer streaming with `grep -aoE` over mounting):
+
+```bash
+grep -aoE 'instance-id: [a-zA-Z0-9_-]+' ~/.lima/<VM>/cidata.iso | head -1
+```
 
 ```python
 import subprocess, os
 iso = os.path.expanduser("~/.lima/<VM>/cidata.iso")
-subprocess.run(["hdiutil", "attach", iso, "-mountpoint", "/tmp/mnt", "-readonly", "-quiet"], check=True)
-# Read /tmp/mnt/meta-data, line starting with "instance-id:"
-subprocess.run(["hdiutil", "detach", "/tmp/mnt", "-quiet"])
+r = subprocess.run(
+    ["grep", "-aoE", "instance-id: [a-zA-Z0-9_-]+", iso],
+    capture_output=True, check=True,
+)
+iid = r.stdout.decode("utf-8", errors="ignore").splitlines()[0].split(":", 1)[1].strip()
 ```
 
 **How to check what the VM wrote**:
@@ -863,12 +976,9 @@ If `limactl start <VM>` hangs past the SSH phase:
    ```bash
    ssh -F ~/.lima/<VM>/ssh.config lima-<VM> 'cat /run/lima-boot-done 2>&1; cat /var/run/lima-boot-done 2>&1'
    ```
-3. **Check what Lima expects**:
+3. **Check what Lima expects** (portable; works on macOS and Linux):
    ```bash
-   # Mount cidata.iso on macOS and read instance-id
-   hdiutil attach ~/.lima/<VM>/cidata.iso -mountpoint /tmp/cidata -readonly -quiet
-   grep instance-id /tmp/cidata/meta-data
-   hdiutil detach /tmp/cidata -quiet
+   grep -aoE 'instance-id: [a-zA-Z0-9_-]+' ~/.lima/<VM>/cidata.iso | head -1
    ```
 4. **Check the hostagent debug log**:
    ```bash
@@ -879,7 +989,7 @@ If `limactl start <VM>` hangs past the SSH phase:
 5. **Fix it live** (while the VM is still running):
    ```bash
    # Write the correct marker so the blocked limactl start completes
-   IID=$(hdiutil attach ~/.lima/<VM>/cidata.iso -mountpoint /tmp/cidata -readonly -quiet && grep instance-id /tmp/cidata/meta-data | awk '{print $2}' && hdiutil detach /tmp/cidata -quiet)
+   IID=$(grep -aoE 'instance-id: [a-zA-Z0-9_-]+' ~/.lima/<VM>/cidata.iso | head -1 | awk '{print $2}')
    ssh -F ~/.lima/<VM>/ssh.config lima-<VM> "sudo sh -c 'mkdir -p /run; echo $IID > /run/lima-boot-done; echo $IID > /var/run/lima-boot-done'"
    ```
 
