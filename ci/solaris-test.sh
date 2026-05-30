@@ -266,7 +266,13 @@ if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then
     _SCAN_WARNED=0
     echo "==> Waiting for SSH (monitoring serial console)..."
     for _I in $(seq 1 600); do
-        if ssh -F ~/.lima/"$VM"/ssh.config lima-"$VM" true 2>/dev/null; then
+        # Wall-clock cap on each probe. OmniOS reboot can leave qemu's
+        # hostfwd accepting TCP while sshd is unresponsive, which makes a
+        # bare `ssh ... true` hang indefinitely during banner exchange
+        # (ConnectTimeout only covers the TCP connect phase, not the
+        # post-accept banner read). 10s is generous for the LAN-equivalent
+        # localhost hop; without it the polling loop stalls completely.
+        if timeout 10 ssh -o ConnectTimeout=5 -F ~/.lima/"$VM"/ssh.config lima-"$VM" true 2>/dev/null; then
             _SSH_OK=1; break
         fi
         sleep 10
@@ -320,35 +326,32 @@ else
 fi
 
 echo "==> Installing OmniOS packages and CPAN deps..."
-_timeout_run 1200 limactl shell "$VM" -- sh -lc '
+# Outer string is DOUBLE-quoted so \${OTHER_DEPS} and \${IPC_INSTALL} expand
+# from the outer shell. Inner-shell variables (\$PATH, \$_cc, etc.) are
+# escaped to preserve them for the in-VM shell. Also broaden the gcc/cpanm
+# search to /opt since OmniOS gcc14 installs to /opt/gcc-14, not /usr/gcc.
+_timeout_run 1200 limactl shell "$VM" -- sh -lc "
     set -e
-    # System packages (pkg is idempotent for already-installed packages)
-    sudo pkg install --accept -q \
-        runtime/perl developer/gcc14 developer/build/gnu-make \
-        web/curl 2>&1 | grep -v "^$" || true
+    sudo pkg install --accept -q runtime/perl developer/gcc14 developer/build/gnu-make web/curl 2>&1 | grep -v '^\$' || true
 
-    # Ensure cc is in PATH (OmniOS gcc14 installs as gcc, not cc)
-    export PATH=/usr/gcc/14/bin:/usr/gnu/bin:/usr/bin:$PATH
+    export PATH=/usr/gcc/14/bin:/usr/gnu/bin:/usr/bin:\$PATH
     command -v cc >/dev/null 2>&1 || {
         for _cc in gcc cc; do
-            _found=$(find /usr/gcc -name "$_cc" -type f 2>/dev/null | head -1)
-            [ -n "$_found" ] && sudo ln -sf "$_found" /usr/bin/cc && break
+            _found=\$(find /usr/gcc /opt -name \"\$_cc\" -type f 2>/dev/null | head -1)
+            [ -n \"\$_found\" ] && sudo ln -sf \"\$_found\" /usr/bin/cc && break
         done
     }
 
-    # cpanm (skip if already installed)
     command -v cpanm >/dev/null 2>&1 || {
         curl -sL https://cpanmin.us -o /tmp/cpanm.pl
         sudo perl /tmp/cpanm.pl App::cpanminus
-        # cpanm may land outside PATH on OmniOS; find and symlink it
-        CPANM=$(find /usr/perl5 /opt -name cpanm -type f 2>/dev/null | head -1)
-        [ -n "$CPANM" ] && sudo ln -sf "$CPANM" /usr/bin/cpanm
+        CPANM=\$(find /usr/perl5 /opt -name cpanm -type f 2>/dev/null | head -1)
+        [ -n \"\$CPANM\" ] && sudo ln -sf \"\$CPANM\" /usr/bin/cpanm
     }
 
-    # CPAN deps — use gmake so ExtUtils::MakeMaker gets GNU make.
     sudo env MAKE=gmake cpanm --notest ${OTHER_DEPS} 2>&1 || true
     ${IPC_INSTALL} 2>&1 || true
-'
+"
 
 echo "==> Copying source into VM..."
 limactl shell "$VM" -- sh -lc "rm -rf '${GUEST_REPO}'"

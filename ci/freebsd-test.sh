@@ -146,7 +146,8 @@ if ! limactl list | grep -q "^${VM}[[:space:]].*Running"; then
     # write the marker for this boot.  Subsequent starts will be fast.
     _SSH_OK=0
     for _I in $(seq 1 20); do
-        if ssh -F ~/.lima/"$VM"/ssh.config lima-"$VM" true 2>/dev/null; then
+        # See solaris-test.sh for the rationale on the `timeout` wrap.
+        if timeout 10 ssh -o ConnectTimeout=5 -F ~/.lima/"$VM"/ssh.config lima-"$VM" true 2>/dev/null; then
             _SSH_OK=1; break
         fi
         sleep 3
