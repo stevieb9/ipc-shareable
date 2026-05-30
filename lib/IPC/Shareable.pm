@@ -2605,7 +2605,7 @@ Instantiates and returns a reference to a hash backed by shared memory.
 
     my $href = IPC::Shareable->new(key => "testing", create => 1);
 
-    $href=>{a} = 1;
+    $href->{a} = 1;
 
     # Call tied() on the dereferenced variable to access object methods
     # and information
@@ -2983,7 +2983,7 @@ within this array reference map to child segments.
 
 Here's an example data structure, and what the return value of C<shm_segments>
 would look like for it using the JSON serializer. Note that the top-level
-structure is a hash, and it contains two nested hashes (keys 'c; and 'd'), which
+structure is a hash, and it contains two nested hashes (keys 'c' and 'd'), which
 are each stored in their own segments. It also has two scalar values (keys 'a'
 and 'b'), which are stored in the top-level segment.
 
@@ -3113,7 +3113,7 @@ Example:
         destroy => 1
     };
 
-    $h->{nested} = { x => 1, y => 2 };
+    $h{nested} = { x => 1, y => 2 };
 
     my $mapping = tied(%h)->seg_map;
 
@@ -3668,7 +3668,7 @@ that were not created with C<testing>.
 
 =head1 DESTRUCTION
 
-perl will destroy the object underlying a tied variable when then tied variable
+perl will destroy the object underlying a tied variable when the tied variable
 goes out of scope.  Unfortunately for L<IPC::Shareable>, this may not be
 desirable: other processes may still need a handle on the relevant shared memory
 segment.
