@@ -27,6 +27,9 @@ use Storable 0.6 qw(freeze thaw);
 
 our $VERSION = '1.17';
 
+# eval() returns 1 on success; // 0 coerces undef (failure) to 0 so callers
+# can boolean-test cleanly without checking definedness.
+
 our $_have_xs = ! $ENV{IPC_SHAREABLE_NO_XS} && eval {
     require XSLoader;
     XSLoader::load('IPC::Shareable', $VERSION);
