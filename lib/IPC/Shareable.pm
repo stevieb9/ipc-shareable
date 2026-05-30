@@ -3784,7 +3784,7 @@ optimization if you do not).
 =item o
 
 For tied hashes, the C<fetch>/C<thaw> operation is performed
-when the first key is accessed.  Subsequent key and and value
+when the first key is accessed.  Subsequent key and value
 accesses are done without accessing shared memory.  Doing an
 assignment to the hash or fetching another value between key
 accesses causes the hash to be replaced from shared memory. The
