@@ -759,7 +759,7 @@ sub unknown_segments {
 
     my $segs = shm_segments();
 
-    return grep { !$segs->{$_}{known} } keys %$segs;
+    return grep { ! $segs->{$_}{known} } keys %$segs;
 }
 sub seg_count {
     my $count = 0;
@@ -877,13 +877,13 @@ sub seg_map {
         next unless exists $segs->{$hex};
         $is_child{$_}++ for @{ $extra_child_keys{$hex} };
     }
-    my @roots = sort grep { !$is_child{$_} } keys %$segs;
+    my @roots = sort grep { ! $is_child{$_} } keys %$segs;
 
     my @lines;
     push @lines, 'IPC::Shareable Segment Map';
     push @lines, '=' x 26;
 
-    if (!@roots) {
+    if (! @roots) {
         push @lines, '';
         push @lines, '  (no IPC::Shareable segments found)';
         return join("\n", @lines) . "\n";
@@ -937,7 +937,7 @@ sub seg_map {
         # Merge child keys from shm_segments() and from global_register walk
 
         my %seen_child;
-        my @child_keys = grep { !$seen_child{$_}++ } (
+        my @child_keys = grep { ! $seen_child{$_}++ } (
             @{ $seg->{child_keys} // [] },
             @{ $extra_child_keys{$hex} // [] },
         );
@@ -1316,7 +1316,7 @@ sub _encode_json_prepare {
                     last;
                 }
             }
-            return $data if !$has_child;
+            return $data if ! $has_child;
         }
 
         return [
@@ -1357,7 +1357,7 @@ sub _decode_json {
     if ($tag eq 'IPC::Shareable') {
         my $data = decode_json $json;
 
-        if (! defined($data)){
+        if (! defined($data)) {
             croak "Munged shared memory segment (size exceeded?)";
         }
 
@@ -1379,7 +1379,8 @@ sub _decode_json {
         }
 
         return $data;
-    } else {
+    }
+    else {
         return;
     }
 }
@@ -1480,11 +1481,12 @@ sub _thaw {
 
     if ($tag eq 'IPC::Shareable') {
         my $water = thaw $ice;
-        if (! defined($water)){
+        if (! defined($water)) {
             croak "Munged shared memory segment (size exceeded?)";
         }
         return $water;
-    } else {
+    }
+    else {
         return;
     }
 }
@@ -1568,7 +1570,7 @@ sub _tie {
                   "option is not set, and the segment hasn't been created " .
                   "yet:\n\n $!";
         }
-        elsif ($knot->attributes('create') && $knot->attributes('exclusive')){
+        elsif ($knot->attributes('create') && $knot->attributes('exclusive')) {
             croak "ERROR: Could not create shared memory segment. 'create' " .
                   "and 'exclusive' are set. Does the segment already exist? " .
                   "\n\n$!";
@@ -1588,7 +1590,7 @@ sub _tie {
     my $sem = IPC::Semaphore->new($key, 0, $seg->flags & 0777)
            // IPC::Semaphore->new($key, $nsems, $seg->flags);
 
-    if (! defined $sem){
+    if (! defined $sem) {
         croak "Could not create semaphore set: $!\n";
     }
 
@@ -1664,7 +1666,7 @@ sub _tie {
             $sem->setval(SEM_TESTING, _testing_semaphore_key_hash($knot->attributes('testing')));
         }
 
-        if (! $sem->setval(SEM_MARKER, SHM_EXISTS)){
+        if (! $sem->setval(SEM_MARKER, SHM_EXISTS)) {
             croak "Couldn't set semaphore during object creation: $!";
         }
     }
@@ -3339,10 +3341,11 @@ hold a C<LOCK_SH>.
 
 Here is an example of how to manage a non-blocking lock:
 
-    if (tied(%hash)->lock(LOCK_SH|LOCK_NB)){
+    if (tied(%hash)->lock(LOCK_SH|LOCK_NB)) {
         print "The value is $hash{a}\n";
         tied(%hash)->unlock;
-    } else {
+    }
+    else {
         print "Another process has an exclusive lock.\n";
     }
 
