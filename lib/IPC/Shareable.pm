@@ -3741,7 +3741,8 @@ Simple legacy alias for C<:lock>.
 
 =head3 :semaphores
 
-Includes: C<SEM_MARKER>, C<SEM_READERS>, C<SEM_WRITERS> and C<SEM_PROTECTED>.
+Includes: C<SEM_MARKER>, C<SEM_READERS>, C<SEM_WRITERS>, C<SEM_PROTECTED> and
+C<SEM_TESTING>.
 
 =head3 :all
 
