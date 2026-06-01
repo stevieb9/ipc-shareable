@@ -59,7 +59,7 @@ IPC::Shareable - Use shared memory backed variables across processes
     # Fetch a printable string representation of the segment and semaphore
     # mapping for your data
 
-    tied(VARIABLE)->seg_map;
+    my $shm_map = tied(VARIABLE)->seg_map;
 
     # Remove the shared memory segment and semaphore directly
 
@@ -70,6 +70,14 @@ IPC::Shareable - Use shared memory backed variables across processes
     IPC::Shareable::clean_up;
     IPC::Shareable::clean_up_all;
     IPC::Shareable::clean_up_protected;
+
+    # In the first test file that runs, purge any leaked segments that remain
+
+    IPC::Shareable::clean_up_testing('My::Distribution');
+
+    # Then in every test file that ties a segment, add:
+
+    IPC::Shareable->testing_set('My::Distribution');
 
     # Get the actual IPC::Shareable tied object you can make method calls on
     # instead of using the tied object like the examples above
@@ -110,10 +118,10 @@ one and bind it to `%thing` in program two.
 
 There is no pre-set limit to the number of processes that can bind to
 data; nor is there a pre-set limit to the complexity of the underlying
-data of the tied variables.  The amount of data that can be shared
-within a single bound variable is limited by the system's maximum size
-for a shared memory segment, and the total number of segments allowed by the
-system (the exact values are system-dependent).
+data of the tied variables.  The amount of data that can be shared within a
+single bound variable is limited by the system's maximum size for a shared
+memory segment, and the total number of segments allowed by the system (the
+exact values are system-dependent).
 
 The bound data structures are all linearized (using [JSON](https://metacpan.org/pod/JSON) by default or
 optionally [Storable](https://metacpan.org/pod/Storable)) before being slurped into shared memory. Upon retrieval,
@@ -157,11 +165,10 @@ Default: **IPC\_PRIVATE**
 
 **create** is used to control whether the process creates a new shared
 memory segment or not.  If **create** is set to a true value,
-[IPC::Shareable](https://metacpan.org/pod/IPC%3A%3AShareable) will create a new binding associated with GLUE as
-needed.  If **create** is false, [IPC::Shareable](https://metacpan.org/pod/IPC%3A%3AShareable) will not attempt to
-create a new shared memory segment associated with GLUE.  In this
-case, a shared memory segment associated with GLUE must already exist
-or we'll `croak()`.
+[IPC::Shareable](https://metacpan.org/pod/IPC%3A%3AShareable) will create a new binding associated with GLUE as needed.
+If **create** is false, [IPC::Shareable](https://metacpan.org/pod/IPC%3A%3AShareable) will not attempt to create a new shared
+memory segment associated with GLUE.  In this case, a shared memory segment
+associated with GLUE must already exist or we'll `croak()`.
 
 Default: **false**
 
@@ -197,17 +204,18 @@ Default: **false**
 
 ## mode
 
-The **mode** argument is an octal number specifying the access
-permissions when a new data binding is being created.  These access
-permission are the same as file access permissions in that `0666` is
-world readable and writable, `0600` is writable only by the effective UID of
-the process creating the shared variable, etc.
+The **mode** argument is an octal number specifying the access permissions when a
+new data binding is being created.  These access permission are the same as file
+access permissions in that `0666` is world readable and writable, `0600` is
+writable only by the effective UID of the process creating the shared variable,
+etc.
 
 Default: **0666** (world readable and writeable)
 
 ## size
 
-This field is used to specify the size of each shared memory segment allocated.
+This field is used to specify the size (in bytes) of each shared memory segment
+allocated.
 
 **Note**: Each nested data structure requires a new shared memory segment. The
 `size` attribute is applied to the first, and all subsequent segments created,
@@ -216,7 +224,7 @@ and does not reflect the overall size of memory to be used.
 The maximum size we allow for each segment by default is ~1GB. See the ["limit"](#limit)
 option to override this default.
 
-Default: `IPC::Shareable::SHM_BUFSIZ()` (ie. **65536**)
+Default: `IPC::Shareable::SHM_BUFSIZ()` (ie. **65,536** bytes)
 
 ## protected
 
@@ -242,6 +250,27 @@ the script you created the segment, or anywhere else, at any time.
 implementation (typically 0-32767; 0 means unprotected).
 
 Default: **0**
+
+## testing
+
+Set this to a non-empty string (conventionally the distribution name, e.g.
+`'IPC::Shareable'`) to brand the segment as belonging to a particular test
+suite. At segment-creation time the CRC32 hash of the string is stored in a
+fifth semaphore slot (`SEM_TESTING`). This makes it possible for
+["clean\_up\_testing($dist\_name)"](#clean_up_testing-dist_name) to find and remove every such segment
+system-wide -- including orphans from previous crashed runs -- without needing
+them to be in `%global_register`.
+
+The integer hash (not the original string) is persisted in the semaphore set.
+When a process re-attaches to a segment that was created with `testing`, the
+stored integer is restored into `attributes('testing')`.
+
+Rather than setting `testing` on every individual `tie()`, call
+["testing\_set($dist\_name)"](#testing_set-dist_name) once at the top of the test file; all subsequent
+ties in that process (and in forked children spawned after the call) inherit it
+automatically.
+
+Default: **0** (disabled)
 
 ## limit
 
@@ -344,6 +373,7 @@ Default values for options are:
     mode                        => 0666,
     size                        => IPC::Shareable::SHM_BUFSIZ(), # 65536
     protected                   => 0,
+    testing                     => 0,
     limit                       => 1,
     destroy                     => 0,
     graceful                    => 0,
@@ -368,7 +398,7 @@ Instantiates and returns a reference to a hash backed by shared memory.
 
     my $href = IPC::Shareable->new(key => "testing", create => 1);
 
-    $href=>{a} = 1;
+    $href->{a} = 1;
 
     # Call tied() on the dereferenced variable to access object methods
     # and information
@@ -431,8 +461,8 @@ Obtain a shared (read) lock:
         tied(%var)->lock(LOCK_SH);
 
 Multiple processes can hold a shared (read) lock at a given time.  If a process
-attempts to obtain an exclusive lock while one or more processes hold
-shared locks, it will be blocked until they have all finished.
+attempts to obtain an exclusive lock while one or more processes hold shared
+locks, it will be blocked until they have all finished.
 
 Either of the locks may be specified as non-blocking:
 
@@ -442,10 +472,9 @@ Either of the locks may be specified as non-blocking:
 A non-blocking lock request will return `0` immediately if it would have had to
 wait to obtain the lock.
 
-**Note**: These locks are advisory (just like flock), meaning that
-all cooperating processes must coordinate their accesses to shared memory
-using these calls in order for locking to work.  See the `flock()` call for
-details.
+**Note**: These locks are advisory (just like flock), meaning that all
+cooperating processes must coordinate their accesses to shared memory using
+these calls in order for locking to work.  See the `flock()` call for details.
 
 **Note**: You can enforce a `LOCK_EX` lock at a software level by ensuring that
 the `enforced_write_locking` option is set to a true value (the default).
@@ -466,7 +495,7 @@ for import using any of the following export tags:
         use IPC::Shareable qw(:flock);
         use IPC::Shareable qw(:all);
 
-Or, just use the flock constants available in the Fcntl module.
+Or, just use the `flock` constants available in the `Fcntl` module.
 
 See ["LOCKING"](#locking) for further details.
 
@@ -510,14 +539,14 @@ object and the overall state information of the current processes.
 
 Retrieves the list of attributes that drive the [IPC::Shareable](https://metacpan.org/pod/IPC%3A%3AShareable) object.
 
+Attributes are the `OPTIONS` that were used to create the object.
+
 Parameters:
 
     $attribute
 
 Optional, String: The name of the attribute. If sent in, we'll return the value
 of this specific attribute. Returns `undef` if the attribute isn't found.
-
-Attributes are the `OPTIONS` that were used to create the object.
 
 Returns: A hash reference of all attributes if `$attributes` isn't sent in, the
 value of the specific attribute if it is.
@@ -728,9 +757,9 @@ Return: Hash reference where each key is the SHM key in hex format.
 
 Field descriptions:
 
-**known**: `1` if this segment is currently tied in the calling process,
-`0` if not. A value of `0` includes segments legitimately persisted by
-another process (`destroy => 0`), not just crashed leftovers. See
+**known**: `1` if this segment is currently tied in the calling process, `0`
+if not. A value of `0` includes segments legitimately persisted by another
+process (`destroy => 0`), not just crashed leftovers. See
 ["unknown\_segments"](#unknown_segments) for important caveats.
 
 **local\_process**: `1` if created by the same process this method is being run,
@@ -743,7 +772,7 @@ within this array reference map to child segments.
 
 Here's an example data structure, and what the return value of `shm_segments`
 would look like for it using the JSON serializer. Note that the top-level
-structure is a hash, and it contains two nested hashes (keys 'c; and 'd'), which
+structure is a hash, and it contains two nested hashes (keys 'c' and 'd'), which
 are each stored in their own segments. It also has two scalar values (keys 'a'
 and 'b'), which are stored in the top-level segment.
 
@@ -865,7 +894,7 @@ Example:
         destroy => 1
     };
 
-    $h->{nested} = { x => 1, y => 2 };
+    $h{nested} = { x => 1, y => 2 };
 
     my $mapping = tied(%h)->seg_map;
 
@@ -900,9 +929,10 @@ IPC::Shareable Segment Map
 
     print "Max segment size: $sysv_info->{shmmax}\n";
     print "Max segments (system): $sysv_info->{shmmni}\n";
+    print "Max semaphore sets (system): $sysv_info->{semmni}\n";
 
 Class method. Returns a hash reference containing the kernel's SysV shared
-memory configuration parameters for the current platform.
+memory and semaphore configuration parameters for the current platform.
 
 Returns `undef` if the platform is not supported or no data could be read.
 
@@ -914,6 +944,9 @@ On MacOS, reads from `sysctl kern.sysv`. Example return value:
         shmmni => 32,        # Maximum number of segments system-wide
         shmseg => 8,         # Maximum number of segments per process
         shmall => 1024,      # Maximum total shared memory (pages)
+        semmni => 87381,     # Maximum number of semaphore identifier sets
+        semmns => 87381,     # Maximum semaphores system-wide
+        semmsl => 87381,     # Maximum semaphores per set
     }
 
 On Linux, reads from `/proc/sys/kernel/`. Example return value:
@@ -923,10 +956,15 @@ On Linux, reads from `/proc/sys/kernel/`. Example return value:
         shmmin => 1,                     # Minimum size of a single segment (bytes)
         shmmni => 4096,                  # Maximum number of segments system-wide
         shmall => 18446744073692774399,  # Maximum total shared memory (pages)
+        semmsl => 32000,                 # Maximum semaphores per set
+        semmns => 1024000000,            # Maximum semaphores system-wide
+        semopm => 500,                   # Maximum semop ops per call
+        semmni => 32000,                 # Maximum number of semaphore identifier sets
     }
 
 Note: Linux has no per-process segment limit (`shmseg`); only the system-wide
-`shmmni` applies.
+`shmmni` applies. The four `sem*` keys come from `/proc/sys/kernel/sem`
+(one line: `semmsl semmns semopm semmni`).
 
 On FreeBSD, reads from `sysctl kern.ipc`. Example return value:
 
@@ -936,15 +974,111 @@ On FreeBSD, reads from `sysctl kern.ipc`. Example return value:
         shmmni => 192,        # Maximum number of segments system-wide
         shmseg => 128,        # Maximum number of segments per process
         shmall => 131072,     # Maximum total shared memory (pages)
+        semmni => 50,         # Maximum number of semaphore identifier sets
+        semmns => 340,        # Maximum semaphores system-wide
+        semmsl => 340,        # Maximum semaphores per set
+        semopm => 100,        # Maximum semop ops per call
     }
 
-On Solaris (including OmniOS/illumos), the kernel's SysV shared memory
-configuration is not yet read programmatically. This method returns
-`undef` on Solaris; use system tools such as `prctl` or
-`mdb -k` to inspect the kernel IPC limits instead.
+On OpenBSD, reads from `sysctl kern.seminfo kern.shminfo`. Example return
+value:
+
+    {
+        shmmax => 33554432,  # Maximum size of a single segment (bytes)
+        shmmin => 1,         # Minimum size of a single segment (bytes)
+        shmmni => 128,       # Maximum number of segments system-wide
+        shmall => 8192,      # Maximum total shared memory (pages)
+        semmni => 10,        # Maximum number of semaphore identifier sets
+        semmns => 60,        # Maximum semaphores system-wide
+        semmsl => 60,        # Maximum semaphores per set
+    }
+
+On Solaris (including OmniOS/illumos), the kernel's SysV configuration is
+not yet read programmatically. This method returns `undef` on Solaris; use
+system tools such as `prctl` or `mdb -k` to inspect the kernel IPC limits
+instead.
+
+`semmni` in particular is the limit that test suites making heavy use of
+shared-memory tied variables most often hit. FreeBSD's default of 50 is
+unusually tight; OpenBSD's default of 10 is tighter still. Test code that
+needs to scale by available capacity can compute
+`$info->{semmni} - IPC::Shareable::sem_count()` as the headroom
+currently available for new allocations.
 
 Return: Hash reference, or `undef` if the platform is not supported or no data
 could be read.
+
+# METHODS - UNIT TESTING
+
+## testing\_set($dist\_name)
+
+    IPC::Shareable->testing_set('My::Distribution');
+
+Sets a process-level tag so that every subsequent `tie()` in the same process
+automatically receives `testing => 'My::Distribution'` without needing it
+on each individual tie.  The tag propagates to nested-segment children (created
+automatically when a reference is stored into a tied variable) and to any
+processes forked **after** the call, because `fork()` copies the parent's memory.
+
+Call this once at the top of each test file (or from a shared helper module
+loaded with `use`).
+
+This flag can also be set with the ["testing"](#testing) flag in the initial tie params.
+
+Parameters:
+
+    $dist_name
+
+Mandatory, non-empty string: conventionally the distribution name.
+
+Croaks if `$dist_name` is undefined or empty.
+
+## clean\_up\_testing($dist\_name)
+
+    IPC::Shareable::clean_up_testing('My::Distribution');
+
+    # or as a method:
+
+    IPC::Shareable->clean_up_testing('My::Distribution');
+
+Performs a **system-wide** scan for every IPC::Shareable segment whose
+`SEM_TESTING` semaphore slot contains the CRC32 hash of `$dist_name`, then
+unconditionally removes each matching segment and its semaphore set.
+
+Unlike ["clean\_up\_all"](#clean_up_all), this function is not limited to segments in
+`%global_register`: it will find and remove orphaned segments from previous
+crashed test runs.  Unlike [clean\_up\_protected](#clean_up_protected-protect_key),
+it deliberately ignores the `protected` attribute -- segments tagged with
+`testing` are always removed.
+
+The typical usage is at the top of the first test file (before any segments are
+created) to clear orphans, and optionally at the end of the last test file as a
+belt-and-suspenders cleanup:
+
+    # t/00-base.t
+
+    # First, clean up from the previous run if necessary
+
+    my $n = IPC::Shareable::clean_up_testing('My::Distribution');
+    note "Removed $n orphaned segments from previous run" if $n;
+
+    # Now set tagging for segments in this test file
+
+    IPC::Shareable->testing_set('My::Distribution');
+
+Parameters:
+
+    $dist_name
+
+Mandatory, non-empty string: the same string passed to ["testing\_set($dist\_name)"](#testing_set-dist_name)
+or the `testing` tie attribute.
+
+Return: integer count of removed segments.
+
+**Note**: `attributes('testing')` on a re-attached segment returns the stored
+integer hash, not the original string.  This is intentional: the hash is
+sufficient for cleanup comparisons and the original string is never stored on
+the system.
 
 # LOCKING
 
@@ -983,10 +1117,11 @@ hold a `LOCK_SH`.
 
 Here is an example of how to manage a non-blocking lock:
 
-    if (tied(%hash)->lock(LOCK_SH|LOCK_NB)){
+    if (tied(%hash)->lock(LOCK_SH|LOCK_NB)) {
         print "The value is $hash{a}\n";
         tied(%hash)->unlock;
-    } else {
+    }
+    else {
         print "Another process has an exclusive lock.\n";
     }
 
@@ -1019,7 +1154,7 @@ option must be set to true, which it is by default. The warning advises the user
 that the data they have received is stale, and that they should refactor their
 code to implement proper locking.
 
-### Important notes
+## Important notes
 
 Note that in the background, we perform lock optimization when reading and
 writing to the shared storage even if the advisory locks aren't being used.
@@ -1153,9 +1288,9 @@ not participate.
 - **Read result** is always raw shmem when unlocked, always cached when locked;
 the four flags only affect whether a warning is emitted, never the value
 returned.
-- **Read warns** iff `ER = 1` AND `WR = 1` AND another process holds
+- **Read warns** if `ER = 1` AND `WR = 1` AND another process holds
 `LOCK_EX`.
-- **Write blocks** iff `EW = 1` AND (another process holds `LOCK_EX` OR has
+- **Write blocks** if `EW = 1` AND (another process holds `LOCK_EX` OR has
 active `LOCK_SH` readers OR the caller itself holds only `LOCK_SH`).
 - **Write warns** iff the write was blocked AND `WW = 1`.
 - `LOCK_EX` ownership bypasses every check in the write path and never reaches
@@ -1197,9 +1332,18 @@ that held that data is automatically cleaned up and freed.
 
 ## Storable
 
-The child knot object (which holds \_key, \_type, etc.) is frozen in-place
-inside the parent's serialized byte blob. On thaw, the child knot is
-reconstructed from those bytes and re-attached to the existing child segment.
+With the Storable serializer, nested references are handled transparently.
+Storable natively freezes the entire Perl data structure (including internal
+tie information for child segments) into a single binary blob. On thaw,
+child segments are automatically re-attached without any explicit markers in
+the serialized data.
+
+This means that unlike JSON, there are no `__ics__` placeholder objects in
+the stored data. The trade-off is that Storable output is Perl-specific and
+not portable across different Perl versions or platforms.
+
+See the `serializer` option under ["OPTIONS"](#options) to choose between `json` and
+`storable`.
 
 ## JSON
 
@@ -1227,9 +1371,10 @@ created, it simply reconnects.
 
 # SEMAPHORES
 
-Each memory segment that we utilize comes with it a semaphore set of four
-individual semaphores. These semaphores keep state information about the segment
-itself, and manages the locking aspects.
+Each memory segment that we utilize comes with it a semaphore set of four or
+five individual semaphores. These semaphores keep state information about the
+segment itself, and manages the locking aspects.  A fifth slot (`SEM_TESTING`)
+is added only when the segment is created with the ["testing"](#testing) attribute.
 
 ## SEM\_MARKER
 
@@ -1239,7 +1384,7 @@ been initialized and is ready for use. `1` if it is, `0` if it isn't.
 ## SEM\_READERS
 
 Semaphore slot ID 1. Specifies the current number of readers holding a
-`LOCK_SH`. A write lock (`LOCK_EX` can't be obtained until this value is
+`LOCK_SH`. A write lock (`LOCK_EX`) can't be obtained until this value is
 reduced to `0`.
 
 ## SEM\_WRITERS
@@ -1252,9 +1397,17 @@ and `0` if not.
 Semaphore slot ID 3. Used to keep track of the `protected` option value for
 protected segments. See ["protected"](#protected).
 
+## SEM\_TESTING
+
+Semaphore slot ID 4. Present only on segments created with the ["testing"](#testing)
+attribute.  Stores the CRC32 hash of the distribution name (masked to a
+positive 31-bit integer) so that ["clean\_up\_testing($dist\_name)"](#clean_up_testing-dist_name) can
+identify and remove all matching segments system-wide.  Zero on segments
+that were not created with `testing`.
+
 # DESTRUCTION
 
-perl will destroy the object underlying a tied variable when then tied variable
+perl will destroy the object underlying a tied variable when the tied variable
 goes out of scope.  Unfortunately for [IPC::Shareable](https://metacpan.org/pod/IPC%3A%3AShareable), this may not be
 desirable: other processes may still need a handle on the relevant shared memory
 segment.
@@ -1262,21 +1415,18 @@ segment.
 [IPC::Shareable](https://metacpan.org/pod/IPC%3A%3AShareable) therefore provides several options to control the timing of
 removal of shared memory segments.
 
+**Note**: The destruction is handled in an `END` block. Only those memory
+segments that are tied to the current process will be removed.
+
 ## destroy Option
 
 As described in ["OPTIONS"](#options), specifying the **destroy** option when
 `tie()`ing a variable coerces [IPC::Shareable](https://metacpan.org/pod/IPC%3A%3AShareable) to remove the underlying
 shared memory segment when the process calling `tie()` exits gracefully.
 
-## Notes
+## Signal handlers
 
-**Note**: The destruction is handled in an `END` block. Only those memory
-segments that are tied to the current process will be removed.
-
-**Note**: If the segment was created with its ["protected"](#protected) attribute set,
-it will not be removed in the `END` block, even if `destroy` is set.
-
-**Note**: The `END` block only runs on a _clean_ exit (normal program
+The `END` block only runs on a _clean_ exit (normal program
 end, `die`, or `exit`). It does **not** run for untrapped signals
 (`SIGTERM`, `SIGINT`, etc.) or for `SIGKILL`. If your process may be
 terminated by a signal and you want `destroy` cleanup to run, install
@@ -1287,6 +1437,11 @@ signal handlers that call `exit`:
 This causes the `END` block to fire on those signals. `SIGKILL` cannot
 be caught; any segments left behind by it can be recovered with
 `IPC::Shareable->clean_up_all`.
+
+## Notes
+
+**Note**: If the segment was created with its ["protected"](#protected) attribute set,
+it will not be removed in the `END` block, even if `destroy` is set.
 
 **Note**: Advisory locks (`lock()`/`unlock()`) are _always_ released
 automatically when a process dies, even on `SIGKILL`, because the
@@ -1359,7 +1514,7 @@ Includes [":lock"](#lock) and [":semaphores"](#semaphores).
 - o
 
     For tied hashes, the `fetch`/`thaw` operation is performed
-    when the first key is accessed.  Subsequent key and and value
+    when the first key is accessed.  Subsequent key and value
     accesses are done without accessing shared memory.  Doing an
     assignment to the hash or fetching another value between key
     accesses causes the hash to be replaced from shared memory. The

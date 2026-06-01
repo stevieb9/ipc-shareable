@@ -2263,7 +2263,7 @@ IPC::Shareable - Use shared memory backed variables across processes
     # Fetch a printable string representation of the segment and semaphore
     # mapping for your data
 
-    tied(VARIABLE)->seg_map;
+    my $shm_map = tied(VARIABLE)->seg_map;
 
     # Remove the shared memory segment and semaphore directly
 
@@ -2323,10 +2323,10 @@ one and bind it to C<%thing> in program two.
 
 There is no pre-set limit to the number of processes that can bind to
 data; nor is there a pre-set limit to the complexity of the underlying
-data of the tied variables.  The amount of data that can be shared
-within a single bound variable is limited by the system's maximum size
-for a shared memory segment, and the total number of segments allowed by the
-system (the exact values are system-dependent).
+data of the tied variables.  The amount of data that can be shared within a
+single bound variable is limited by the system's maximum size for a shared
+memory segment, and the total number of segments allowed by the system (the
+exact values are system-dependent).
 
 The bound data structures are all linearized (using L<JSON> by default or
 optionally L<Storable>) before being slurped into shared memory. Upon retrieval,
@@ -2378,11 +2378,10 @@ Default: B<IPC_PRIVATE>
 
 B<create> is used to control whether the process creates a new shared
 memory segment or not.  If B<create> is set to a true value,
-L<IPC::Shareable> will create a new binding associated with GLUE as
-needed.  If B<create> is false, L<IPC::Shareable> will not attempt to
-create a new shared memory segment associated with GLUE.  In this
-case, a shared memory segment associated with GLUE must already exist
-or we'll C<croak()>.
+L<IPC::Shareable> will create a new binding associated with GLUE as needed.
+If B<create> is false, L<IPC::Shareable> will not attempt to create a new shared
+memory segment associated with GLUE.  In this case, a shared memory segment
+associated with GLUE must already exist or we'll C<croak()>.
 
 Default: B<false>
 
@@ -2418,17 +2417,18 @@ Default: B<false>
 
 =head2 mode
 
-The B<mode> argument is an octal number specifying the access
-permissions when a new data binding is being created.  These access
-permission are the same as file access permissions in that C<0666> is
-world readable and writable, C<0600> is writable only by the effective UID of
-the process creating the shared variable, etc.
+The B<mode> argument is an octal number specifying the access permissions when a
+new data binding is being created.  These access permission are the same as file
+access permissions in that C<0666> is world readable and writable, C<0600> is
+writable only by the effective UID of the process creating the shared variable,
+etc.
 
 Default: B<0666> (world readable and writeable)
 
 =head2 size
 
-This field is used to specify the size of each shared memory segment allocated.
+This field is used to specify the size (in bytes) of each shared memory segment
+allocated.
 
 B<Note>: Each nested data structure requires a new shared memory segment. The
 C<size> attribute is applied to the first, and all subsequent segments created,
@@ -2437,7 +2437,7 @@ and does not reflect the overall size of memory to be used.
 The maximum size we allow for each segment by default is ~1GB. See the L</limit>
 option to override this default.
 
-Default: C<IPC::Shareable::SHM_BUFSIZ()> (ie. B<65536>)
+Default: C<IPC::Shareable::SHM_BUFSIZ()> (ie. B<65,536> bytes)
 
 =head2 protected
 
@@ -2675,8 +2675,8 @@ Obtain a shared (read) lock:
         tied(%var)->lock(LOCK_SH);
 
 Multiple processes can hold a shared (read) lock at a given time.  If a process
-attempts to obtain an exclusive lock while one or more processes hold
-shared locks, it will be blocked until they have all finished.
+attempts to obtain an exclusive lock while one or more processes hold shared
+locks, it will be blocked until they have all finished.
 
 Either of the locks may be specified as non-blocking:
 
@@ -2686,10 +2686,9 @@ Either of the locks may be specified as non-blocking:
 A non-blocking lock request will return C<0> immediately if it would have had to
 wait to obtain the lock.
 
-B<Note>: These locks are advisory (just like flock), meaning that
-all cooperating processes must coordinate their accesses to shared memory
-using these calls in order for locking to work.  See the C<flock()> call for
-details.
+B<Note>: These locks are advisory (just like flock), meaning that all
+cooperating processes must coordinate their accesses to shared memory using
+these calls in order for locking to work.  See the C<flock()> call for details.
 
 B<Note>: You can enforce a C<LOCK_EX> lock at a software level by ensuring that
 the C<enforced_write_locking> option is set to a true value (the default).
@@ -2710,7 +2709,7 @@ for import using any of the following export tags:
         use IPC::Shareable qw(:flock);
         use IPC::Shareable qw(:all);
 
-Or, just use the flock constants available in the Fcntl module.
+Or, just use the C<flock> constants available in the C<Fcntl> module.
 
 See L</LOCKING> for further details.
 
@@ -2755,14 +2754,14 @@ object and the overall state information of the current processes.
 
 Retrieves the list of attributes that drive the L<IPC::Shareable> object.
 
+Attributes are the C<OPTIONS> that were used to create the object.
+
 Parameters:
 
     $attribute
 
 Optional, String: The name of the attribute. If sent in, we'll return the value
 of this specific attribute. Returns C<undef> if the attribute isn't found.
-
-Attributes are the C<OPTIONS> that were used to create the object.
 
 Returns: A hash reference of all attributes if C<$attributes> isn't sent in, the
 value of the specific attribute if it is.
@@ -2975,9 +2974,9 @@ Return: Hash reference where each key is the SHM key in hex format.
 
 Field descriptions:
 
-B<known>: C<1> if this segment is currently tied in the calling process,
-C<0> if not. A value of C<0> includes segments legitimately persisted by
-another process (C<destroy =E<gt> 0>), not just crashed leftovers. See
+B<known>: C<1> if this segment is currently tied in the calling process, C<0>
+if not. A value of C<0> includes segments legitimately persisted by another
+process (C<destroy =E<gt> 0>), not just crashed leftovers. See
 L</unknown_segments> for important caveats.
 
 B<local_process>: C<1> if created by the same process this method is being run,
