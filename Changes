@@ -31,9 +31,11 @@ Revision history for Perl extension IPC::Shareable.
       smokers running the same test file at once no longer collide on the same
       segment (the original failure mode). t/69-testing_flag.t also uses a
       per-run dist name so clean_up_testing()'s system-wide scan matches only
-      its own segments. Exceptions that keep fixed keys by nature, and so stay
-      serial-only: t/06-key (pins the glue->key algorithm to known values) and
-      t/72-shm_segments (asserts on literal hex keys / segment ownership)
+      its own segments. t/72-shm_segments.t was reworked to derive its expected
+      hex keys from per-run unique keys (hexkey()) rather than asserting on
+      fixed literals. The one test that still needs fixed keys by nature, and so
+      stays serial-only, is t/06-key.t (it pins the glue->key algorithm to known
+      CRC32 values)
 
 1.17    2026-05-31
     - POD enhancements regarding testing_set() and clean_up_testing()
