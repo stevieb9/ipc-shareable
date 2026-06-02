@@ -6,9 +6,10 @@ use IPC::Semaphore;
 use String::CRC32;
 use Test::More;
 
-my $segs_before = IPC::Shareable::seg_count();
-my $sems_before = IPC::Shareable::sem_count();
-warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
+use FindBin;
+use lib $FindBin::Bin;
+use IPCShareableTest qw(assert_clean_process);
+
 
 my $DIST = 'IPC::Shareable::Test::69';
 my $expected_hash = (String::CRC32::crc32($DIST) & 0x7FFF) || 1;
@@ -220,11 +221,7 @@ my $expected_hash = (String::CRC32::crc32($DIST) & 0x7FFF) || 1;
     IPC::Shareable::_end();
 }
 
-my $segs_after = IPC::Shareable::seg_count();
-warn "Segs After: $segs_after\n" if $ENV{PRINT_SEGS};
-is $segs_after, $segs_before, "All segments cleaned up — count matches baseline";
+assert_clean_process();
 
-my $sems_after = IPC::Shareable::sem_count();
-is $sems_after, $sems_before, "All semaphore sets cleaned up — count matches baseline";
 
 done_testing();

@@ -12,16 +12,14 @@ IPC::Shareable->testing_set('IPC::Shareable');
 use Test::More;
 use Test::SharedFork;
 
-my ($segs_before, $sems_before);
+use FindBin;
+use lib $FindBin::Bin;
+use IPCShareableTest qw(assert_clean_process);
 
 BEGIN {
     if (! $ENV{ASYNC_TESTING}) {
         plan skip_all => "Developer only test... needs Async::Event::Interval";
     }
-
-    warn "Segs Before: " . IPC::Shareable::seg_count() . "\n" if $ENV{PRINT_SEGS};
-    $segs_before = IPC::Shareable::seg_count();
-    $sems_before = IPC::Shareable::sem_count();
 }
 
 use Async::Event::Interval;
@@ -65,11 +63,6 @@ use Async::Event::Interval;
 Async::Event::Interval::_end;
 IPC::Shareable::_end;
 
-warn "Segs After: " . IPC::Shareable::seg_count() . "\n" if $ENV{PRINT_SEGS};
-my $segs_after = IPC::Shareable::seg_count();
-
-is $segs_after, $segs_before, "json: All segs, even those created in separate procs, cleaned up ok";
-my $sems_after = IPC::Shareable::sem_count();
-is $sems_after, $sems_before, "All semaphore sets cleaned up ok";
+assert_clean_process();
 
 done_testing();

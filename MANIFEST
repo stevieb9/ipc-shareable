@@ -69,3 +69,4 @@ t/91-pod_linkcheck.t
 t/92-pod.t
 t/93-manifest.t
 t/99-end.t
+t/IPCShareableTest.pm

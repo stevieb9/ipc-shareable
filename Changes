@@ -1,7 +1,32 @@
 Revision history for Perl extension IPC::Shareable.
 
 1.18 UNREL
-    -
+    - Fix intermittent CPAN test failures seen under parallel smokers (eg.
+      Slaven Rezić's, which test many perls against the same release at once).
+      The affected tests assumed exclusive use of System V IPC: they used fixed
+      glue keys, so concurrent runs collided on the same shm segment and
+      semaphore set (corrupt reads, EINVAL on removal, "segment hasn't been
+      created yet"); and they compared global seg_count()/sem_count() totals,
+      so unrelated IPC activity on the host perturbed the "all cleaned up"
+      checks. Added a test helper, t/IPCShareableTest.pm, providing
+      unique_glue() (per-run keys), assert_clean() (run-scoped OS-level cleanup
+      check) and live_seg_count() (process-scoped segment count); converted
+      t/18, t/19, t/24, t/26, t/28, t/32 and t/44 to use them
+    - t/26-ipcav.t: replace the SIGALRM/sleep handshake (a lost-wakeup race
+      that could hang the test forever -- a CPAN smoker SIGKILLed a stuck run)
+      with a blocking two-pipe handshake, matching t/19 and t/24. The race was
+      previously masked by the key-collision cross-talk fixed above
+    - t/47-seg_size.t: skip the "size beyond max RAM must croak" check on a
+      32-bit size_t (eg. i686 perls built with use64bitint, whose ivsize is 8
+      so the existing guard misses them) -- there a > 4 GB size wraps modulo
+      2**32 to an allocatable value and the tie succeeds instead of failing
+    - Made the rest of the suite's cleanup checks parallel-safe: replaced the
+      global seg_count()/sem_count() before/after comparisons (which drift
+      whenever any other process touches SysV IPC) with a process-scoped
+      assert_clean_process() across the remaining test files. The suite now
+      passes under `prove -j4`. (Still global by design: t/00-base + t/99-end,
+      an intentional whole-suite leak check. Still latent: some tests use fixed
+      IPC keys that can collide between concurrent runs.)
 
 1.17    2026-05-31
     - POD enhancements regarding testing_set() and clean_up_testing()
