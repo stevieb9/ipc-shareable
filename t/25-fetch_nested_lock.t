@@ -7,7 +7,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 
 # Regression: FETCH re-decoding inner child segments under LOCK_EX cascade
@@ -16,7 +16,7 @@ use IPCShareableTest qw(assert_clean_process);
 # the same semaphore — blocking on a lock the same process holds.
 {
     tie my %top, 'IPC::Shareable', {
-        key       => 'TOP_FETCH_DEADLOCK',
+        key       => unique_glue('TOP_FETCH_DEADLOCK'),
         create    => 1,
         destroy   => 1,
     };
@@ -24,7 +24,7 @@ use IPCShareableTest qw(assert_clean_process);
     $top{0} = {};
 
     tie my $scalar, 'IPC::Shareable', {
-        key       => 'SCALAR_FETCH_DEADLOCK',
+        key       => unique_glue('SCALAR_FETCH_DEADLOCK'),
         create    => 1,
         destroy   => 1,
     };

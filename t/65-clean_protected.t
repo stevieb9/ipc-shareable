@@ -8,7 +8,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 
 my $protect_lock = 292;
@@ -32,7 +32,7 @@ my $protect_lock = 292;
     like $@, qr/integer/, "...and error msg is sane";
 
     tie my %test, 'IPC::Shareable', {
-        key     => 100,
+        key     => unique_glue('k100'),
         create  => 1,
         exclusive => 1,
         destroy => 1,
@@ -57,7 +57,7 @@ my $protect_lock = 292;
 }
 
 tie my %p, 'IPC::Shareable', {
-    key     => 10,
+    key     => unique_glue('k10'),
     create  => 1,
     exclusive => 1,
     destroy => 1,
@@ -66,7 +66,7 @@ tie my %p, 'IPC::Shareable', {
 };
 
 tie my %u, 'IPC::Shareable', {
-    key     => 20,
+    key     => unique_glue('k20'),
     create  => 1,
     exclusive => 1,
     destroy => 1,

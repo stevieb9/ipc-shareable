@@ -6,7 +6,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 use IPC::Shareable;
 IPC::Shareable->testing_set('IPC::Shareable');
 
@@ -15,7 +15,7 @@ my $mod = 'IPC::Shareable';
 
 my $knot = tie my %hv, $mod, {
     create     => 1,
-    key        => 1234,
+    key        => unique_glue('k1234'),
     destroy    => 1,
 };
 
@@ -52,7 +52,7 @@ $hv{a} = {b => {c => 1}};
     # so nattch is always 0 by the time control returns to Perl -- there is no
     # Perl-visible moment where the segment is "still attached".
 
-    my $knot2 = tie my %hv2, $mod, { create => 1, key => 5678, destroy => 1 };
+    my $knot2 = tie my %hv2, $mod, { create => 1, key => unique_glue('k5678'), destroy => 1 };
     my $seg2  = $knot2->seg;
 
     is $seg2->stat->nattch, 0, 'nattch is 0 before any I/O';
@@ -89,7 +89,7 @@ void shmdt_release(void* addr) {
 }
 END_C
 
-    my $knot3 = tie my %hv3, $mod, { create => 1, key => 9012, destroy => 1 };
+    my $knot3 = tie my %hv3, $mod, { create => 1, key => unique_glue('k9012'), destroy => 1 };
     my $seg3  = $knot3->seg;
 
     my $addr = shmat_hold($seg3->id);

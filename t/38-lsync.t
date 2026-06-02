@@ -10,7 +10,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 
 my $t  = 1;
@@ -29,7 +29,7 @@ if ($pid == 0) {
     sleep unless $awake;
     $awake = 0;
 
-    tie my %thash, 'IPC::Shareable', 'hobj', { destroy => 0 , serializer => 'storable' };
+    tie my %thash, 'IPC::Shareable', unique_glue('hobj'), { destroy => 0 , serializer => 'storable' };
 
     $thash{'foo'} = "marlinspike";
     $thash{'bar'} = "ballyhoo";
@@ -55,7 +55,7 @@ if ($pid == 0) {
     my $awake = 0;
     local $SIG{ALRM} = sub { $awake = 1 };
 
-    tie my %thash, 'IPC::Shareable', 'hobj', { create => 'yes' , serializer => 'storable' };
+    tie my %thash, 'IPC::Shareable', unique_glue('hobj'), { create => 'yes' , serializer => 'storable' };
 
     kill ALRM => $pid;
     sleep unless $awake;

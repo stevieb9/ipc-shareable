@@ -7,7 +7,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 #plan skip_all => "TEST FILE NOT READY";
 
@@ -19,7 +19,7 @@ IPC::Shareable->testing_set('IPC::Shareable');
     # exclusive duplicate
 
     my $opts = {
-        key       => 1234,
+        key       => unique_glue('k1234'),
         create    => 1,
         exclusive => 1,
         destroy   => 1,

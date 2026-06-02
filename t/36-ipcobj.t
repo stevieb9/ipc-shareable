@@ -8,7 +8,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 
 my $t  = 1;
@@ -49,7 +49,7 @@ if ($pid == 0) {
 
     sleep unless $awake;
 
-    tie my $d, 'IPC::Shareable', 'obj', { destroy => 0 , serializer => 'storable' };
+    tie my $d, 'IPC::Shareable', unique_glue('obj'), { destroy => 0 , serializer => 'storable' };
 #    is ref($d), 'Dummy', "child: shared var has object ok";
 
 #    is $d->first(), 'foobar', "child: shared obj first() returns ok";
@@ -65,7 +65,7 @@ if ($pid == 0) {
 } else {
     # parent
 
-    my $s = tie my $d, 'IPC::Shareable', 'obj', { create => 1, destroy => 1 , serializer => 'storable' };
+    my $s = tie my $d, 'IPC::Shareable', unique_glue('obj'), { create => 1, destroy => 1 , serializer => 'storable' };
 
 #    my $id = $s->{_shm}->{_id};
 

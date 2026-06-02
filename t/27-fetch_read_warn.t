@@ -7,14 +7,14 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 use Test::SharedFork;
 
 
 # --- Unlocked FETCH warns when another knot holds LOCK_EX ---
 {
     my $k1 = tie my %h1, 'IPC::Shareable', {
-        key              => 'RW01',
+        key              => unique_glue('RW01'),
         create           => 1,
         destroy          => 1,
         enforced_read_locking => 1,
@@ -22,7 +22,7 @@ use Test::SharedFork;
         serializer       => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
-        key              => 'RW01',
+        key              => unique_glue('RW01'),
         enforced_read_locking => 1,
         violated_read_lock_warn => 1,
         serializer       => 'storable',
@@ -80,7 +80,7 @@ use Test::SharedFork;
 # --- No warning when enforced_read_locking is disabled ---
 {
     my $k1 = tie my %h1, 'IPC::Shareable', {
-        key              => 'RW02',
+        key              => unique_glue('RW02'),
         create           => 1,
         destroy          => 1,
         enforced_read_locking => 0,
@@ -88,7 +88,7 @@ use Test::SharedFork;
         serializer       => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
-        key              => 'RW02',
+        key              => unique_glue('RW02'),
         enforced_read_locking => 0,
         violated_read_lock_warn => 1,
         serializer       => 'storable',
@@ -109,7 +109,7 @@ use Test::SharedFork;
 # --- No warning when violated_read_lock_warn is disabled ---
 {
     my $k1 = tie my %h1, 'IPC::Shareable', {
-        key              => 'RW03',
+        key              => unique_glue('RW03'),
         create           => 1,
         destroy          => 1,
         enforced_read_locking => 1,
@@ -117,7 +117,7 @@ use Test::SharedFork;
         serializer       => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
-        key              => 'RW03',
+        key              => unique_glue('RW03'),
         enforced_read_locking => 1,
         violated_read_lock_warn => 0,
         serializer       => 'storable',
@@ -138,7 +138,7 @@ use Test::SharedFork;
 # --- Both enforced_read_locking and violated_read_lock_warn disabled (degenerate) ---
 {
     my $k1 = tie my %h1, 'IPC::Shareable', {
-        key                     => 'RW05',
+        key                     => unique_glue('RW05'),
         create                  => 1,
         destroy                 => 1,
         enforced_read_locking   => 0,
@@ -146,7 +146,7 @@ use Test::SharedFork;
         serializer              => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
-        key                     => 'RW05',
+        key                     => unique_glue('RW05'),
         enforced_read_locking   => 0,
         violated_read_lock_warn => 0,
         serializer              => 'storable',
@@ -167,7 +167,7 @@ use Test::SharedFork;
 # --- Locked FETCH (LOCK_SH) does not warn ---
 {
     my $k1 = tie my %h1, 'IPC::Shareable', {
-        key              => 'RW04',
+        key              => unique_glue('RW04'),
         create           => 1,
         destroy          => 1,
         enforced_read_locking => 1,
@@ -175,7 +175,7 @@ use Test::SharedFork;
         serializer       => 'storable',
     };
     my $k2 = tie my %h2, 'IPC::Shareable', {
-        key              => 'RW04',
+        key              => unique_glue('RW04'),
         enforced_read_locking => 1,
         violated_read_lock_warn => 1,
         serializer       => 'storable',

@@ -7,7 +7,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 # Determine the shm segment limit for this platform.
 # On macOS, kern.sysv.shmseg gives a per-process limit (typically 32).
@@ -42,7 +42,7 @@ my $mod = 'IPC::Shareable';
 
 my $knot = tie my %hv, $mod, {
     create  => 1,
-    key     => 1234,
+    key     => unique_glue('k1234'),
     destroy => 1,
     size    => 1_048_576,   # large enough that kernel slot limit is hit first
 };

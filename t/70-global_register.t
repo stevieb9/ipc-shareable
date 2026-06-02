@@ -6,7 +6,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 use IPC::Shareable;
 IPC::Shareable->testing_set('IPC::Shareable');
 
@@ -23,7 +23,7 @@ my $mod = 'IPC::Shareable';
         {
             $knot = tie my %hv, $mod, {
                 create  => 1,
-                key     => 'testing123',
+                key     => unique_glue('testing123'),
                 destroy => 1,
             };
 
@@ -45,7 +45,7 @@ my $mod = 'IPC::Shareable';
         {
             $knot = tie my %hv, $mod, {
                 create  => 1,
-                key     => 'testing123',
+                key     => unique_glue('testing123'),
                 destroy => 1,
             };
 

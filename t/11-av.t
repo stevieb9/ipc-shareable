@@ -7,14 +7,14 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 my $mod = 'IPC::Shareable';
 
 
 # serializer: storable
 {
-    tie my @av, $mod, { key => 'av11', create => 1, destroy => 1 };
+    tie my @av, $mod, { key => unique_glue('av11'), create => 1, destroy => 1 };
 
     my @words = qw(tic tac toe);
     @av = qw(tic tac toe);
@@ -89,7 +89,7 @@ my $mod = 'IPC::Shareable';
 
 # serializer: json
 {
-    tie my @av, $mod, { key => 'av11', create => 1, destroy => 1, serializer => 'json' };
+    tie my @av, $mod, { key => unique_glue('av11'), create => 1, destroy => 1, serializer => 'json' };
 
     my @words = qw(tic tac toe);
     @av = qw(tic tac toe);
@@ -164,7 +164,7 @@ my $mod = 'IPC::Shareable';
 
 # FETCH from a never-written array segment returns undef (empty segment path)
 {
-    tie my @av, $mod, { key => 'av11e', create => 1, destroy => 1 };
+    tie my @av, $mod, { key => unique_glue('av11e'), create => 1, destroy => 1 };
     is $av[0], undef, "FETCH on never-written array element returns undef ok";
 }
 

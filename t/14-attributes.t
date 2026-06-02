@@ -7,10 +7,11 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 
-my $k = tie my $sv, 'IPC::Shareable', 'testing', {create => 1, destroy => 1, serializer => 'storable' };
+my $glue = unique_glue('testing');
+my $k = tie my $sv, 'IPC::Shareable', $glue, {create => 1, destroy => 1, serializer => 'storable' };
 
 my $attrs_tied = (tied $sv)->attributes;
 is ref $attrs_tied, 'HASH', "tied var attributes() returns a hash ref ok";
@@ -50,7 +51,7 @@ for (@attr_list) {
 
 is $attrs->{warn},      0, "warn is set ok";
 is $attrs->{exclusive}, 0, "exclusive is set ok";
-is $attrs->{key},       'testing', "key is set ok";
+is $attrs->{key},       $glue, "key is set ok";
 is $attrs->{serializer},'storable', "serializer is set ok";
 is $attrs->{size},      65536, "size is set ok";
 is $attrs->{protected}, 0, "protected is set ok";

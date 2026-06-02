@@ -8,13 +8,13 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 
 my $mod = 'IPC::Shareable';
 
 my $ph = $mod->new(
-    key => 'hash',
+    key => unique_glue('hash'),
     create => 1,
     destroy => 1
 );

@@ -14,7 +14,7 @@ use Test::SharedFork;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 BEGIN {
     if (! $ENV{ASYNC_TESTING}) {
@@ -26,7 +26,7 @@ use Async::Event::Interval;
 
 {
     tie my %shared_data, 'IPC::Shareable', {
-        key     => 'fork rand dup keys',
+        key     => unique_glue('fork rand dup keys'),
         create  => 1,
         destroy => 1,
         serializer => 'storable',

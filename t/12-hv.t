@@ -8,7 +8,7 @@ IPC::Shareable->testing_set('IPC::Shareable');
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process live_seg_count);
+use IPCShareableTest qw(assert_clean_process live_seg_count unique_glue);
 
 my $mod = 'IPC::Shareable';
 
@@ -16,7 +16,7 @@ my $mod = 'IPC::Shareable';
 {
     my $knot = tie my %hv, $mod, {
         create     => 1,
-        key        => 1234,
+        key        => unique_glue('k1234'),
         destroy    => 1,
         # serializer => 'json',
         #    persist => 1
@@ -103,7 +103,7 @@ my $mod = 'IPC::Shareable';
 {
     my $knot = tie my %hv, $mod, {
         create     => 1,
-        key        => 1234,
+        key        => unique_glue('k1234'),
         destroy    => 1,
         serializer => 'json',
         #    persist => 1

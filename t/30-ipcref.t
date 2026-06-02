@@ -8,7 +8,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 use Test::SharedFork;
 
 
@@ -27,8 +27,8 @@ use Test::SharedFork;
 
         sleep unless $awake;
 
-        tie $hv, 'IPC::Shareable', 'hash1', { destroy => 0 , serializer => 'storable' };
-        tie $av, 'IPC::Shareable', 'arry1', { destroy => 0 , serializer => 'storable' };
+        tie $hv, 'IPC::Shareable', unique_glue('hash1'), { destroy => 0 , serializer => 'storable' };
+        tie $av, 'IPC::Shareable', unique_glue('arry1'), { destroy => 0 , serializer => 'storable' };
 
         is $hv, 'baz', "storable: child: HV is 'baz' ok";
         is $av, 'bong', "storable: child: AV is 'bong' ok";
@@ -52,8 +52,8 @@ use Test::SharedFork;
     } else {
         # parent
 
-        tie $hv, 'IPC::Shareable', 'hash1', { create => 1, destroy => 1 , serializer => 'storable' };
-        tie $av, 'IPC::Shareable', 'arry1', { create => 1, destroy => 1 , serializer => 'storable' };
+        tie $hv, 'IPC::Shareable', unique_glue('hash1'), { create => 1, destroy => 1 , serializer => 'storable' };
+        tie $av, 'IPC::Shareable', unique_glue('arry1'), { create => 1, destroy => 1 , serializer => 'storable' };
 
         $hv = 'baz';
         $av = 'bong';
@@ -89,8 +89,8 @@ use Test::SharedFork;
 
         sleep unless $awake;
 
-        tie $hv, 'IPC::Shareable', 'hash1j', { destroy => 0, serializer => 'json' };
-        tie $av, 'IPC::Shareable', 'arry1j', { destroy => 0, serializer => 'json' };
+        tie $hv, 'IPC::Shareable', unique_glue('hash1j'), { destroy => 0, serializer => 'json' };
+        tie $av, 'IPC::Shareable', unique_glue('arry1j'), { destroy => 0, serializer => 'json' };
 
         is $hv, 'baz', "json: child: HV is 'baz' ok";
         is $av, 'bong', "json: child: AV is 'bong' ok";
@@ -114,8 +114,8 @@ use Test::SharedFork;
     } else {
         # parent
 
-        tie $hv, 'IPC::Shareable', 'hash1j', { create => 1, destroy => 1, serializer => 'json' };
-        tie $av, 'IPC::Shareable', 'arry1j', { create => 1, destroy => 1, serializer => 'json' };
+        tie $hv, 'IPC::Shareable', unique_glue('hash1j'), { create => 1, destroy => 1, serializer => 'json' };
+        tie $av, 'IPC::Shareable', unique_glue('arry1j'), { create => 1, destroy => 1, serializer => 'json' };
 
         $hv = 'baz';
         $av = 'bong';

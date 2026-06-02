@@ -7,7 +7,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 
 tie my $sv, 'IPC::Shareable', {destroy => 1, serializer => 'storable' };
@@ -32,7 +32,7 @@ for my $mod (qw/HASH SCALAR ARRAY/){
 
 # FETCH from a never-written scalar segment returns undef (empty segment path)
 {
-    tie my $sv, 'IPC::Shareable', { key => 'sv10e', create => 1, destroy => 1 , serializer => 'storable' };
+    tie my $sv, 'IPC::Shareable', { key => unique_glue('sv10e'), create => 1, destroy => 1 , serializer => 'storable' };
     is $sv, undef, "FETCH on never-written scalar returns undef ok";
 }
 
@@ -42,7 +42,7 @@ for my $mod (qw/HASH SCALAR ARRAY/){
 # STORE then exercises the truthy-but-dereferences-to-undef branch in
 # _remove_child without exploding.
 {
-    my $k = tie my $sv, 'IPC::Shareable', { key => 'sv10f', create => 1, destroy => 1, serializer => 'storable' };
+    my $k = tie my $sv, 'IPC::Shareable', { key => unique_glue('sv10f'), create => 1, destroy => 1, serializer => 'storable' };
 
     $sv = undef;
     is $sv, undef, "scalar tied var assigned undef ok";

@@ -7,13 +7,13 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 
 # non-graceful
 {
     tie my $sv, 'IPC::Shareable', {
-        key     => 'lock',
+        key     => unique_glue('lock'),
         create  => 1,
         exclusive => 1,
         destroy => 1,
@@ -22,7 +22,7 @@ use IPCShareableTest qw(assert_clean_process);
 
     my $catch = eval {
         tie my $sv2, 'IPC::Shareable', {
-            key     => 'lock',
+            key     => unique_glue('lock'),
             create  => 1,
             exclusive => 1,
             destroy => 1,
@@ -47,7 +47,7 @@ my $catch;
 
 {
     tie my $sv, 'IPC::Shareable', {
-        key     => 'DONE',
+        key     => unique_glue('DONE'),
         create  => 1,
         exclusive => 1,
         graceful  => 1,
@@ -56,7 +56,7 @@ my $catch;
     };
 
     tie my $sv2, 'IPC::Shareable', {
-        key     => 'DONE',
+        key     => unique_glue('DONE'),
         create  => 1,
         exclusive => 1,
         graceful  => 1,

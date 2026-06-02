@@ -7,7 +7,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 
 # Class method call croaks
@@ -18,7 +18,7 @@ use IPCShareableTest qw(assert_clean_process);
 
 # Single segment (scalar, no children)
 {
-    my $k = tie my $sv, 'IPC::Shareable', { key => 'sm74a', create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
+    my $k = tie my $sv, 'IPC::Shareable', { key => unique_glue('sm74a'), create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
     $sv = 'hello';
 
     my $map = $k->seg_map;
@@ -42,7 +42,7 @@ use IPCShareableTest qw(assert_clean_process);
 # Protected segment - PROTECTED semaphore slot should reflect the value
 {
     my $kp = tie my %h, 'IPC::Shareable', {
-        key       => 'sm74b',
+        key       => unique_glue('sm74b'),
         create    => 1,
         exclusive => 1,
         destroy   => 0,
@@ -60,7 +60,7 @@ use IPCShareableTest qw(assert_clean_process);
 
 # Nested segment (hash with a reference child) - parent and child both appear
 {
-    my $kn = tie my %h, 'IPC::Shareable', { key => 'sm74c', create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
+    my $kn = tie my %h, 'IPC::Shareable', { key => unique_glue('sm74c'), create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
     $h{nested} = { val => 42 };
 
     # Force a read to ensure child segment is created
@@ -77,8 +77,8 @@ use IPCShareableTest qw(assert_clean_process);
 
 # Object method only shows its own segment tree, not other segments
 {
-    my $k1 = tie my $sv1, 'IPC::Shareable', { key => 'sm74d', create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
-    my $k2 = tie my $sv2, 'IPC::Shareable', { key => 'sm74e', create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
+    my $k1 = tie my $sv1, 'IPC::Shareable', { key => unique_glue('sm74d'), create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
+    my $k2 = tie my $sv2, 'IPC::Shareable', { key => unique_glue('sm74e'), create => 1, exclusive => 1, destroy => 1 , serializer => 'storable' };
     $sv1 = 'first';
     $sv2 = 'second';
 

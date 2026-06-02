@@ -8,12 +8,12 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 
 my $t = tie my $sv, 'IPC::Shareable', {
     create => 1,
-    key => 'data', 
+    key => unique_glue('data'), 
     destroy => 1,
     serializer => 'storable',
 };

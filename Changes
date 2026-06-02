@@ -25,8 +25,15 @@ Revision history for Perl extension IPC::Shareable.
       whenever any other process touches SysV IPC) with a process-scoped
       assert_clean_process() across the remaining test files. The suite now
       passes under `prove -j4`. (Still global by design: t/00-base + t/99-end,
-      an intentional whole-suite leak check. Still latent: some tests use fixed
-      IPC keys that can collide between concurrent runs.)
+      an intentional whole-suite leak check.)
+    - Gave each remaining test its own per-run System V IPC keys: replaced the
+      hardcoded glue strings/keys in ~30 test files with unique_glue(), so two
+      smokers running the same test file at once no longer collide on the same
+      segment (the original failure mode). t/69-testing_flag.t also uses a
+      per-run dist name so clean_up_testing()'s system-wide scan matches only
+      its own segments. Exceptions that keep fixed keys by nature, and so stay
+      serial-only: t/06-key (pins the glue->key algorithm to known values) and
+      t/72-shm_segments (asserts on literal hex keys / segment ownership)
 
 1.17    2026-05-31
     - POD enhancements regarding testing_set() and clean_up_testing()

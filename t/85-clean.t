@@ -10,7 +10,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 use Test::SharedFork;
 
 
@@ -24,7 +24,7 @@ sub shm_cleaned {
 
 # create not sent in
 {
-    my $ret = eval { my $s = tie(my $sv, 'IPC::Shareable', 'child_sv', { destroy => 0 , serializer => 'storable' }); 1; };
+    my $ret = eval { my $s = tie(my $sv, 'IPC::Shareable', unique_glue('child_sv'), { destroy => 0 , serializer => 'storable' }); 1; };
     is $ret, undef, "We croak if a key is specified, create is not called and no segment exists";
     like $@, qr/ERROR: Could not acquire/, "...and error message is sane";
 }
@@ -56,7 +56,7 @@ sub shm_cleaned {
 
 # remove()
 {
-    my $s = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 0 , serializer => 'storable' };
+    my $s = tie my $sv, 'IPC::Shareable', unique_glue('test'), { create => 1, destroy => 0 , serializer => 'storable' };
     $sv = 'foobar';
     is $sv, 'foobar', "SV set and value is 'foobar'";
 
@@ -81,7 +81,7 @@ sub shm_cleaned {
 
 # clean_up()
 {
-    my $s = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 0 , serializer => 'storable' };
+    my $s = tie my $sv, 'IPC::Shareable', unique_glue('test'), { create => 1, destroy => 0 , serializer => 'storable' };
     $sv = 'foobar';
     is $sv, 'foobar', "SV set and value is 'foobar'";
 
@@ -106,7 +106,7 @@ sub shm_cleaned {
 
 # clean_up_all()
 {
-    my $s = tie my $sv, 'IPC::Shareable', 'test', { create => 1, destroy => 0 , serializer => 'storable' };
+    my $s = tie my $sv, 'IPC::Shareable', unique_glue('test'), { create => 1, destroy => 0 , serializer => 'storable' };
     $sv = 'foobar';
     is $sv, 'foobar', "SV set and value is 'foobar'";
 
@@ -144,7 +144,7 @@ my ($z, $y, $x, $w);
 
         sleep unless $awake;
 
-        my $s = tie(my $sv, 'IPC::Shareable', 'kids', { destroy => 0 , serializer => 'storable' });
+        my $s = tie(my $sv, 'IPC::Shareable', unique_glue('kids'), { destroy => 0 , serializer => 'storable' });
         $sv = 'baz';
 
         is $sv, 'baz', "SV initialized and set to 'baz' ok";
@@ -169,7 +169,7 @@ my ($z, $y, $x, $w);
     else {
         # parent
 
-        my $s = tie(my $sv, 'IPC::Shareable', 'kids', { create => 1, destroy => 0 , serializer => 'storable' });
+        my $s = tie(my $sv, 'IPC::Shareable', unique_glue('kids'), { create => 1, destroy => 0 , serializer => 'storable' });
 
         kill ALRM => $pid;
         my $id = $s->seg->id;
@@ -209,7 +209,7 @@ assert_clean_process();
     # destroy => 0: the shm segment is already gone after $k->remove, so no
     # double-remove on scope exit.  Save the semaphore before mocking so we can
     # clean it up manually after the block (mock prevents normal cleanup).
-    my $k = tie my %h, 'IPC::Shareable', { key => 'TE', create => 1, destroy => 0 , serializer => 'storable' };
+    my $k = tie my %h, 'IPC::Shareable', { key => unique_glue('TE'), create => 1, destroy => 0 , serializer => 'storable' };
     $h{a} = 1;
 
     my $orphan_sem = $k->sem;

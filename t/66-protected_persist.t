@@ -7,7 +7,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 use Test::SharedFork;
 
 
@@ -17,7 +17,7 @@ my $protect_lock = 441;
 # the protected attribute from the semaphore.
 {
     tie my %p, 'IPC::Shareable', {
-        key       => 'pp66a',
+        key       => unique_glue('pp66a'),
         create    => 1,
         exclusive => 1,
         destroy   => 0,
@@ -28,7 +28,7 @@ my $protect_lock = 441;
 
     # Attach again (no protected specified)
     tie my %p2, 'IPC::Shareable', {
-        key    => 'pp66a',
+        key    => unique_glue('pp66a'),
         create => 0,
         serializer => 'storable',
     };
@@ -57,7 +57,7 @@ my $protect_lock = 441;
         sleep unless $awake;
 
         tie my %child_p, 'IPC::Shareable', {
-            key    => 'pp66b',
+            key    => unique_glue('pp66b'),
             create => 0,
             serializer => 'storable',
         };
@@ -77,7 +77,7 @@ my $protect_lock = 441;
     else {
         # parent: create the protected segment, wake child, then verify
         tie my %p, 'IPC::Shareable', {
-            key       => 'pp66b',
+            key       => unique_glue('pp66b'),
             create    => 1,
             exclusive => 1,
             destroy   => 0,

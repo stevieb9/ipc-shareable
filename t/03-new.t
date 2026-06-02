@@ -8,7 +8,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 use Test::SharedFork;
 
 
@@ -27,27 +27,27 @@ if ($pid == 0) {
 
     sleep unless $awake;
 
-    my $ch = $mod->new(key => 'hash2');
+    my $ch = $mod->new(key => unique_glue('hash2'));
     $ch->{child} = 'child';
 
-    my $ca = $mod->new(key => 'array2', var => 'ARRAY');
+    my $ca = $mod->new(key => unique_glue('array2'), var => 'ARRAY');
     $ca->[1] = 'child';
 
-    my $cs = $mod->new(key => 'scalar2', var => 'SCALAR');
+    my $cs = $mod->new(key => unique_glue('scalar2'), var => 'SCALAR');
     $$cs = 'child';
 
 } else {
     # parent
 
-    my $ph = $mod->new(key => 'hash2', create => 1, destroy => 1);
+    my $ph = $mod->new(key => unique_glue('hash2'), create => 1, destroy => 1);
     like tied(%$ph), qr/IPC::Shareable/, "new() tied hash is proper object ok";
     like tied(%$ph)->can('seg_count'), qr/CODE/, "...and it can call its methods ok";
 
-    my $pa = $mod->new(key => 'array2', create => 1, destroy => 1, var => 'ARRAY');
+    my $pa = $mod->new(key => unique_glue('array2'), create => 1, destroy => 1, var => 'ARRAY');
     like tied(@$pa), qr/IPC::Shareable/, "new() tied array is proper object ok";
     like tied(@$pa)->can('seg_count'), qr/CODE/, "...and it can call its methods ok";
 
-    my $ps = $mod->new(key => 'scalar2', create => 1, destroy => 1, var => 'SCALAR');
+    my $ps = $mod->new(key => unique_glue('scalar2'), create => 1, destroy => 1, var => 'SCALAR');
     like tied($$ps), qr/IPC::Shareable/, "new() tied scalar is proper object ok";
     like tied($$ps)->can('seg_count'), qr/CODE/, "...and it can call its methods ok";
 

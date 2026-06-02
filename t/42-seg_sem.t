@@ -9,10 +9,10 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process);
+use IPCShareableTest qw(assert_clean_process unique_glue);
 
 
-my $k = tie my %hv, 'IPC::Shareable', 'test', { create => 1, destroy => 1 , serializer => 'storable' };
+my $k = tie my %hv, 'IPC::Shareable', unique_glue('test'), { create => 1, destroy => 1 , serializer => 'storable' };
 
 # seg()
 
