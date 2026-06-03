@@ -11,6 +11,13 @@ BEGIN {
 IPC::Shareable->clean_up_testing('IPC::Shareable');
 IPC::Shareable->testing_set('IPC::Shareable');
 
+# The whole-suite leak check (t/00-base + t/99-end) compares global SysV IPC
+# counts, which is only meaningful when the suite runs serially and nothing
+# else on the host touches IPC. A parallel harness (eg. a smoker running with
+# HARNESS_OPTIONS=jN) interleaves many test files, so skip the comparison there
+# rather than emit a spurious failure.
+my $parallel = defined $ENV{HARNESS_OPTIONS} && $ENV{HARNESS_OPTIONS} =~ /(?:^|:)j[0-9]/;
+
 my $segs_before = IPC::Shareable::seg_count();
 my $sems_before = IPC::Shareable::sem_count();
 warn "Segs Before: $segs_before\n" if $ENV{PRINT_SEGS};
@@ -41,6 +48,11 @@ $store{sems} = IPC::Shareable::sem_count() - 1;
 IPC::Shareable::_end;
 
 warn "Segs After: " . IPC::Shareable::seg_count() . "\n" if $ENV{PRINT_SEGS};
-is IPC::Shareable::seg_count(), $segs_before + 1, "No segs left after test suite run ok";
+
+SKIP: {
+    skip "whole-suite IPC count check is serial-only (parallel harness detected)", 1
+        if $parallel;
+    is IPC::Shareable::seg_count(), $segs_before + 1, "No segs left after test suite run ok";
+}
 
 done_testing();

@@ -24,8 +24,9 @@ Revision history for Perl extension IPC::Shareable.
       global seg_count()/sem_count() before/after comparisons (which drift
       whenever any other process touches SysV IPC) with a process-scoped
       assert_clean_process() across the remaining test files. The suite now
-      passes under `prove -j4`. (Still global by design: t/00-base + t/99-end,
-      an intentional whole-suite leak check.)
+      passes under `prove -j4`. (t/00-base + t/99-end keep an intentional
+      whole-suite global leak check; it now runs only in serial and is skipped
+      under a parallel harness, ie. HARNESS_OPTIONS=jN.)
     - Gave each remaining test its own per-run System V IPC keys: replaced the
       hardcoded glue strings/keys in ~30 test files with unique_glue(), so two
       smokers running the same test file at once no longer collide on the same
