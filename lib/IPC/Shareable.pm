@@ -1217,6 +1217,16 @@ sub clean_up_testing {
 
         next unless _testing_semaphore_value($sem) == $target;
 
+        # Don't tear down a segment another *live* process owns -- eg. a sibling
+        # test file under `prove -j`, or a concurrent smoker testing the same
+        # dist. Segments this process created ($cpid == $$), and orphans whose
+        # creator process has exited, are still removed.
+        my $probe = bless {}, 'IPC::Shareable::SharedMem';
+        $probe->id($id);
+        my $stat = eval { $probe->stat };
+        my $cpid = defined $stat ? $stat->cpid : undef;
+        next if defined $cpid && $cpid > 0 && $cpid != $$ && kill 0, $cpid;
+
         if (shmctl($id, IPC_RMID, 0)) {
             $sem->remove;
             delete $process_register{$id};
@@ -3269,14 +3279,22 @@ Croaks if C<$dist_name> is undefined or empty.
     IPC::Shareable->clean_up_testing('My::Distribution');
 
 Performs a B<system-wide> scan for every IPC::Shareable segment whose
-C<SEM_TESTING> semaphore slot contains the CRC32 hash of C<$dist_name>, then
-unconditionally removes each matching segment and its semaphore set.
+C<SEM_TESTING> semaphore slot contains the CRC32 hash of C<$dist_name>, and
+removes each matching segment and its semaphore set -- B<except> one that
+another, still-running process owns.
+
+A matching segment is removed when it was created by the calling process, or
+when its creator process has since exited (ie. an orphan left by a crashed run).
+A segment whose creator is still alive in some other process is left untouched.
+This makes the call safe to use even while the same distribution's test suite is
+running concurrently -- under C<prove -j>, or by several smokers at once -- where
+it would otherwise tear down segments those sibling processes are still using.
 
 Unlike L</clean_up_all>, this function is not limited to segments in
 C<%global_register>: it will find and remove orphaned segments from previous
 crashed test runs.  Unlike L<clean_up_protected|/clean_up_protected($protect_key)>,
-it deliberately ignores the C<protected> attribute -- segments tagged with
-C<testing> are always removed.
+it deliberately ignores the C<protected> attribute -- a matching segment tagged
+with C<testing> is removed regardless.
 
 The typical usage is at the top of the first test file (before any segments are
 created) to clear orphans, and optionally at the end of the last test file as a

@@ -8,14 +8,16 @@ BEGIN {
     use_ok('IPC::Shareable');
 };
 
+# Clear stale testing segments left behind by a previously crashed run.
+# clean_up_testing() only removes segments this process created or whose creator
+# process has exited, so it is safe to run even under a parallel harness -- it
+# will not touch a concurrently-running sibling test file's live segments.
 IPC::Shareable->clean_up_testing('IPC::Shareable');
 IPC::Shareable->testing_set('IPC::Shareable');
 
-# The whole-suite leak check (t/00-base + t/99-end) compares global SysV IPC
-# counts, which is only meaningful when the suite runs serially and nothing
-# else on the host touches IPC. A parallel harness (eg. a smoker running with
-# HARNESS_OPTIONS=jN) interleaves many test files, so skip the comparison there
-# rather than emit a spurious failure.
+# The whole-suite *count* comparison (below, and in t/99-end) is still inherently
+# global, so it stays serial-only: skip it under a parallel harness (eg. a
+# smoker running with HARNESS_OPTIONS=jN).
 my $parallel = defined $ENV{HARNESS_OPTIONS} && $ENV{HARNESS_OPTIONS} =~ /(?:^|:)j[0-9]/;
 
 my $segs_before = IPC::Shareable::seg_count();

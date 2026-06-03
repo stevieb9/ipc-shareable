@@ -1,42 +1,26 @@
 Revision history for Perl extension IPC::Shareable.
 
 1.18 UNREL
-    - Fix intermittent CPAN test failures seen under parallel smokers (eg.
-      Slaven Rezić's, which test many perls against the same release at once).
-      The affected tests assumed exclusive use of System V IPC: they used fixed
-      glue keys, so concurrent runs collided on the same shm segment and
-      semaphore set (corrupt reads, EINVAL on removal, "segment hasn't been
-      created yet"); and they compared global seg_count()/sem_count() totals,
-      so unrelated IPC activity on the host perturbed the "all cleaned up"
-      checks. Added a test helper, t/IPCShareableTest.pm, providing
-      unique_glue() (per-run keys), assert_clean() (run-scoped OS-level cleanup
-      check) and live_seg_count() (process-scoped segment count); converted
-      t/18, t/19, t/24, t/26, t/28, t/32 and t/44 to use them
-    - t/26-ipcav.t: replace the SIGALRM/sleep handshake (a lost-wakeup race
-      that could hang the test forever -- a CPAN smoker SIGKILLed a stuck run)
-      with a blocking two-pipe handshake, matching t/19 and t/24. The race was
-      previously masked by the key-collision cross-talk fixed above
-    - t/47-seg_size.t: skip the "size beyond max RAM must croak" check on a
-      32-bit size_t (eg. i686 perls built with use64bitint, whose ivsize is 8
-      so the existing guard misses them) -- there a > 4 GB size wraps modulo
-      2**32 to an allocatable value and the tie succeeds instead of failing
-    - Made the rest of the suite's cleanup checks parallel-safe: replaced the
-      global seg_count()/sem_count() before/after comparisons (which drift
-      whenever any other process touches SysV IPC) with a process-scoped
-      assert_clean_process() across the remaining test files. The suite now
-      passes under `prove -j4`. (t/00-base + t/99-end keep an intentional
-      whole-suite global leak check; it now runs only in serial and is skipped
-      under a parallel harness, ie. HARNESS_OPTIONS=jN.)
-    - Gave each remaining test its own per-run System V IPC keys: replaced the
-      hardcoded glue strings/keys in ~30 test files with unique_glue(), so two
-      smokers running the same test file at once no longer collide on the same
-      segment (the original failure mode). t/69-testing_flag.t also uses a
-      per-run dist name so clean_up_testing()'s system-wide scan matches only
-      its own segments. t/72-shm_segments.t was reworked to derive its expected
-      hex keys from per-run unique keys (hexkey()) rather than asserting on
-      fixed literals. The one test that still needs fixed keys by nature, and so
-      stays serial-only, is t/06-key.t (it pins the glue->key algorithm to known
-      CRC32 values)
+    - Fix intermittent CPAN test failures under parallel smokers: the tests
+      assumed exclusive use of System V IPC. Added t/IPCShareableTest.pm
+      (unique_glue, assert_clean, assert_clean_process, live_seg_count) and
+      converted the fork tests (t/18, 19, 24, 26, 28, 32, 44) to per-run keys
+      and run-scoped cleanup checks
+    - t/26-ipcav.t: replace the SIGALRM/sleep handshake (a lost-wakeup race that
+      could hang the test; SIGKILLed on a smoker) with a two-pipe handshake
+    - t/47-seg_size.t: skip the "size > max RAM must croak" check where size_t
+      is 32-bit (the size wraps to an allocatable value and the tie succeeds)
+    - Replace the remaining global seg_count()/sem_count() cleanup comparisons
+      with a process-scoped assert_clean_process(); the suite now passes under
+      `prove -j4`. t/00-base + t/99-end keep a whole-suite global count check,
+      now serial-only (skipped under HARNESS_OPTIONS=jN)
+    - Re-key ~30 more tests with per-run unique keys so concurrent same-file
+      runs can't collide. t/69 uses a per-run dist name; t/72 derives its
+      expected hex from its keys. t/06-key keeps fixed keys (it pins the
+      key-generation algorithm) and stays serial-only
+    - clean_up_testing(): remove only segments the caller created or whose
+      creator has exited; leave another live process's in-use segments alone,
+      so it is safe under `prove -j` and concurrent smokers
 
 1.17    2026-05-31
     - POD enhancements regarding testing_set() and clean_up_testing()
