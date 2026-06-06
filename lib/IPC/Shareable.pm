@@ -191,6 +191,16 @@ sub STORE {
     }
     elsif ($knot->{_type_int} == TYPE_SCALAR) {
         my ($val) = @_;
+
+        # The 'raw' serializer stores the caller's pre-serialized string
+        # verbatim. A ref has no meaning there (the caller owns serialization),
+        # so reject it here before _magic_tie would spin up a child segment.
+
+        if ($knot->attributes('serializer') eq 'raw' && ref $val) {
+            croak "The 'raw' serializer expects a pre-serialized string scalar, " .
+                "but got a " . ref($val) . " reference";
+        }
+
         if ($knot->{_data} && ref($knot->{_data})) {
             _remove_child(${$knot->{_data}});
         }
@@ -1255,6 +1265,10 @@ sub _encode {
         return _freeze($seg, $data);
     }
 
+    if ($serializer eq 'raw') {
+        return _encode_raw($seg, $data);
+    }
+
     return _encode_json($seg, $data);
 }
 sub _decode {
@@ -1470,6 +1484,35 @@ sub _decode_json_reattach {
         tie $s, 'IPC::Shareable', \%opts;
         return \$s;
     }
+}
+sub _encode_raw {
+    my ($seg, $data) = @_;
+
+    # 'raw' stores a caller-pre-serialized scalar verbatim in a single segment.
+    # $data is the scalar ref held in {_data}; its value must be a plain string.
+    # A ref is misuse (an object, coderef, etc.); STORE rejects it earlier, so
+    # this is a backstop that also covers a misconfigured non-scalar tie.
+
+    my $type = Scalar::Util::reftype($data) // '';
+    my $val  = ($type eq 'SCALAR' || $type eq 'REF') ? $$data : $data;
+
+    if (ref $val) {
+        croak "The 'raw' serializer expects a pre-serialized string scalar, " .
+            "but got a " . ref($val) . " reference";
+    }
+
+    $val = '' if ! defined $val;
+
+    # Keep the 14-byte 'IPC::Shareable' tag so shm_segments(), clean_up_testing()
+    # and foreign-segment detection still recognize the segment as ours.
+
+    my $raw = 'IPC::Shareable' . $val;
+
+    if (length($raw) > $seg->size) {
+        croak "Length of shared data exceeds shared segment size";
+    }
+
+    $seg->shmwrite($raw);
 }
 sub _freeze {
     my ($seg, $water) = @_;
