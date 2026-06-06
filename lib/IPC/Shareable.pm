@@ -1587,6 +1587,13 @@ sub _tie {
 
     $opts  = _parse_args($opts);
 
+    # The 'raw' serializer stores a single pre-serialized scalar verbatim in one
+    # segment; it has no meaning for aggregate (HASH/ARRAY) ties.
+
+    if ($opts->{serializer} eq 'raw' && $type ne 'SCALAR') {
+        croak "The 'raw' serializer is only supported for SCALAR ties, not $type";
+    }
+
     my $knot = bless { attributes => $opts }, $class;
 
     $knot->uuid;
@@ -1722,6 +1729,14 @@ sub _tie {
         else {
             $knot->{_data} = $data;
         }
+    }
+    elsif ($serializer eq 'raw') {
+        # 'raw' stores the caller's pre-serialized string verbatim; decoding
+        # just strips our tag and trailing padding. Use _decode (not _thaw) —
+        # handing raw bytes to Storable's thaw() would die when attaching to an
+        # existing raw segment.
+
+        $knot->{_data} = $knot->_decode($seg);
     }
     else {
         $knot->{_data} = _thaw($seg);

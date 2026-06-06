@@ -1,8 +1,8 @@
 # Plan: Pre-serialized single-segment scalar storage
 
-> **NEXT ACTION:** Proceed with V4 — `_tie` raw post-attach branch + cross-process attach
-> **LAST SESSION:** V3 ✅ — `_decode_raw` reads verbatim, strips only trailing padding, untagged → undef (internal NULs preserved)
-> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V3
+> **NEXT ACTION:** Proceed with V5 — full-suite regression (`prove -lj4 t/`) with raw implemented
+> **LAST SESSION:** V4 ✅ — raw post-attach uses `_decode` (cross-process attach works); raw enforced SCALAR-only at tie time
+> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V4
 
 ## Objective
 
@@ -198,7 +198,6 @@ explicit `raw` mode and the json **auto-sense** mode.
 
 | ID | What | Command | Expected | Actual |
 |----|------|---------|----------|--------|
-| V4 | `_tie` raw post-attach branch + cross-process attach (ref-store guard already added in V2) | proc A creates+stores raw blob; proc B attaches `create=>0, serializer=>'raw'` and reads | proc B reads identical bytes; attaching/reading needs no json/storable fallback; ref-store still croaks | ⏳ |
 | V5 | Regression: json/storable scalar, hash, array paths unchanged when `raw` not used | `prove -lj4 t/` | full suite green; no behavior change for existing serializers | ⏳ |
 | V6 | `t/94-raw-serializer.t` (parallel-safe, `unique_glue` from t/IPCShareableTest.pm): pre-serialize a deep structure, store via scalar tie, fetch raw, user `decode_json`, deep-compare; assert exactly ONE segment created (`seg_count` delta == 1); locked + unlocked FETCH; cross-process attach; payload edge cases (empty, whitespace, literal `IPC::Shareable` tag, `\x1e`, NUL, UTF-8/wide, near-`size`, over-`size` → croak) | `prove -lv t/94-raw-serializer.t` | all subtests pass | ⏳ |
 | V7 | Docs: POD `=head2 serializer` (`:2526`) + README `## serializer` (`:303`) + SERIALIZATION section document `raw` mode, the symmetric you-encode/you-decode contract, single-segment tradeoffs (sizing, whole-blob replace, no nested locking), retained 14-byte tag; add Changes entry at the BOTTOM of the `1.18 UNREL` section | `perldoc -T lib/IPC/Shareable.pm \| grep -A3 -i raw`; visual diff of Changes/README | docs describe raw mode + tradeoffs; Changes entry is last in its section | ⏳ |
