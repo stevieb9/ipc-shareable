@@ -2182,6 +2182,17 @@ sub _parse_args {
             $opts->{$k} = 0;
         }
     }
+    # Validate the serializer selection. 'json' (default) and 'storable' run
+    # our codecs; 'raw' means the caller pre-serializes and we store the scalar
+    # verbatim in a single segment (see the 'raw' serializer docs).
+
+    my $serializer = $opts->{serializer};
+
+    if ($serializer ne 'json' && $serializer ne 'storable' && $serializer ne 'raw') {
+        croak "Invalid 'serializer' value '$serializer'; must be one of " .
+            "'json', 'storable' or 'raw'";
+    }
+
     $opts->{owner} = ($opts->{owner} or $$);
     $opts->{magic} = ($opts->{magic} or 0);
 
