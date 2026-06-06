@@ -1,8 +1,8 @@
 # Plan: Pre-serialized single-segment scalar storage
 
-> **NEXT ACTION:** Proceed with V3 — `_decode` raw branch (verbatim read; empty/untagged → undef)
-> **LAST SESSION:** V2 ✅ — `_encode_raw` writes tag+payload verbatim; size guard + ref croak (STORE guard pulled forward from V4)
-> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V2
+> **NEXT ACTION:** Proceed with V4 — `_tie` raw post-attach branch + cross-process attach
+> **LAST SESSION:** V3 ✅ — `_decode_raw` reads verbatim, strips only trailing padding, untagged → undef (internal NULs preserved)
+> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V3
 
 ## Objective
 
@@ -198,7 +198,6 @@ explicit `raw` mode and the json **auto-sense** mode.
 
 | ID | What | Command | Expected | Actual |
 |----|------|---------|----------|--------|
-| V3 | `_decode` raw branch: verify tag, return `\substr(bytes,14)` stripping only trailing NULs; empty/untagged → undef | store then FETCH the scalar, both unlocked and under `shlock(LOCK_SH)` | FETCH returns byte-identical `'{"a":1}'` in both cases; fresh segment FETCHes undef | ⏳ |
 | V4 | `_tie` raw post-attach branch + cross-process attach (ref-store guard already added in V2) | proc A creates+stores raw blob; proc B attaches `create=>0, serializer=>'raw'` and reads | proc B reads identical bytes; attaching/reading needs no json/storable fallback; ref-store still croaks | ⏳ |
 | V5 | Regression: json/storable scalar, hash, array paths unchanged when `raw` not used | `prove -lj4 t/` | full suite green; no behavior change for existing serializers | ⏳ |
 | V6 | `t/94-raw-serializer.t` (parallel-safe, `unique_glue` from t/IPCShareableTest.pm): pre-serialize a deep structure, store via scalar tie, fetch raw, user `decode_json`, deep-compare; assert exactly ONE segment created (`seg_count` delta == 1); locked + unlocked FETCH; cross-process attach; payload edge cases (empty, whitespace, literal `IPC::Shareable` tag, `\x1e`, NUL, UTF-8/wide, near-`size`, over-`size` → croak) | `prove -lv t/94-raw-serializer.t` | all subtests pass | ⏳ |

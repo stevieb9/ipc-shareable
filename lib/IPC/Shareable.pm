@@ -1276,9 +1276,10 @@ sub _decode {
 
     my $serializer = $knot->attributes('serializer');
 
-    my $data = $serializer eq 'storable'
-        ? _thaw($seg)
-        : _decode_json($seg, $knot);
+    my $data
+        = $serializer eq 'storable' ? _thaw($seg)
+        : $serializer eq 'raw'      ? _decode_raw($seg)
+        :                             _decode_json($seg, $knot);
 
     return $data if defined $data;
 
@@ -1513,6 +1514,27 @@ sub _encode_raw {
     }
 
     $seg->shmwrite($raw);
+}
+sub _decode_raw {
+    my ($seg) = @_;
+
+    # Mirror of _encode_raw: the segment holds the 14-byte 'IPC::Shareable' tag
+    # followed by the caller's verbatim pre-serialized string. We strip only the
+    # trailing NUL padding that shmwrite() adds to fill the segment (NOT at the
+    # first NUL), then return a scalar ref to the remaining bytes. A segment with
+    # no tag (never written) yields undef so the scalar reads back as undef.
+
+    my $raw = $seg->shmread;
+
+    return if ! defined $raw;
+
+    $raw =~ s/\x00+$//;
+
+    my $tag = substr $raw, 0, 14, '';
+
+    return if $tag ne 'IPC::Shareable';
+
+    return \$raw;
 }
 sub _freeze {
     my ($seg, $water) = @_;
