@@ -1,8 +1,8 @@
 # Plan: Pre-serialized single-segment scalar storage
 
-> **NEXT ACTION:** Proceed with V10 — write `t/94-scalar-verbatim.t` (automatic-behavior tests)
-> **LAST SESSION:** V9 ✅ — `_decode_verbatim` wired (sentinel peek); suite green (1257). Updated t/67 + t/60 for verbatim behavior (Fix 1)
-> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V9
+> **NEXT ACTION:** Proceed with V11 — write `t/95-scalar-verbatim-edge.t` (backward-compat + storable + validation)
+> **LAST SESSION:** V10 ✅ — t/94-scalar-verbatim.t (37 tests); serial suite 1296 green (no leak; `prove -j4` w/o HARNESS_OPTIONS races t/99)
+> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V10
 
 ## Objective
 
@@ -203,9 +203,8 @@ explicit `raw` mode and the json **auto-sense** mode.
 
 | ID | What | Command | Expected | Actual |
 |----|------|---------|----------|--------|
-| V10 | Write `t/94-scalar-verbatim.t` (automatic; no `serializer=>'raw'`): plain & JSON strings round-trip verbatim + single-segment; numbers→string (`==`); undef preserved; refs fan out; flip-flop string↔ref; locked/unlocked; cross-process; payload hazards (tag, `\x1e`, NUL, UTF-8, over-`size`) | `prove -lv t/94-scalar-verbatim.t` | all subtests pass | ⏳ |
 | V11 | `t/95-scalar-verbatim-edge.t` (parallel-safe): backward-compat reads of pre-existing `{__sv__}`/`{__ics__}` segments AND a manually-built legacy Storable-frozen scalar segment → json fallback still warns/switches; storable scalar verbatim (plain) vs ref-freeze; hash/array ties unaffected; only json/storable accepted as serializer | `prove -lv t/95-scalar-verbatim-edge.t` | all subtests pass | ⏳ |
-| V12 | **Docs + Changes + regression**: README/POD scalar section gets the simple "arbitrary data; encode→decode; plain in/plain out" paragraph (NO `raw`/sentinel/mechanism mentioned); ONE Changes entry at the bottom of `1.18 UNREL`; full suite green | `prove -lj4 t/`; visual diff README/Changes | user-facing docs only; suite green; Changes entry last in section | ⏳ |
+| V12 | **Docs + Changes + regression**: README/POD scalar section gets the simple "arbitrary data; encode→decode; plain in/plain out" paragraph (NO `raw`/sentinel/mechanism mentioned); ONE Changes entry at the bottom of `1.18 UNREL`; full suite green | `prove -l t/` (serial — runs t/99 leak check); visual diff README/Changes | user-facing docs only; suite green; Changes entry last in section | ⏳ |
 
 ## Discovery Tracking
 
