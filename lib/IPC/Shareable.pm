@@ -192,15 +192,6 @@ sub STORE {
     elsif ($knot->{_type_int} == TYPE_SCALAR) {
         my ($val) = @_;
 
-        # The 'raw' serializer stores the caller's pre-serialized string
-        # verbatim. A ref has no meaning there (the caller owns serialization),
-        # so reject it here before _magic_tie would spin up a child segment.
-
-        if ($knot->attributes('serializer') eq 'raw' && ref $val) {
-            croak "The 'raw' serializer expects a pre-serialized string scalar, " .
-                "but got a " . ref($val) . " reference";
-        }
-
         if ($knot->{_data} && ref($knot->{_data})) {
             _remove_child(${$knot->{_data}});
         }
@@ -1265,10 +1256,6 @@ sub _encode {
         return _freeze($seg, $data);
     }
 
-    if ($serializer eq 'raw') {
-        return _encode_raw($seg, $data);
-    }
-
     return _encode_json($seg, $data);
 }
 sub _decode {
@@ -1276,10 +1263,9 @@ sub _decode {
 
     my $serializer = $knot->attributes('serializer');
 
-    my $data
-        = $serializer eq 'storable' ? _thaw($seg)
-        : $serializer eq 'raw'      ? _decode_raw($seg)
-        :                             _decode_json($seg, $knot);
+    my $data = $serializer eq 'storable'
+        ? _thaw($seg)
+        : _decode_json($seg, $knot);
 
     return $data if defined $data;
 
@@ -1587,13 +1573,6 @@ sub _tie {
 
     $opts  = _parse_args($opts);
 
-    # The 'raw' serializer stores a single pre-serialized scalar verbatim in one
-    # segment; it has no meaning for aggregate (HASH/ARRAY) ties.
-
-    if ($opts->{serializer} eq 'raw' && $type ne 'SCALAR') {
-        croak "The 'raw' serializer is only supported for SCALAR ties, not $type";
-    }
-
     my $knot = bless { attributes => $opts }, $class;
 
     $knot->uuid;
@@ -1729,14 +1708,6 @@ sub _tie {
         else {
             $knot->{_data} = $data;
         }
-    }
-    elsif ($serializer eq 'raw') {
-        # 'raw' stores the caller's pre-serialized string verbatim; decoding
-        # just strips our tag and trailing padding. Use _decode (not _thaw) —
-        # handing raw bytes to Storable's thaw() would die when attaching to an
-        # existing raw segment.
-
-        $knot->{_data} = $knot->_decode($seg);
     }
     else {
         $knot->{_data} = _thaw($seg);
@@ -2262,15 +2233,13 @@ sub _parse_args {
             $opts->{$k} = 0;
         }
     }
-    # Validate the serializer selection. 'json' (default) and 'storable' run
-    # our codecs; 'raw' means the caller pre-serializes and we store the scalar
-    # verbatim in a single segment (see the 'raw' serializer docs).
+    # Validate the serializer selection. 'json' (default) and 'storable' are the
+    # only user-selectable codecs.
 
     my $serializer = $opts->{serializer};
 
-    if ($serializer ne 'json' && $serializer ne 'storable' && $serializer ne 'raw') {
-        croak "Invalid 'serializer' value '$serializer'; must be one of " .
-            "'json', 'storable' or 'raw'";
+    if ($serializer ne 'json' && $serializer ne 'storable') {
+        croak "Invalid 'serializer' value '$serializer'; must be 'json' or 'storable'";
     }
 
     $opts->{owner} = ($opts->{owner} or $$);

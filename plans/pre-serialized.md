@@ -1,8 +1,8 @@
 # Plan: Pre-serialized single-segment scalar storage
 
-> **NEXT ACTION:** Proceed with V5 — full-suite regression (`prove -lj4 t/`) with raw implemented
-> **LAST SESSION:** V4 ✅ — raw post-attach uses `_decode` (cross-process attach works); raw enforced SCALAR-only at tie time
-> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V4
+> **NEXT ACTION:** Proceed with V8 — automatic verbatim encode (`_encode`: SCALAR + `defined && ! ref` → `tag.\x1e.bytes`)
+> **LAST SESSION:** V7 ✅ — un-exposed `raw` (option + guards removed, t/94 deleted); suite green (1258); codec helpers kept for V8/V9
+> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V7
 
 ## Objective
 
@@ -83,49 +83,54 @@ Why a `serializer` value and not a separate boolean: it reuses the existing disp
 mutually exclusive with json/storable by construction (no "raw + storable?" confusion), and
 it reads naturally as "the user owns serialization."
 
-### Design decision #3 — auto-sensing on the json serializer (in scope: V8–V10)
+### Design decision #3 — verbatim scalar storage is AUTOMATIC and invisible (no public `raw`)
 
-The original framing ("sense whether the data is already JSON serialized and bypass") is a
-**convenience layer** on top of the json serializer. Per the user's decision ("Raw +
-auto-sense now") it ships in this pass as V8–V10, alongside the explicit `raw` mode. It is
-controlled by a new `detect_serialized` attribute, **default on**, with an off switch for
-callers who need byte-identical legacy segments. Design basis:
+**Pivot (supersedes the V1–V6 public `serializer => 'raw'`):** the user decided NOT to
+expose `raw` as a user-facing option ("users need not know about it"). A tied scalar should
+just store arbitrary data — plain in, plain out — with **no new API surface**. So the
+verbatim codec stays, but it is never user-selected; it triggers automatically.
 
-- A json-mode reader cannot tell "wrapped `{__sv__}`" from "raw passthrough" without an
-  **in-band marker**. Normal encoded bodies always begin with `{` or `[` (because
-  `_encode_json_prepare` always returns a ref or an `__sv__` hash), so a one-byte sentinel
-  that is neither `{`/`[` nor NUL (NUL would trip `SharedMem::data()`'s truncation at
-  `:181`) — e.g. `\x1e` — placed right after the 14-byte tag disambiguates cleanly and stays
-  backward-compatible (old segments → `{`/`[` → normal path).
-- Detection policy options: (A) broad `eval { decode_json($val); 1 }` — also matches bare
-  numbers/booleans/null and costs a full parse per store; (B) narrow: defined, non-ref,
-  `m/^\s*[\[{]/ && m/[\]}]\s*$/`, then validate — targets real pre-encoded structures and
-  avoids number-vs-string flattening; (C) skip validation entirely and trust the structural
-  sniff (correctness doesn't depend on validity because our decode never re-parses a raw
-  payload — only an external reader expecting valid JSON would care).
-- Key safety insight: for any **string** value, raw passthrough is observationally identical
-  to the current `__sv__` path (string in → same string out), so a detection false positive
-  never corrupts a round-trip — it only changes segment bytes. The exception is bare numeric/
-  boolean scalars (JSON number `42` vs string `"42"`), which is exactly why policy B excludes
-  non-container values.
+**The rule (per-value, decided in `_encode`/`_decode`, serializer-agnostic):**
+for a **SCALAR** tie, if the stored value is `defined && ! ref` → store it **verbatim**;
+otherwise use the configured serializer's normal path:
+- **ref** → fans out into child segment(s) (json) / freezes (storable), unchanged;
+- **undef** → normal path (`{"__sv__":null}` / storable), so `undef` stays `undef`;
+- **hash/array ties** → entirely unchanged.
 
-### Edge cases / constraints (apply to the `raw` V-tasks)
+The only check is `ref()`. No `detect_serialized` attribute, no JSON sniff, no
+`decode_json` validation. Numbers come back as their string form (accepted: "plain in,
+plain out"; Perl coerces). Strings round-trip byte-identical — the actual goal.
 
-- **Refs in raw mode:** croak with a clear message ("raw serializer expects a pre-serialized
-  string"). `_magic_tie`/`_need_tie` are ref-gated and won't fire for strings.
-- **Segment sizing:** the whole blob lives in one segment, so the caller must set `size`
-  large enough. The existing `length > $seg->size` croak (`:1286`/`:1482`) is the guard.
-  This is a real tradeoff vs. the fan-out approach (which spreads data across segments).
-- **Concurrency granularity:** updates are whole-blob replace; there is no nested tie magic
-  and no per-child locking. Document; this is intentional (see "Explicitly NOT doing").
-- **NUL bytes:** `_decode` for raw should read via `shmread` and strip only trailing NUL
-  padding, *not* truncate at the first NUL (`SharedMem::data()` truncates at first NUL,
-  `:181`). JSON text is NUL-free, but be explicit so binary-ish payloads aren't silently cut.
-- **`_tie` post-attach (`:1629-1663`):** add a `raw` branch that just sets
-  `$knot->{_data} = $knot->_decode($seg)` and skips the json/storable fallback dance.
+**In-band marker (still required):** a verbatim segment must be distinguishable from a
+normal `{…}`/storable body so the *reader* knows not to deserialize. Layout:
+`'IPC::Shareable'` (14-byte tag) + `\x1e` (1-byte sentinel) + verbatim bytes. Normal json
+bodies always start `{`/`[`; storable has its own header; neither is `\x1e`. The sentinel
+peek sits at the top of `_decode` (before serializer dispatch) so json- and
+storable-configured readers both recognize a verbatim segment.
+
+**Docs (all the user ever sees):** "A tied scalar can store arbitrary data. If you encode
+it, you decode it; if you send in plain data, you get back plain data." No mention of
+`raw`, sentinels, or the internal mechanism — keeps the normal usage uncluttered.
+
+**Compatibility:** new code reads old `{__sv__}` / storable scalar segments fine; a verbatim
+segment is unreadable by a pre-feature IPC::Shareable (it'd choke on `\x1e`) — new release only.
+
+### Edge cases / constraints
+
+- **Refs in a scalar tie:** NOT verbatim — a ref takes the normal serializer path (json
+  `__ics__` fan-out / storable freeze), exactly as today. No croak (that was the abandoned
+  public-`raw` behavior). The verbatim branch is gated on `! ref`.
+- **Segment sizing:** a verbatim blob lives in one segment, so the caller sets `size` large
+  enough. The existing `length > $seg->size` croak (`:1286`/`:1482`) is the guard.
+- **NUL bytes:** verbatim decode reads via `shmread` and strips only trailing NUL padding,
+  *not* at the first NUL (`SharedMem::data()` truncates at first NUL, `:181`). JSON/text is
+  NUL-free; internal NULs are preserved (verified in V3/V6).
+- **`_decode` ordering:** the `\x1e` sentinel peek runs *before* serializer dispatch so both
+  json- and storable-configured readers recognize a verbatim segment; `_tie` post-attach must
+  route through `_decode` (not a bare `_thaw`) so storable scalars catch verbatim segments too.
 - **Introspection:** `shm_segments()` child-key regex won't false-match (no children) unless
-  a raw payload literally contains `"child_key_hex":"…"` — a pre-existing theoretical class
-  of issue, not a regression; note it.
+  a verbatim payload literally contains `"child_key_hex":"…"` — a pre-existing theoretical
+  class of issue, not a regression; note it.
 
 ### Edge-case & test matrix (drives V6, V10, V11)
 
@@ -198,14 +203,11 @@ explicit `raw` mode and the json **auto-sense** mode.
 
 | ID | What | Command | Expected | Actual |
 |----|------|---------|----------|--------|
-| V5 | Regression: json/storable scalar, hash, array paths unchanged when `raw` not used | `prove -lj4 t/` | full suite green; no behavior change for existing serializers | ⏳ |
-| V6 | `t/94-raw-serializer.t` (parallel-safe, `unique_glue` from t/IPCShareableTest.pm): pre-serialize a deep structure, store via scalar tie, fetch raw, user `decode_json`, deep-compare; assert exactly ONE segment created (`seg_count` delta == 1); locked + unlocked FETCH; cross-process attach; payload edge cases (empty, whitespace, literal `IPC::Shareable` tag, `\x1e`, NUL, UTF-8/wide, near-`size`, over-`size` → croak) | `prove -lv t/94-raw-serializer.t` | all subtests pass | ⏳ |
-| V7 | Docs: POD `=head2 serializer` (`:2526`) + README `## serializer` (`:303`) + SERIALIZATION section document `raw` mode, the symmetric you-encode/you-decode contract, single-segment tradeoffs (sizing, whole-blob replace, no nested locking), retained 14-byte tag; add Changes entry at the BOTTOM of the `1.18 UNREL` section | `perldoc -T lib/IPC/Shareable.pm \| grep -A3 -i raw`; visual diff of Changes/README | docs describe raw mode + tradeoffs; Changes entry is last in its section | ⏳ |
-| V8 | json auto-sense **write**: add `detect_serialized` attribute (default `1`) to `%default_options` + `_parse_args` validation; add `_looks_pre_serialized` (policy B); thread `$knot` into `_encode_json` and, for a json SCALAR whose value matches, write `'IPC::Shareable' . "\x1e" . $$data` instead of the `{__sv__}` wrapper (keep size guard) | store `'{"a":1}'` via a plain json scalar tie; dump `seg->shmread` | bytes == `IPC::Shareable\x1e{"a":1}`; `'hello'` still stored as `{"__sv__":"hello"}` | ⏳ |
-| V9 | json auto-sense **read** + backward compat: in `_decode_json`, after stripping the 14-byte tag, if byte 0 == `\x1e` strip it and return `\$rest` verbatim; else the existing `decode_json` / `__sv__` / `__ics__` path | round-trip a sentinel value; also read a legacy `{__sv__}` and an `{__ics__}` segment | sentinel value FETCHes byte-identical; legacy `__sv__`/`__ics__` segments still decode | ⏳ |
-| V10 | `t/95-detect-serialized.t` (parallel-safe, `unique_glue`): auto-sense matrix — object/array/deep JSON strings → sentinel + identical round-trip; numbers, bools, `null`, plain strings, invalid-JSON-looking strings → normal `{__sv__}` path; flip-flop (wrapped → sentinel → wrapped); `detect_serialized=>0` restores exact legacy bytes; backward-compat reads of old segments | `prove -lv t/95-detect-serialized.t` | all subtests pass | ⏳ |
-| V11 | `t/96-pre-serialized-validation.t` (parallel-safe): **param validation + misuse + refs**. Bad `serializer` croaks; `raw`+`var=>HASH/ARRAY` croaks; `detect_serialized` inert for storable. In **raw** mode every ref croaks clearly — blessed object, cref, glob, `qr//`, hashref/arrayref/scalarref, IPC::Shareable child. In **json auto-sense** mode object/cref behavior is **unchanged from today** (blessed → serialized via `-convert_blessed_universally`; cref → croaks). Payload hazards (literal tag, `\x1e`, NUL, `__sv__`/`child_key_hex` text, UTF-8, over-`size`) | `prove -lv t/96-pre-serialized-validation.t` | all subtests pass | ⏳ |
-| V12 | Docs for auto-sense: POD + README document `detect_serialized` (default on), the `\x1e` sentinel format, the symmetric contract, and the **cross-version caveat** (sentinel segments unreadable by pre-feature IPC::Shareable; new code still reads old segments). Changes entry at BOTTOM of `1.18 UNREL`. Confirm full suite | `prove -lj4 t/`; `perldoc -T lib/IPC/Shareable.pm \| grep -i detect_serialized` | docs updated; suite green; Changes entry last in section | ⏳ |
+| V8 | **Automatic verbatim encode**: in `_encode`, for a SCALAR tie whose `_data` is a scalar-ref to a `defined && ! ref` value, write `'IPC::Shareable'."\x1e".$val` via `_encode_verbatim` (size guard) instead of json/storable; refs/undef fall through | store `'{"a":1}'` via a plain **json** scalar tie; dump `seg->shmread` | bytes == `IPC::Shareable\x1e{"a":1}`; hashref still fans out; undef → `{"__sv__":null}` | ⏳ |
+| V9 | **Automatic verbatim decode** + post-attach: add `_decode_verbatim` (peek tag+`\x1e` → `\$rest`, else undef) at the top of `_decode`; route `_tie` post-attach through `_decode` for storable too | round-trip a plain string and a number via a json scalar; read a legacy `{__sv__}` segment; cross-process attach | string byte-identical; number returns as string (`==`); legacy `{__sv__}`/`{__ics__}` still decode; cross-process verbatim | ⏳ |
+| V10 | Write `t/94-scalar-verbatim.t` (automatic; no `serializer=>'raw'`): plain & JSON strings round-trip verbatim + single-segment; numbers→string (`==`); undef preserved; refs fan out; flip-flop string↔ref; locked/unlocked; cross-process; payload hazards (tag, `\x1e`, NUL, UTF-8, over-`size`) | `prove -lv t/94-scalar-verbatim.t` | all subtests pass | ⏳ |
+| V11 | `t/95-scalar-verbatim-edge.t` (parallel-safe): backward-compat reads of pre-existing `{__sv__}`/`{__ics__}` segments; storable scalar verbatim (plain) vs ref-freeze; hash/array ties unaffected; only json/storable accepted as serializer | `prove -lv t/95-scalar-verbatim-edge.t` | all subtests pass | ⏳ |
+| V12 | **Docs + Changes + regression**: README/POD scalar section gets the simple "arbitrary data; encode→decode; plain in/plain out" paragraph (NO `raw`/sentinel/mechanism mentioned); ONE Changes entry at the bottom of `1.18 UNREL`; full suite green | `prove -lj4 t/`; visual diff README/Changes | user-facing docs only; suite green; Changes entry last in section | ⏳ |
 
 ## Discovery Tracking
 
@@ -221,7 +223,7 @@ B3: Benchmark raw-scalar-single-segment vs. native fan-out tie on a deep structu
 
 ## Explicitly NOT doing
 
-- **Auto-decode on read by default** — breaks scalar-tie semantics, re-incurs the decode cost we're eliminating, and returns a detached non-shared ref. Read is a symmetric bypass (Design decision #1).
-- **Partial/nested updates or per-child locking in raw mode** — raw is whole-blob replace by design; callers wanting sub-structure locking should use a normal hash/array tie.
-- **Dropping the 14-byte `IPC::Shareable` tag in raw mode** — would make segments invisible to `shm_segments()` / `clean_up_testing` and orphan them.
-- **In-band serializer self-description for `raw`** — both ends agree via the `serializer` attribute, consistent with existing json/storable expectations. The `\x1e` sentinel lives only on the json auto-sense path (V8/V9); `raw` mode stays sentinel-free.
+- **Public `serializer => 'raw'` option** — verbatim storage is internal and automatic only (SCALAR tie + `defined && ! ref`); users never select it. Keeps the normal API surface unchanged (Design decision #3). The codec helpers exist; the *option* does not.
+- **Auto-decode on read by default** — breaks scalar-tie semantics, re-incurs the decode cost we're eliminating, and returns a detached non-shared ref. Read hands back the stored bytes; the user decodes (Design decision #1).
+- **Preserving number type through a verbatim scalar** — a stored number returns as its string form (still `==`). Accepted per "plain in, plain out"; not worth a fragile SvIOK/SvPOK sniff.
+- **Dropping the 14-byte `IPC::Shareable` tag for verbatim segments** — would make segments invisible to `shm_segments()` / `clean_up_testing` and orphan them. Tag stays; the `\x1e` sentinel follows it.
