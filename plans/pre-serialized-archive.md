@@ -10,7 +10,8 @@
 - V6: `t/94-raw-serializer.t` — round-trip, single-segment vs fan-out, strings/ints/floats, edge payloads (empty/ws/tag/\x1e/NUL/UTF-8/size), locked+unlocked, cross-process — ✅ 2026-06-06 attempt 1: PASS (31 tests)
 - V7: Un-expose `serializer => 'raw'` — removed public option + `_encode`/`_decode` raw branches + STORE ref-guard + `_tie` SCALAR-only croak/post-attach; deleted obsolete t/94-raw-serializer.t; codec helpers retained for V8/V9 — ✅ 2026-06-06 attempt 1: PASS (raw rejected; suite 1258 green)
 - V8: Automatic verbatim **encode** — `_encode` writes `tag.\x1e.bytes` for SCALAR + `defined && ! ref` (serializer-agnostic `_encode_verbatim`); refs fan out, undef → `{"__sv__":null}` — ✅ 2026-06-07 attempt 1: PASS (encode bytes verified; suite intentionally red until V9 decode)
+- V9: Automatic verbatim **decode** — `_decode_verbatim` sentinel peek at top of `_decode` (scalar-gated); `_tie` storable post-attach routed through `_decode`. Round-trip verified (plain/number/undef/ref/flip-flop, json+storable); storable freeze leads with 0x04 (never `\x1e`) so no collision; suite green (1257) — ✅ 2026-06-07 attempt 1: PASS
 
 ## Archived Fixes
 
-_None yet._
+- Fix 1 (from V9): t/67 block 1 and t/60 tests 12-13 asserted the old storable-scalar behavior (json fallback warning / `_thaw` croak driven through a scalar). Plain storable scalars now store verbatim and bypass freeze/thaw, so both were updated — t/67 block 1 asserts cross-serializer verbatim read with no fallback; t/60 exercises `_thaw` via a hash tie. Legacy frozen-scalar fallback coverage moved to V11.

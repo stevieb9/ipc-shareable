@@ -120,10 +120,12 @@ assert_clean_process();
     shmctl($leaked_id, IPC_RMID, 0) if defined $leaked_id;
 }
 
-# _thaw: croaks when Storable::thaw returns undef (munged segment)
+# _thaw: croaks when Storable::thaw returns undef (munged segment).
+# Uses an aggregate (hash) tie: a scalar holding a plain value is now stored
+# verbatim and never reaches _thaw, so the freeze/thaw path is exercised here.
 {
-    tie my $sv, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
-    $sv = 'hello';   # write so the segment carries the IPC::Shareable tag
+    tie my %h, 'IPC::Shareable', { create => 1, destroy => 1 , serializer => 'storable' };
+    %h = (k => 'hello');   # aggregate => Storable freeze (carries the tag)
 
     {
         # Override thaw via local typeglob, not Mock::Sub: Mock::Sub 1.08 (on
@@ -133,7 +135,7 @@ assert_clean_process();
         no warnings 'redefine';
         local *IPC::Shareable::thaw = sub { return };
 
-        is eval { my $x = $sv; 1 }, undef,
+        is eval { my $x = $h{k}; 1 }, undef,
             "_thaw: croaks when Storable::thaw returns undef";
         like $@, qr/Munged shared memory segment/,
             "_thaw: error message mentions munged segment";

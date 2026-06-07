@@ -1271,6 +1271,14 @@ sub _encode {
 sub _decode {
     my ($knot, $seg) = @_;
 
+    # A scalar tie's value may have been stored verbatim (tag + \x1e sentinel);
+    # recognize that before serializer dispatch, regardless of json/storable.
+
+    if ($knot->{_type_int} == TYPE_SCALAR) {
+        my $verbatim = _decode_verbatim($seg);
+        return $verbatim if defined $verbatim;
+    }
+
     my $serializer = $knot->attributes('serializer');
 
     my $data = $serializer eq 'storable'
@@ -1500,14 +1508,14 @@ sub _encode_verbatim {
 
     $seg->shmwrite($raw);
 }
-sub _decode_raw {
+sub _decode_verbatim {
     my ($seg) = @_;
 
-    # Mirror of _encode_raw: the segment holds the 14-byte 'IPC::Shareable' tag
-    # followed by the caller's verbatim pre-serialized string. We strip only the
-    # trailing NUL padding that shmwrite() adds to fill the segment (NOT at the
-    # first NUL), then return a scalar ref to the remaining bytes. A segment with
-    # no tag (never written) yields undef so the scalar reads back as undef.
+    # Recognize a verbatim scalar segment: the 14-byte 'IPC::Shareable' tag
+    # followed by the \x1e sentinel. Return a scalar ref to the bytes after the
+    # sentinel — trailing NUL padding stripped, internal NULs preserved. Return
+    # undef for anything else (a json {…}/[…] body, a storable body, or an
+    # empty/never-written segment) so _decode falls through to the serializer.
 
     my $raw = $seg->shmread;
 
@@ -1515,11 +1523,11 @@ sub _decode_raw {
 
     $raw =~ s/\x00+$//;
 
-    my $tag = substr $raw, 0, 14, '';
+    return if substr($raw, 0, 15) ne "IPC::Shareable\x1e";
 
-    return if $tag ne 'IPC::Shareable';
+    my $payload = substr($raw, 15);
 
-    return \$raw;
+    return \$payload;
 }
 sub _freeze {
     my ($seg, $water) = @_;
@@ -1709,7 +1717,7 @@ sub _tie {
         }
     }
     else {
-        $knot->{_data} = _thaw($seg);
+        $knot->{_data} = $knot->_decode($seg);
     }
 
     # Register unconditionally so any process that attaches to an existing
