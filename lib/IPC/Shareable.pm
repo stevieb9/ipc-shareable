@@ -1250,6 +1250,16 @@ sub clean_up_testing {
 sub _encode {
     my ($knot, $seg, $data) = @_;
 
+    # A scalar tie holding a plain (defined, non-ref) value is stored verbatim
+    # in a single segment — no serializer wrapping or escaping. Automatic and
+    # serializer-agnostic; refs and undef fall through to the configured
+    # serializer (refs fan out / freeze; undef → {"__sv__":null} / storable).
+
+    if ($knot->{_type_int} == TYPE_SCALAR && ref($data) eq 'SCALAR') {
+        my $val = $$data;
+        return _encode_verbatim($seg, $val) if defined $val && ! ref $val;
+    }
+
     my $serializer = $knot->attributes('serializer');
 
     if ($serializer eq 'storable') {
@@ -1472,28 +1482,17 @@ sub _decode_json_reattach {
         return \$s;
     }
 }
-sub _encode_raw {
-    my ($seg, $data) = @_;
+sub _encode_verbatim {
+    my ($seg, $val) = @_;
 
-    # 'raw' stores a caller-pre-serialized scalar verbatim in a single segment.
-    # $data is the scalar ref held in {_data}; its value must be a plain string.
-    # A ref is misuse (an object, coderef, etc.); STORE rejects it earlier, so
-    # this is a backstop that also covers a misconfigured non-scalar tie.
+    # Store a plain scalar verbatim. Layout: the 14-byte 'IPC::Shareable' tag
+    # (so shm_segments()/clean_up_testing still recognize the segment as ours),
+    # a one-byte \x1e sentinel marking "not serialized — hand these bytes back
+    # as-is", then the caller's bytes. The sentinel lets _decode tell this from
+    # a json {…} body or a storable header. The caller (_encode) guarantees
+    # $val is a defined, non-ref scalar.
 
-    my $type = Scalar::Util::reftype($data) // '';
-    my $val  = ($type eq 'SCALAR' || $type eq 'REF') ? $$data : $data;
-
-    if (ref $val) {
-        croak "The 'raw' serializer expects a pre-serialized string scalar, " .
-            "but got a " . ref($val) . " reference";
-    }
-
-    $val = '' if ! defined $val;
-
-    # Keep the 14-byte 'IPC::Shareable' tag so shm_segments(), clean_up_testing()
-    # and foreign-segment detection still recognize the segment as ours.
-
-    my $raw = 'IPC::Shareable' . $val;
+    my $raw = "IPC::Shareable\x1e" . $val;
 
     if (length($raw) > $seg->size) {
         croak "Length of shared data exceeds shared segment size";

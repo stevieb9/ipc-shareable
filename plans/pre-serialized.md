@@ -1,8 +1,8 @@
 # Plan: Pre-serialized single-segment scalar storage
 
-> **NEXT ACTION:** Proceed with V8 — automatic verbatim encode (`_encode`: SCALAR + `defined && ! ref` → `tag.\x1e.bytes`)
-> **LAST SESSION:** V7 ✅ — un-exposed `raw` (option + guards removed, t/94 deleted); suite green (1258); codec helpers kept for V8/V9
-> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V7
+> **NEXT ACTION:** Proceed with V9 — automatic verbatim decode (`_decode_verbatim` sentinel peek; restores suite green)
+> **LAST SESSION:** V8 ✅ — `_encode` writes verbatim `tag.\x1e.bytes` for plain scalars (json+storable); refs fan out, undef→null. SUITE INTENTIONALLY RED until V9 wires decode
+> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V8
 
 ## Objective
 
@@ -203,7 +203,6 @@ explicit `raw` mode and the json **auto-sense** mode.
 
 | ID | What | Command | Expected | Actual |
 |----|------|---------|----------|--------|
-| V8 | **Automatic verbatim encode**: in `_encode`, for a SCALAR tie whose `_data` is a scalar-ref to a `defined && ! ref` value, write `'IPC::Shareable'."\x1e".$val` via `_encode_verbatim` (size guard) instead of json/storable; refs/undef fall through | store `'{"a":1}'` via a plain **json** scalar tie; dump `seg->shmread` | bytes == `IPC::Shareable\x1e{"a":1}`; hashref still fans out; undef → `{"__sv__":null}` | ⏳ |
 | V9 | **Automatic verbatim decode** + post-attach: add `_decode_verbatim` (peek tag+`\x1e` → `\$rest`, else undef) at the top of `_decode`; route `_tie` post-attach through `_decode` for storable too | round-trip a plain string and a number via a json scalar; read a legacy `{__sv__}` segment; cross-process attach | string byte-identical; number returns as string (`==`); legacy `{__sv__}`/`{__ics__}` still decode; cross-process verbatim | ⏳ |
 | V10 | Write `t/94-scalar-verbatim.t` (automatic; no `serializer=>'raw'`): plain & JSON strings round-trip verbatim + single-segment; numbers→string (`==`); undef preserved; refs fan out; flip-flop string↔ref; locked/unlocked; cross-process; payload hazards (tag, `\x1e`, NUL, UTF-8, over-`size`) | `prove -lv t/94-scalar-verbatim.t` | all subtests pass | ⏳ |
 | V11 | `t/95-scalar-verbatim-edge.t` (parallel-safe): backward-compat reads of pre-existing `{__sv__}`/`{__ics__}` segments; storable scalar verbatim (plain) vs ref-freeze; hash/array ties unaffected; only json/storable accepted as serializer | `prove -lv t/95-scalar-verbatim-edge.t` | all subtests pass | ⏳ |
