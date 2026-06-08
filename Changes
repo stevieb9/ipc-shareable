@@ -37,6 +37,9 @@ Revision history for Perl extension IPC::Shareable.
       their IPC between steps there (a no-op elsewhere) rather than exhausting
       it. Adds sem_set_limit/low_sem_resources/relieve_ipc_pressure to
       t/IPCShareableTest.pm, plus t/96 and t/97
+    - t/38-lsync.t: replace the SIGALRM/sleep handshake (a lost-wakeup race that
+      could deadlock the test under emulation) with a two-pipe handshake, the
+      same idiom as t/26/t/19/t/24
 
 1.17    2026-05-31
     - POD enhancements regarding testing_set() and clean_up_testing()

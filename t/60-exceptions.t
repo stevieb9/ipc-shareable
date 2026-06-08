@@ -114,10 +114,12 @@ assert_clean_process();
             "_tie: error message mentions semaphore set";
     }
 
-    # The shm segment was created before IPC::Semaphore->new failed, so it
-    # is not in any register.  Clean it up manually to keep the shm count clean.
+    # The segment was created before the semaphore set failed; _tie() now removes
+    # it before croaking, so it is no longer orphaned.
     my $leaked_id = shmget($key_int, 0, 0);
-    shmctl($leaked_id, IPC_RMID, 0) if defined $leaked_id;
+    ok ! defined $leaked_id,
+        "_tie: the just-created segment is removed, not orphaned, on sem-create failure";
+    shmctl($leaked_id, IPC_RMID, 0) if defined $leaked_id;   # Safety net if it regresses
 }
 
 # _thaw: croaks when Storable::thaw returns undef (munged segment).
