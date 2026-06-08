@@ -1,8 +1,8 @@
 # Plan: Pre-serialized single-segment scalar storage
 
-> **NEXT ACTION:** ✅ DONE — all V tasks (V1–V12) complete. Feature shipped: automatic verbatim scalar storage, full tests, simple docs. Serial suite 1316 green.
-> **LAST SESSION:** V12 ✅ — POD/README "Tied scalars" note + single Changes entry; final regression green
-> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V12
+> **NEXT ACTION:** ✅ DONE — V1–V13 complete (feature + tests + docs + benchmark). B2 declined. Serial suite 1316 green.
+> **LAST SESSION:** V13 ✅ — benchmarks/verbatim_vs_fanout.pl: 13× fewer segments, ~160× faster store, ~140× faster read vs fan-out
+> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V13
 
 ## Objective
 
@@ -203,7 +203,7 @@ explicit `raw` mode and the json **auto-sense** mode.
 
 | ID | What | Command | Expected | Actual |
 |----|------|---------|----------|--------|
-_All V tasks (V1–V12) complete — see pre-serialized-archive.md._
+_All V tasks (V1–V13) complete — see pre-serialized-archive.md._
 
 ## Discovery Tracking
 
@@ -213,13 +213,14 @@ _None yet._
 
 B1: _(promoted to V8–V12 — slot retired, not reused)_
 
-B2: Optional read-side convenience flag (e.g. `decode => sub {...}`) to auto-decode on FETCH. Default-off; documented footgun (scalar tie returning a structure). Likely "NOT doing" — captured here only so the idea isn't re-litigated.
+B2: _(decided against — see Explicitly NOT doing — slot retired, not reused)_
 
-B3: Benchmark raw-scalar-single-segment vs. native fan-out tie on a deep structure (segment count, semaphore count, store/fetch wall-time) for the README/benchmarks dir.
+B3: _(promoted to V13 — slot retired, not reused)_
 
 ## Explicitly NOT doing
 
 - **Public `serializer => 'raw'` option** — verbatim storage is internal and automatic only (SCALAR tie + `defined && ! ref`); users never select it. Keeps the normal API surface unchanged (Design decision #3). The codec helpers exist; the *option* does not.
 - **Auto-decode on read by default** — breaks scalar-tie semantics, re-incurs the decode cost we're eliminating, and returns a detached non-shared ref. Read hands back the stored bytes; the user decodes (Design decision #1).
+- **Auto-decode-on-read convenience flag** (was B2) — e.g. a `decode => sub {…}` hook that deserializes on FETCH. Same footgun as above (detached non-shared structure, re-incurred cost); the caller decoding explicitly is clearer. Decided against.
 - **Preserving number type through a verbatim scalar** — a stored number returns as its string form (still `==`). Accepted per "plain in, plain out"; not worth a fragile SvIOK/SvPOK sniff.
 - **Dropping the 14-byte `IPC::Shareable` tag for verbatim segments** — would make segments invisible to `shm_segments()` / `clean_up_testing` and orphan them. Tag stays; the `\x1e` sentinel follows it.

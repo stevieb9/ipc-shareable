@@ -14,6 +14,7 @@
 - V10: `t/94-scalar-verbatim.t` (37 tests) — segment layout (tag+\x1e, no __sv__), deep-structure single-segment + user decode, fan-out contrast, strings/ints/floats, undef preserved, refs fan out, flip-flop string↔ref w/ child cleanup, locked/unlocked, payload hazards (tag/\x1e/NUL/UTF-8), size guard, cross-process — ✅ 2026-06-07 attempt 1: PASS (serial suite 1296 green, t/99 leak check passes; `prove -j4` w/o HARNESS_OPTIONS races t/99 — use serial or HARNESS_OPTIONS=j4)
 - V11: `t/95-scalar-verbatim-edge.t` (21 tests) — legacy `{__sv__}` read, literal `__sv__` string verbatim (sentinel protection), legacy Storable-frozen scalar → json fallback warns/switches, storable scalar plain=verbatim/ref=freeze, aggregate ties unaffected, serializer validation (raw/bogus/none rejected) — ✅ 2026-06-07 attempt 1: PASS (serial suite 1317 green)
 - V12: Docs — POD + README "Tied scalars" note (plain in/plain out; no raw/sentinel/internals mentioned); single Changes entry at bottom of `1.18 UNREL`; rendered POD confirmed clean of internal terms; final serial regression 1316 green — ✅ 2026-06-07 attempt 1: PASS
+- V13 (was B3): `benchmarks/verbatim_vs_fanout.pl` — verbatim single-segment scalar vs native fan-out tie (width=12 depth=2, 144 leaves). Results: 1 vs 13 segments (13× fewer seg+sem); STORE ~3040/s vs ~19/s (~160×); READ ~5022/s vs ~36/s (~140×); 0 leftover segments — ✅ 2026-06-07 attempt 1: PASS
 
 ## Archived Fixes
 
