@@ -70,5 +70,7 @@ t/92-pod.t
 t/93-manifest.t
 t/94-scalar-verbatim.t
 t/95-scalar-verbatim-edge.t
+t/96-sem-create-orphan.t
+t/97-sem-resources.t
 t/99-end.t
 t/IPCShareableTest.pm

@@ -27,6 +27,15 @@ Revision history for Perl extension IPC::Shareable.
       A reference stored in a scalar still shares its structure as before. (A
       number read back from a scalar now returns in string form; it still
       compares equal numerically.)
+    - Fix a shared memory segment leak: when a tie created its segment but could
+      not create the segment's semaphore set (eg. ENOSPC, on a host that has hit
+      its semaphore limit), the segment was orphaned. It is now removed before
+      croaking, and the croak still reports the underlying cause
+    - Make the test suite resilient on hosts with a small System V semaphore
+      budget (eg. OpenBSD, where semmni defaults to 10): t/94 and t/95 release
+      their IPC between steps there (a no-op elsewhere) rather than exhausting
+      it. Adds sem_set_limit/low_sem_resources/relieve_ipc_pressure to
+      t/IPCShareableTest.pm, plus t/96 and t/97
 
 1.17    2026-05-31
     - POD enhancements regarding testing_set() and clean_up_testing()

@@ -10,7 +10,16 @@ use Test::More;
 use IPC::Shareable;
 use IPC::Semaphore;
 
-our @EXPORT_OK = qw(assert_clean assert_clean_process live_seg_count tree_seg_count unique_glue);
+# Below this many SysV semaphore *sets* (SEMMNI), a test that creates many tied
+# variables must release them as it goes rather than let them accumulate. Chosen
+# to catch tiny hosts (OpenBSD defaults to 10) while leaving roomy ones alone
+# (macOS ~87, Linux ~32000).
+use constant LOW_SEM_SETS => 32;
+
+our @EXPORT_OK = qw(
+    assert_clean assert_clean_process live_seg_count low_sem_resources
+    relieve_ipc_pressure sem_set_limit tree_seg_count unique_glue
+);
 
 # A token that is unique to this process and stable across fork() (it is
 # computed once, at load time, before any test forks). Embedding it in every
@@ -79,6 +88,62 @@ sub assert_clean_process {
 
 sub live_seg_count {
     return scalar keys %{ IPC::Shareable->global_register };
+}
+
+my $_low_sem_cache;
+
+# True when the host has a small SysV semaphore-set budget (see LOW_SEM_SETS),
+# such that a test that creates many tied variables without releasing them
+# between steps would exhaust it. Each tie consumes one semaphore set, and on
+# OpenBSD the default kern.seminfo.semmni is only 10. An undeterminable limit is
+# treated as NOT constrained, so behaviour changes only on platforms we can
+# positively identify as small. Cached: the underlying probe runs once.
+
+sub low_sem_resources {
+    return $_low_sem_cache if defined $_low_sem_cache;
+
+    my $limit = sem_set_limit();
+    $_low_sem_cache = (defined $limit && $limit < LOW_SEM_SETS) ? 1 : 0;
+
+    return $_low_sem_cache;
+}
+
+# Release every IPC::Shareable segment this process currently holds, but ONLY on
+# hosts with a small semaphore-set budget (see low_sem_resources()). A test that
+# creates many tied variables calls this between independent steps to stay under
+# the limit. On roomy platforms it is a no-op, so the test's behaviour there is
+# unchanged.
+
+sub relieve_ipc_pressure {
+    IPC::Shareable::clean_up_all if low_sem_resources();
+}
+
+# Return the system-wide limit on SysV semaphore sets (SEMMNI) for the current
+# platform, or undef if it cannot be determined. Each IPC::Shareable tie consumes
+# one set, so this bounds how many live ties a process may hold at once.
+
+sub sem_set_limit {
+    if ($^O eq 'linux') {
+        # /proc/sys/kernel/sem holds "SEMMSL SEMMNS SEMOPM SEMMNI".
+        open my $fh, '<', '/proc/sys/kernel/sem' or return undef;
+        my $line = <$fh>;
+        close $fh;
+
+        my @fields = split ' ', (defined $line ? $line : '');
+        return $fields[3] if @fields >= 4 && $fields[3] =~ /^\d+$/;
+
+        return undef;
+    }
+
+    # The BSDs and macOS expose it via sysctl, under different MIB names.
+    my $mib = $^O eq 'darwin' ? 'kern.sysv.semmni' : 'kern.seminfo.semmni';
+    my $val = `sysctl -n $mib 2>/dev/null`;
+
+    return undef if ! defined $val;
+
+    chomp $val;
+
+    return $val =~ /^\d+$/ ? $val : undef;
 }
 
 # Number of live IPC::Shareable segments in this glue's segment tree (the root

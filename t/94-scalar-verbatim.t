@@ -7,7 +7,7 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process live_seg_count unique_glue);
+use IPCShareableTest qw(assert_clean_process live_seg_count unique_glue relieve_ipc_pressure);
 
 use JSON qw(encode_json decode_json);
 use POSIX ();
@@ -15,6 +15,10 @@ use POSIX ();
 # A scalar holding a plain (non-ref) value is stored verbatim and automatically
 # under the normal (default json) tie: no __sv__ wrapping, no escaping, one
 # segment. The caller owns encode/decode. A reference still fans out as before.
+#
+# relieve_ipc_pressure() between blocks is a no-op on roomy hosts (so behaviour
+# there is unchanged) but releases each block's IPC on small-semmni hosts like
+# OpenBSD (semmni=10), so the accumulated ties never exhaust the system.
 
 my $SIZE = 65536;
 
@@ -31,6 +35,7 @@ my $SIZE = 65536;
         'plain scalar stored verbatim (tag + \x1e + bytes)';
     unlike $bytes, qr/__sv__/, '...no __sv__ escaping in the segment';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # Pre-serialize a deep structure -> ONE segment; fetch verbatim; user decodes.
@@ -52,6 +57,7 @@ my $SIZE = 65536;
     is $s, $blob, 'scalar returns the pre-serialized bytes verbatim';
     is_deeply decode_json($s), $struct, 'caller decodes the bytes back to the original structure';
 }
+relieve_ipc_pressure();
 
 # Contrast: a native nested tie of the same shape fans out to many segments.
 {
@@ -60,6 +66,7 @@ my $SIZE = 65536;
     %h = (name => 'widget', meta => { deep => [1, 2, { x => 'y' }] });
     cmp_ok live_seg_count() - $before, '>', 1, 'a native nested tie fans out (verbatim collapses to one)';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # Plain strings, integers, floats round-trip (numbers come back as strings).
@@ -80,6 +87,7 @@ my $SIZE = 65536;
     $s = 3.14;
     cmp_ok $s, '==', 3.14, 'float round-trips numerically';
 }
+relieve_ipc_pressure();
 
 # undef is preserved (falls through to {"__sv__":null}, not verbatim).
 {
@@ -91,6 +99,7 @@ my $SIZE = 65536;
     $bytes =~ s/\x00+$//;
     is $bytes, q(IPC::Shareable{"__sv__":null}), '...stored as {"__sv__":null}, not verbatim';
 }
+relieve_ipc_pressure();
 
 # Empty string is a defined ''.
 {
@@ -99,6 +108,7 @@ my $SIZE = 65536;
     ok defined $s, 'empty string is defined';
     is $s, '', '...and equals the empty string';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # A reference still fans out into child segment(s) (unchanged behavior).
@@ -111,6 +121,7 @@ my $SIZE = 65536;
     is $s->{a},    1, 'ref value readable';
     is $s->{b}[1], 3, 'nested ref value readable';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # Flip-flop: string -> ref -> string in the same scalar; child cleaned up.
@@ -131,6 +142,7 @@ my $SIZE = 65536;
     is $s, 'again', 'flip: back to a string value';
     is live_seg_count() - $base, 1, '...child cleaned up, back to one segment';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # Round-trip under shared and exclusive locks.
@@ -152,6 +164,7 @@ my $SIZE = 65536;
     $obj->unlock;
     is $s, $blob2, 'LOCK_EX write then read back ok';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # Payload hazards: literal tag text, the \x1e sentinel byte, internal NULs.
@@ -170,6 +183,7 @@ my $SIZE = 65536;
     is $s, "a\x00b\x00c", 'internal NUL bytes preserved';
     is length($s), 5, '...with correct length';
 }
+relieve_ipc_pressure();
 
 # UTF-8 octets (encode_json output) round-trip and decode back intact.
 {
@@ -180,6 +194,7 @@ my $SIZE = 65536;
     is $s, $blob, 'UTF-8 JSON octets stored verbatim';
     is_deeply decode_json($s), $struct, 'UTF-8 payload decodes back intact';
 }
+relieve_ipc_pressure();
 
 # Size guard still applies (tag + sentinel + payload must fit).
 {
@@ -195,6 +210,7 @@ my $SIZE = 65536;
     ok ! $ok, 'oversize payload croaks';
     like $@, qr/exceeds shared segment size/, '...with the size-exceeded message';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # Cross-process: a producer stores, a separate process reads verbatim.
@@ -227,6 +243,7 @@ my $SIZE = 65536;
 
     is $got, 'MATCH', "consumer process reads the producer's bytes verbatim";
 }
+relieve_ipc_pressure();
 
 IPC::Shareable::_end;
 

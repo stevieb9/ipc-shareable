@@ -7,13 +7,17 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process unique_glue);
+use IPCShareableTest qw(assert_clean_process unique_glue relieve_ipc_pressure);
 
 use JSON qw(encode_json);
 use Storable qw(freeze);
 
 # Backward-compat, storable, and validation edges for the automatic verbatim
 # scalar storage.
+#
+# relieve_ipc_pressure() between blocks is a no-op on roomy hosts (so behaviour
+# there is unchanged) but releases each block's IPC on small-semmni hosts like
+# OpenBSD (semmni=10), so the accumulated ties never exhaust the system.
 
 # ---------------------------------------------------------------------------
 # 1. A legacy {"__sv__":...} scalar segment (no sentinel) still reads: the
@@ -25,6 +29,7 @@ use Storable qw(freeze);
     tied($s)->seg->shmwrite('IPC::Shareable' . encode_json({ '__sv__' => 'hello' }));
     is $s, 'hello', 'legacy {"__sv__":...} scalar segment still reads correctly';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # 2. A string that LOOKS like the wrapper is stored verbatim, not unwrapped:
@@ -39,6 +44,7 @@ use Storable qw(freeze);
     $bytes =~ s/\x00+$//;
     is $bytes, "IPC::Shareable\x1e" . $trap, '...stored verbatim with the sentinel';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # 3. A legacy Storable-frozen scalar segment (first body byte 0x04, not the
@@ -63,6 +69,7 @@ use Storable qw(freeze);
     ok scalar(grep { /Storable-encoded/ } @warns),
         'fallback warning emitted for the frozen scalar';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # 4. Serializer-agnostic: a storable scalar holding a plain value is verbatim;
@@ -76,6 +83,7 @@ use Storable qw(freeze);
     $b =~ s/\x00+$//;
     is $b, "IPC::Shareable\x1eplain-stor", '...stored verbatim (serializer-agnostic)';
 }
+relieve_ipc_pressure();
 {
     tie my $sr, 'IPC::Shareable', { key => unique_glue('edge-stor-ref'), create => 1, destroy => 1, serializer => 'storable', size => 4096 };
     $sr = { deep => [1, 2, 3] };
@@ -84,6 +92,7 @@ use Storable qw(freeze);
     $b =~ s/\x00+$//;
     unlike $b, qr/^IPC::Shareable\x1e/, '...and is NOT verbatim (ref takes the serializer path)';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # 5. Aggregate ties are untouched by verbatim (always serialized).
@@ -108,6 +117,7 @@ use Storable qw(freeze);
     $bs =~ s/\x00+$//;
     unlike $bs, qr/^IPC::Shareable\x1e/, '...storable hash segment is not verbatim';
 }
+relieve_ipc_pressure();
 
 # ---------------------------------------------------------------------------
 # 6. Only json and storable are accepted serializers ('raw' is not public).
@@ -125,6 +135,7 @@ use Storable qw(freeze);
     like $@, qr/must be 'json' or 'storable'/,
         'rejection message names the valid serializers';
 }
+relieve_ipc_pressure();
 
 IPC::Shareable::_end;
 

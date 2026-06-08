@@ -1664,6 +1664,16 @@ sub _tie {
            // IPC::Semaphore->new($key, $nsems, $seg->flags);
 
     if (! defined $sem) {
+        # The segment was created just above, but we couldn't establish its
+        # semaphore set (eg. ENOSPC when the host's semaphore limit is hit).
+        # Remove the segment we just made so it isn't orphaned -- but only when
+        # we are the creator: a pure attacher (create => 0) must never remove a
+        # segment that another process owns. Preserve $! across the removal so
+        # the croak still reports the original failure (eg. "No space left on
+        # device") rather than the result of the cleanup's shmctl.
+        my $err = $!;
+        $seg->remove if $knot->attributes('create');
+        $! = $err;
         croak "Could not create semaphore set: $!\n";
     }
 
