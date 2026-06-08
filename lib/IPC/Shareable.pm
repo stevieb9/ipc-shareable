@@ -2410,6 +2410,11 @@ optionally L<Storable>) before being slurped into shared memory. Upon retrieval,
 the original format of the data structure is recovered. Semaphore flags can be
 used for locking data between competing processes.
 
+B<Tied scalars>: A tied scalar can store arbitrary data. If you send in plain
+data, you get plain data back; if you encode it yourself (eg. with L<JSON>), it
+is up to you to decode it. Storing a B<reference> shares the referenced
+structure, the same as tying a hash or array.
+
 B<Recommendation>: Utilizing the locking mechanisms is highly advised to ensure
 data consistency and integrity. See L</LOCKING>.
 

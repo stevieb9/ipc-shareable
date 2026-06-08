@@ -128,6 +128,11 @@ optionally [Storable](https://metacpan.org/pod/Storable)) before being slurped i
 the original format of the data structure is recovered. Semaphore flags can be
 used for locking data between competing processes.
 
+**Tied scalars**: A tied scalar can store arbitrary data. If you send in plain
+data, you get plain data back; if you encode it yourself (eg. with [JSON](https://metacpan.org/pod/JSON)), it
+is up to you to decode it. Storing a **reference** shares the referenced
+structure, the same as tying a hash or array.
+
 **Recommendation**: Utilizing the locking mechanisms is highly advised to ensure
 data consistency and integrity. See ["LOCKING"](#locking).
 

@@ -21,6 +21,12 @@ Revision history for Perl extension IPC::Shareable.
     - clean_up_testing(): remove only segments the caller created or whose
       creator has exited; leave another live process's in-use segments alone,
       so it is safe under `prove -j` and concurrent smokers
+    - Tied SCALARs holding a plain (non-reference) value now store it directly
+      in their single segment rather than JSON/Storable-wrapping it: plain data
+      in, the same data out, and you decode any value you pre-encoded yourself.
+      A reference stored in a scalar still shares its structure as before. (A
+      number read back from a scalar now returns in string form; it still
+      compares equal numerically.)
 
 1.17    2026-05-31
     - POD enhancements regarding testing_set() and clean_up_testing()

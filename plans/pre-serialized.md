@@ -1,8 +1,8 @@
 # Plan: Pre-serialized single-segment scalar storage
 
-> **NEXT ACTION:** Proceed with V12 — simple docs (POD + README) + ONE Changes entry + final regression
-> **LAST SESSION:** V11 ✅ — t/95-scalar-verbatim-edge.t (21 tests); serial suite 1317 green. Code + tests complete; only docs remain
-> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V11
+> **NEXT ACTION:** ✅ DONE — all V tasks (V1–V12) complete. Feature shipped: automatic verbatim scalar storage, full tests, simple docs. Serial suite 1316 green.
+> **LAST SESSION:** V12 ✅ — POD/README "Tied scalars" note + single Changes entry; final regression green
+> **ARCHIVE:** See pre-serialized-archive.md for completed V1-V12
 
 ## Objective
 
@@ -203,7 +203,7 @@ explicit `raw` mode and the json **auto-sense** mode.
 
 | ID | What | Command | Expected | Actual |
 |----|------|---------|----------|--------|
-| V12 | **Docs + Changes + regression**: README/POD scalar section gets the simple "arbitrary data; encode→decode; plain in/plain out" paragraph (NO `raw`/sentinel/mechanism mentioned); ONE Changes entry at the bottom of `1.18 UNREL`; full suite green | `prove -l t/` (serial — runs t/99 leak check); visual diff README/Changes | user-facing docs only; suite green; Changes entry last in section | ⏳ |
+_All V tasks (V1–V12) complete — see pre-serialized-archive.md._
 
 ## Discovery Tracking
 
