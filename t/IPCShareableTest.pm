@@ -123,27 +123,16 @@ sub relieve_ipc_pressure {
 # one set, so this bounds how many live ties a process may hold at once.
 
 sub sem_set_limit {
-    if ($^O eq 'linux') {
-        # /proc/sys/kernel/sem holds "SEMMSL SEMMNS SEMOPM SEMMNI".
-        open my $fh, '<', '/proc/sys/kernel/sem' or return undef;
-        my $line = <$fh>;
-        close $fh;
+    # Reuse the module's own cross-platform probe rather than re-deriving the
+    # per-OS sysctl names here: sysv_info() reads kern.sysv (macOS), kern.ipc
+    # (FreeBSD), kern.seminfo (OpenBSD), and /proc (Linux). Call it as a class
+    # method (it shift()s its invocant) and trap its die-on-missing-sysctl.
+    my $info = eval { IPC::Shareable->sysv_info };
+    return undef if ! $info;
 
-        my @fields = split ' ', (defined $line ? $line : '');
-        return $fields[3] if @fields >= 4 && $fields[3] =~ /^\d+$/;
+    my $semmni = $info->{semmni};
 
-        return undef;
-    }
-
-    # The BSDs and macOS expose it via sysctl, under different MIB names.
-    my $mib = $^O eq 'darwin' ? 'kern.sysv.semmni' : 'kern.seminfo.semmni';
-    my $val = `sysctl -n $mib 2>/dev/null`;
-
-    return undef if ! defined $val;
-
-    chomp $val;
-
-    return $val =~ /^\d+$/ ? $val : undef;
+    return defined $semmni && $semmni =~ /^\d+$/ ? $semmni : undef;
 }
 
 # Number of live IPC::Shareable segments in this glue's segment tree (the root

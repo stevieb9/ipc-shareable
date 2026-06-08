@@ -1678,6 +1678,14 @@ sub _tie {
     }
 
     if (! $sem->op(@{ $semop_args{(LOCK_SH)} }) ) {
+        # Lock acquisition failed before the knot was registered, so nothing
+        # else will reclaim these. Tear down what we just made: the semaphore
+        # set if we created it (its marker isn't set yet), and the segment if
+        # we are its creator. Preserve $! so the croak still names the cause.
+        my $err = $!;
+        $sem->remove if $sem->getval(SEM_MARKER) != SHM_EXISTS;
+        $seg->remove if $knot->attributes('create');
+        $! = $err;
         croak "Could not obtain semaphore set lock: $!\n";
     }
 

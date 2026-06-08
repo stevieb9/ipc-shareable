@@ -2,6 +2,7 @@ use warnings;
 use strict;
 
 use IPC::SysV qw(IPC_RMID);
+use IPC::Semaphore;
 use Errno qw(ENOSPC);
 use Test::More;
 
@@ -81,6 +82,40 @@ IPC::Shareable->testing_set('IPC::Shareable');
 
     like $@, qr/Could not create semaphore set: \Q$enospc\E/,
         'croak preserves the original errno across the orphan-cleanup removal';
+}
+
+# ---------------------------------------------------------------------------
+# Lock-acquire failure: if the semaphore op fails right after the segment and
+# its semaphore were created (before the knot is registered), both are torn
+# down before croaking rather than orphaned.
+# ---------------------------------------------------------------------------
+{
+    my $glue    = unique_glue('op-fail-creator');
+    my $key_int = IPC::Shareable::_key_str_to_int($glue);
+
+    {
+        no warnings 'redefine';
+        local *IPC::Semaphore::op = sub { 0 };   # Fail every semop
+
+        my $ok = eval {
+            tie my $s, 'IPC::Shareable', { key => $glue, create => 1, destroy => 1 };
+            1;
+        };
+        ok ! $ok, 'lock-acquire failure: tie croaks';
+        like $@, qr/Could not obtain semaphore set lock/, '...with the expected message';
+    }
+
+    my $leaked_seg = shmget($key_int, 0, 0);
+    ok ! defined $leaked_seg,
+        'lock-acquire failure: the just-created segment was removed, not orphaned';
+
+    my $leaked_sem = IPC::Semaphore->new($key_int, 0, 0);
+    ok ! defined $leaked_sem,
+        'lock-acquire failure: the just-created semaphore set was removed too';
+
+    # Safety net
+    shmctl($leaked_seg, IPC_RMID, 0) if defined $leaked_seg;
+    $leaked_sem->remove if defined $leaked_sem;
 }
 
 # ---------------------------------------------------------------------------
