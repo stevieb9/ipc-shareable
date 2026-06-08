@@ -358,6 +358,9 @@ limactl shell "$VM" -- sh -lc "rm -rf '${GUEST_REPO}'"
 scp -F ~/.lima/"$VM"/ssh.config -r "$HOST_REPO" "lima-${VM}:${GUEST_HOME}/"
 # Strip macOS resource-fork files (._*).
 limactl shell "$VM" -- sh -lc "find '${GUEST_REPO}' -name '._*' -delete" 2>/dev/null || true
+# Remove host-built artifacts so XS is compiled natively in the VM (a macOS
+# Shareable.o/.bundle shipped in would fail to link/load here).
+limactl shell "$VM" -- sh -lc "cd '${GUEST_REPO}' && rm -rf blib pm_to_blib Makefile MYMETA.* Shareable.c Shareable.o Shareable.bs _Inline" 2>/dev/null || true
 
 echo "==> Cleaning up stale IPC segments/semaphores from previous runs..."
 limactl shell "$VM" -- sh -lc "

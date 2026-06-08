@@ -61,6 +61,10 @@ t/72-shm_segments.t
 t/73-internal.t
 t/74-seg_map.t
 t/75-is_child_xs.t
+t/76-sem-resources.t
+t/77-scalar-verbatim.t
+t/78-scalar-verbatim-edge.t
+t/79-sem-create-orphan.t
 t/80-SharedMem.t
 t/85-clean.t
 t/86-exports.t
@@ -68,9 +72,5 @@ t/90-pod_coverage.t
 t/91-pod_linkcheck.t
 t/92-pod.t
 t/93-manifest.t
-t/94-scalar-verbatim.t
-t/95-scalar-verbatim-edge.t
-t/96-sem-create-orphan.t
-t/97-sem-resources.t
 t/99-end.t
 t/IPCShareableTest.pm

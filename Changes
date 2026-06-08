@@ -1,45 +1,36 @@
 Revision history for Perl extension IPC::Shareable.
 
 1.18 UNREL
-    - Fix intermittent CPAN test failures under parallel smokers: the tests
-      assumed exclusive use of System V IPC. Added t/IPCShareableTest.pm
-      (unique_glue, assert_clean, assert_clean_process, live_seg_count) and
-      converted the fork tests (t/18, 19, 24, 26, 28, 32, 44) to per-run keys
-      and run-scoped cleanup checks
-    - t/26-ipcav.t: replace the SIGALRM/sleep handshake (a lost-wakeup race that
-      could hang the test; SIGKILLed on a smoker) with a two-pipe handshake
-    - t/47-seg_size.t: skip the "size > max RAM must croak" check where size_t
-      is 32-bit (the size wraps to an allocatable value and the tie succeeds)
-    - Replace the remaining global seg_count()/sem_count() cleanup comparisons
-      with a process-scoped assert_clean_process(); the suite now passes under
-      `prove -j4`. t/00-base + t/99-end keep a whole-suite global count check,
-      now serial-only (skipped under HARNESS_OPTIONS=jN)
-    - Re-key ~30 more tests with per-run unique keys so concurrent same-file
-      runs can't collide. t/69 uses a per-run dist name; t/72 derives its
-      expected hex from its keys. t/06-key keeps fixed keys (it pins the
-      key-generation algorithm) and stays serial-only
-    - clean_up_testing(): remove only segments the caller created or whose
-      creator has exited; leave another live process's in-use segments alone,
-      so it is safe under `prove -j` and concurrent smokers
-    - Tied SCALARs holding a plain (non-reference) value now store it directly
-      in their single segment rather than JSON/Storable-wrapping it: plain data
-      in, the same data out, and you decode any value you pre-encoded yourself.
-      A reference stored in a scalar still shares its structure as before. (A
-      number read back from a scalar now returns in string form; it still
-      compares equal numerically.)
-    - Fix a shared memory segment leak: when a tie created its segment but then
-      failed to set up its semaphore -- creating the set (eg. ENOSPC, on a host
-      that has hit its semaphore limit) or acquiring its initial lock -- the
-      segment was orphaned. It (and a semaphore set we created) is now removed
-      before croaking, and the croak still reports the underlying cause
-    - Make the test suite resilient on hosts with a small System V semaphore
-      budget (eg. OpenBSD, where semmni defaults to 10): t/94 and t/95 release
-      their IPC between steps there (a no-op elsewhere) rather than exhausting
-      it. Adds sem_set_limit/low_sem_resources/relieve_ipc_pressure to
-      t/IPCShareableTest.pm, plus t/96 and t/97
-    - t/38-lsync.t: replace the SIGALRM/sleep handshake (a lost-wakeup race that
-      could deadlock the test under emulation) with a two-pipe handshake, the
-      same idiom as t/26/t/19/t/24
+    - Fix intermittent CPAN failures under parallel smokers, which assumed
+      exclusive use of System V IPC. Added t/IPCShareableTest.pm (unique_glue,
+      assert_clean, assert_clean_process, live_seg_count) and moved the fork
+      tests (t/18, 19, 24, 26, 28, 32, 44) to per-run keys with run-scoped
+      cleanup checks
+    - t/26-ipcav.t and t/38-lsync.t: replace the racy SIGALRM/sleep handshake
+      (lost-wakeup; could hang under smokers or emulation) with a two-pipe
+      handshake
+    - t/47-seg_size.t: skip the "size > max RAM must croak" check on 32-bit
+      size_t, where the size wraps to an allocatable value and the tie succeeds
+    - Replace global seg_count()/sem_count() cleanup checks with a
+      process-scoped assert_clean_process(); the suite now passes under
+      `prove -j4`. t/00-base and t/99-end keep a global count check, serial-only
+    - Re-key ~30 more tests with per-run keys so concurrent runs can't collide.
+      t/06-key stays serial-only (it pins the key-generation algorithm)
+    - clean_up_testing() now removes only segments the caller created or whose
+      creator has exited, leaving another live process's segments alone -- safe
+      under `prove -j` and concurrent smokers
+    - Tied SCALARs holding a plain (non-reference) value now store it verbatim
+      rather than JSON/Storable-wrapping it; references still share their
+      structure as before. (Numbers read back in string form, but still compare
+      equal numerically)
+    - Fix a shared-memory segment leak when a tie created its segment but failed
+      to set up its semaphore (eg. ENOSPC) or acquire its initial lock: the
+      segment (and any semaphore set we created) is now removed before croaking,
+      which still reports the underlying cause
+    - Make the suite resilient on hosts with a small semaphore budget (eg.
+      OpenBSD, semmni=10): t/94 and t/95 release their IPC between steps there.
+      Adds sem_set_limit/low_sem_resources/relieve_ipc_pressure helpers, plus
+      t/96 and t/97
 
 1.17    2026-05-31
     - POD enhancements regarding testing_set() and clean_up_testing()

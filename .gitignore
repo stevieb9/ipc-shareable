@@ -10,6 +10,9 @@ MYMETA.*
 _build/
 blib/
 Build/
+Shareable.c
+Shareable.o
+Shareable.bs
 META.json
 META.yml
 *.old

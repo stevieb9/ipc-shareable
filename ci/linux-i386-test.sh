@@ -163,6 +163,9 @@ COPYFILE_DISABLE=1 tar --no-xattrs ${TAR_NO_META} \
         --transform "s|^$(basename "$HOST_REPO")|${PROJECT}|"
 # Strip macOS resource-fork files (._*) that may have leaked through.
 limactl shell "$VM" -- sudo find "${CHROOT_REPO}" -name '._*' -delete 2>/dev/null || true
+# Remove host-built artifacts so XS is compiled natively in the chroot (a macOS
+# Shareable.o/.bundle shipped in would fail to link/load here).
+limactl shell "$VM" -- sudo sh -c "cd '${CHROOT_REPO}' && rm -rf blib pm_to_blib Makefile MYMETA.* Shareable.c Shareable.o Shareable.bs _Inline" 2>/dev/null || true
 
 echo "==> Cleaning up stale IPC segments/semaphores from previous runs..."
 limactl shell "$VM" -- sh -lc "
