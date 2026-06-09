@@ -1,5 +1,8 @@
 Revision history for Perl extension IPC::Shareable.
 
+1.19 UNREL
+    -
+
 1.18    2026-06-08
     - Fix intermittent CPAN failures under parallel smokers, which assumed
       exclusive use of System V IPC. Added t/IPCShareableTest.pm (unique_glue,
