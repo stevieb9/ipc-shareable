@@ -10,7 +10,9 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process unique_glue);
+use IPCShareableTest qw(
+    assert_clean_process barrier_new barrier_release barrier_wait unique_glue
+);
 use Test::SharedFork;
 
 
@@ -133,8 +135,7 @@ my ($z, $y, $x, $w);
 
 # parent/child
 {
-    my $awake = 0;
-    local $SIG{ALRM} = sub { $awake = 1 };
+    my $ready = barrier_new();   # parent -> child: segment created
 
     my $pid = fork;
     defined $pid or die "Cannot fork : $!";
@@ -142,7 +143,7 @@ my ($z, $y, $x, $w);
     if ($pid == 0) {
         # child
 
-        sleep unless $awake;
+        barrier_wait($ready);
 
         my $s = tie(my $sv, 'IPC::Shareable', unique_glue('kids'), { destroy => 0 , serializer => 'storable' });
         $sv = 'baz';
@@ -171,7 +172,7 @@ my ($z, $y, $x, $w);
 
         my $s = tie(my $sv, 'IPC::Shareable', unique_glue('kids'), { create => 1, destroy => 0 , serializer => 'storable' });
 
-        kill ALRM => $pid;
+        barrier_release($ready);
         my $id = $s->seg->id;
         waitpid($pid, 0);
 

@@ -17,8 +17,9 @@ use IPC::Semaphore;
 use constant LOW_SEM_SETS => 32;
 
 our @EXPORT_OK = qw(
-    assert_clean assert_clean_process live_seg_count low_sem_resources
-    relieve_ipc_pressure sem_set_limit tree_seg_count unique_glue
+    assert_clean assert_clean_process barrier_new barrier_release barrier_wait
+    live_seg_count low_sem_resources relieve_ipc_pressure sem_set_limit
+    tree_seg_count unique_glue
 );
 
 # A token that is unique to this process and stable across fork() (it is
@@ -77,6 +78,53 @@ sub assert_clean_process {
     local $Test::Builder::Level = $Test::Builder::Level + 1;
 
     is live_seg_count(), 0, $label;
+}
+
+# Lost-wakeup-safe fork synchronisation, replacing the old SIGALRM/sleep
+# handshake where a signal delivered between the "unless $awake" test and
+# sleep() was lost and the sleeper blocked forever. A barrier is a single-use
+# one-way gate built on a pipe: the waiter blocks in readline() until the peer
+# writes a token, so the wakeup arrives as data (with EOF as a backstop) and
+# cannot be missed. Create one barrier per synchronisation point BEFORE fork(),
+# so both processes inherit its pipe ends. Same idiom as t/38-lsync.t.
+
+sub barrier_new {
+    pipe(my $reader, my $writer)
+        or croak "barrier_new() could not create pipe: $!";
+
+    return { reader => $reader, writer => $writer };
+}
+
+# Release the peer blocked in barrier_wait() on the same barrier. This side
+# only signals, so it drops the read end, then writes a token and closes the
+# write end (which both delivers the token and yields EOF).
+
+sub barrier_release {
+    my ($barrier) = @_;
+
+    if (! defined $barrier) {
+        croak "barrier_release() requires a \$barrier param";
+    }
+
+    close $barrier->{reader};
+    print { $barrier->{writer} } "go\n";
+    close $barrier->{writer};
+}
+
+# Block until the peer calls barrier_release() on the same barrier. This side
+# only waits, so it drops the write end first (otherwise it would hold the pipe
+# open and never see EOF), then reads until the peer signals.
+
+sub barrier_wait {
+    my ($barrier) = @_;
+
+    if (! defined $barrier) {
+        croak "barrier_wait() requires a \$barrier param";
+    }
+
+    close $barrier->{writer};
+    readline $barrier->{reader};
+    close $barrier->{reader};
 }
 
 # Count of IPC::Shareable segments currently live and owned by THIS process

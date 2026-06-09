@@ -31,6 +31,17 @@ Revision history for Perl extension IPC::Shareable.
       OpenBSD, semmni=10): t/94 and t/95 release their IPC between steps there.
       Adds sem_set_limit/low_sem_resources/relieve_ipc_pressure helpers, plus
       t/96 and t/97
+    - Tolerate a semaphore set removed by another process (EINVAL on the next
+      operation), the cause of intermittent CPAN-tester failures on heavily
+      parallel smokers. _write_permitted() now skips its advisory lock check
+      when getval() returns undef (it had been emitting "uninitialized value
+      in numeric gt" warnings), and unlock() warns once and continues rather
+      than croaking "Could not release semaphore lock". Adds
+      t/81-sem-removed-under-lock.t
+    - Finish migrating the forked tests off the lost-wakeup SIGALRM/sleep
+      handshake (which could hang a smoker or desync the processes): t/03, 18,
+      28, 30, 36, 66 and 85 now use a shared pipe-barrier helper
+      (barrier_new/barrier_wait/barrier_release in t/IPCShareableTest.pm)
 
 1.17    2026-05-31
     - POD enhancements regarding testing_set() and clean_up_testing()

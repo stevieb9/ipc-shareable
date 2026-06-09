@@ -7,7 +7,7 @@ require 5.010;
 
 use Carp qw(croak confess carp);
 use Config;
-use Errno qw(ENOMEM ENOSPC);
+use Errno qw(EINVAL ENOMEM ENOSPC);
 use Digest::MD5 qw(md5_hex);
 use IPC::Semaphore;
 use IPC::Shareable::SharedMem;
@@ -158,6 +158,11 @@ my %global_register;
 my %process_register;
 my %used_ids;
 my $_testing_dist = '';
+
+# Set once we have warned that a semaphore set vanished mid-unlock (a peer
+# removed it). Keeps the warning to one line per process rather than per call.
+
+my $_unlock_einval_warned = 0;
 
 # "Magic" methods
 
@@ -582,7 +587,24 @@ sub unlock {
     $flags ^= LOCK_NB if ($flags & LOCK_NB);
 
     if (! $sem->op(@{ $semop_args{$flags} })) {
-        croak "Could not release semaphore lock: $!\n";
+        if ($!{EINVAL}) {
+            # The semaphore set was removed by another process (eg. a peer
+            # holding the same segment with destroy=>1 exited). The lock we
+            # held went away with it, so there is nothing left to release.
+            # Warn once and carry on rather than aborting the caller; every
+            # other errno is a real failure and stays fatal. This mirrors the
+            # read path's tolerance of an unreachable set (see _write_permitted
+            # and _check_read_lock).
+
+            carp "Semaphore set gone during unlock (removed by another "
+               . "process); treating the lock as already released"
+                if ! $_unlock_einval_warned;
+
+            $_unlock_einval_warned = 1;
+        }
+        else {
+            croak "Could not release semaphore lock: $!\n";
+        }
     }
 
     $knot->{_lock} = 0;
@@ -2277,9 +2299,17 @@ sub _write_permitted {
     # Semaphore index 2 is the write-lock counter; it is 1 when any other knot
     # holds LOCK_EX (set via SEM_UNDO so it auto-releases on process exit).
 
+    # getval() returns undef if the semaphore set has been removed by another
+    # process (eg. clean_up_all, or a peer with destroy=>1 exiting). The
+    # enforcement check is advisory, so when the set is unreachable we skip it
+    # and permit the write, mirroring _check_read_lock().
+
     # Block if any process holds LOCK_EX
 
-    if ($sem->getval(SEM_WRITERS) > 0) {
+    my $writers = $sem->getval(SEM_WRITERS);
+    return 1 if ! defined $writers;
+
+    if ($writers > 0) {
         if ($knot->attributes('violated_write_lock_warn')) {
             my $uuid   = $knot->uuid;
             my $seg_id = $knot->seg->id;
@@ -2296,7 +2326,10 @@ sub _write_permitted {
 
     # Block if any process holds LOCK_SH (active readers present)
 
-    if ($sem->getval(SEM_READERS) > 0) {
+    my $readers = $sem->getval(SEM_READERS);
+    return 1 if ! defined $readers;
+
+    if ($readers > 0) {
         if ($knot->attributes('violated_write_lock_warn')) {
             my $uuid   = $knot->uuid;
             my $seg_id = $knot->seg->id;

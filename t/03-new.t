@@ -8,14 +8,18 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process unique_glue);
+use IPCShareableTest qw(
+    assert_clean_process barrier_new barrier_release barrier_wait unique_glue
+);
 use Test::SharedFork;
 
 
 my $mod = 'IPC::Shareable';
 
-my $awake = 0;
-local $SIG{ALRM} = sub { $awake = 1 };
+# A pipe barrier (see IPCShareableTest::barrier_new) replaces the old
+# SIGALRM/sleep handshake and its lost-wakeup race.
+
+my $ready = barrier_new();   # parent -> child: segments created
 
 # locking
 
@@ -25,7 +29,7 @@ defined $pid or die "Cannot fork: $!\n";
 if ($pid == 0) {
     # child
 
-    sleep unless $awake;
+    barrier_wait($ready);
 
     my $ch = $mod->new(key => unique_glue('hash2'));
     $ch->{child} = 'child';
@@ -51,7 +55,7 @@ if ($pid == 0) {
     like tied($$ps), qr/IPC::Shareable/, "new() tied scalar is proper object ok";
     like tied($$ps)->can('seg_count'), qr/CODE/, "...and it can call its methods ok";
 
-    kill ALRM => $pid;
+    barrier_release($ready);
     waitpid($pid, 0);
 
     is $ph->{child}, 'child', 'child set the hash value ok';

@@ -9,12 +9,13 @@ use Test::SharedFork;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(unique_glue assert_clean);
+use IPCShareableTest qw(
+    assert_clean barrier_new barrier_release barrier_wait unique_glue
+);
 
 # serializer: storable
 {
-    my $awake = 0;
-    local $SIG{ALRM} = sub { $awake = 1 };
+    my $ready = barrier_new();   # parent -> child: segment created
 
     my $pid = fork;
     defined $pid or die "Cannot fork: $!";
@@ -22,7 +23,7 @@ use IPCShareableTest qw(unique_glue assert_clean);
     if ($pid == 0) {
         # child
 
-        sleep unless $awake;
+        barrier_wait($ready);
 
         tie my %h, 'IPC::Shareable', { key => unique_glue('testing25'), destroy => 0 , serializer => 'storable' };
         $h{a} = 'foo';
@@ -40,7 +41,7 @@ use IPCShareableTest qw(unique_glue assert_clean);
         $h{a} = 'bar';
         is $h{a}, 'bar', "storable: in parent: parent set HV to 'bar' ok";
 
-        kill ALRM => $pid;
+        barrier_release($ready);
         waitpid($pid, 0);
 
         is $h{a}, 'foo', "storable: in parent: child set HV to 'foo' ok";
@@ -51,8 +52,7 @@ use IPCShareableTest qw(unique_glue assert_clean);
 
 # serializer: json
 {
-    my $awake = 0;
-    local $SIG{ALRM} = sub { $awake = 1 };
+    my $ready = barrier_new();   # parent -> child: segment created
 
     my $pid = fork;
     defined $pid or die "Cannot fork: $!";
@@ -60,7 +60,7 @@ use IPCShareableTest qw(unique_glue assert_clean);
     if ($pid == 0) {
         # child
 
-        sleep unless $awake;
+        barrier_wait($ready);
 
         tie my %h, 'IPC::Shareable', { key => unique_glue('testing25j'), destroy => 0, serializer => 'json' };
         $h{a} = 'foo';
@@ -78,7 +78,7 @@ use IPCShareableTest qw(unique_glue assert_clean);
         $h{a} = 'bar';
         is $h{a}, 'bar', "json: in parent: parent set HV to 'bar' ok";
 
-        kill ALRM => $pid;
+        barrier_release($ready);
         waitpid($pid, 0);
 
         is $h{a}, 'foo', "json: in parent: child set HV to 'foo' ok";

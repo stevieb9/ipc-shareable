@@ -8,14 +8,15 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process unique_glue);
+use IPCShareableTest qw(
+    assert_clean_process barrier_new barrier_release barrier_wait unique_glue
+);
 use Test::SharedFork;
 
 
 # serializer: storable
 {
-    my $awake = 0;
-    local $SIG{ALRM} = sub { $awake = 1 };
+    my $ready = barrier_new();   # parent -> child: segments created
 
     my($av, $hv);
 
@@ -25,7 +26,7 @@ use Test::SharedFork;
     if ($pid == 0) {
         # child
 
-        sleep unless $awake;
+        barrier_wait($ready);
 
         tie $hv, 'IPC::Shareable', unique_glue('hash1'), { destroy => 0 , serializer => 'storable' };
         tie $av, 'IPC::Shareable', unique_glue('arry1'), { destroy => 0 , serializer => 'storable' };
@@ -58,7 +59,7 @@ use Test::SharedFork;
         $hv = 'baz';
         $av = 'bong';
 
-        kill ALRM => $pid;
+        barrier_release($ready);
         waitpid($pid, 0);
 
         is $hv->{blip}->{blarp}, 'blurp', "storable: parent: nested HV 1 is 'blurp' ok";
@@ -76,8 +77,7 @@ use Test::SharedFork;
 
 # serializer: json
 {
-    my $awake = 0;
-    local $SIG{ALRM} = sub { $awake = 1 };
+    my $ready = barrier_new();   # parent -> child: segments created
 
     my($av, $hv);
 
@@ -87,7 +87,7 @@ use Test::SharedFork;
     if ($pid == 0) {
         # child
 
-        sleep unless $awake;
+        barrier_wait($ready);
 
         tie $hv, 'IPC::Shareable', unique_glue('hash1j'), { destroy => 0, serializer => 'json' };
         tie $av, 'IPC::Shareable', unique_glue('arry1j'), { destroy => 0, serializer => 'json' };
@@ -120,7 +120,7 @@ use Test::SharedFork;
         $hv = 'baz';
         $av = 'bong';
 
-        kill ALRM => $pid;
+        barrier_release($ready);
         waitpid($pid, 0);
 
         is $hv->{blip}->{blarp}, 'blurp', "json: parent: nested HV 1 is 'blurp' ok";

@@ -7,7 +7,9 @@ use Test::More;
 
 use FindBin;
 use lib $FindBin::Bin;
-use IPCShareableTest qw(assert_clean_process unique_glue);
+use IPCShareableTest qw(
+    assert_clean_process barrier_new barrier_release barrier_wait unique_glue
+);
 use Test::SharedFork;
 
 
@@ -46,15 +48,14 @@ my $protect_lock = 441;
 # when the caller omits the protected option. child's clean_up_all then
 # correctly skips the segment.
 {
-    my $awake = 0;
-    local $SIG{ALRM} = sub { $awake = 1 };
+    my $ready = barrier_new();   # parent -> child: protected segment created
 
     my $pid = fork;
     die "Cannot fork: $!" unless defined $pid;
 
     if ($pid == 0) {
         # child: wait for parent to create segment then attach
-        sleep unless $awake;
+        barrier_wait($ready);
 
         tie my %child_p, 'IPC::Shareable', {
             key    => unique_glue('pp66b'),
@@ -86,7 +87,7 @@ my $protect_lock = 441;
         };
         $p{val} = 'cross_proc';
 
-        kill ALRM => $pid;
+        barrier_release($ready);
         waitpid($pid, 0);
 
         # Segment must have survived child's clean_up_all
