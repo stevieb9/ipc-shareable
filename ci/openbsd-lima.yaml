@@ -31,8 +31,12 @@ images:
   - location: "~/.lima/_cache/openbsd7.qcow2"
     arch: x86_64
 
-cpus: 1
-memory: "2GiB"
+# Headroom for the heavy first-time CPAN build under TCG emulation (an x86_64
+# guest gets no hardware acceleration on Apple Silicon). 1 vCPU / 2GiB
+# destabilised the guest during dependency installs (pod2man SIGSEGV, drop to
+# single-user), so give the build more room.
+cpus: 2
+memory: "4GiB"
 disk: "128GiB"
 
 mounts: []
