@@ -1,6 +1,6 @@
 Revision history for Perl extension IPC::Shareable.
 
-1.19 UNREL
+1.19    2026-07-06
     - Fix mass CPAN tester FAILs on OpenBSD (29 of 32 reports for 1.18): the
       smoker host's 10 SysV semaphore-set slots (kern.seminfo.semmni=10) were
       pre-exhausted by stale sets leaked from previously crashed runs, so
